@@ -1,0 +1,26 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+#
+
+name: WIP Receive TheRock Data Placeholder
+
+on:
+  workflow_dispatch:
+    inputs:
+      payload_json:
+        description: "JSON payload from TheRock notify_quartz workflow"
+        type: string
+        required: true
+      fetch_jobs:
+        description: "Fetch job details from GitHub API"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  receive_data:
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Skipped"

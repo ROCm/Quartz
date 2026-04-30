@@ -80,14 +80,12 @@ A single table tracking GitHub Actions workflow test execution metadata:
 | `os` | **GAP** | High | Add to `therock_workflow_jobs` |
 | `target` | **GAP** | High | Add to `therock_workflow_jobs` |
 | `owner` | **GAP** | Medium | Add to both tables |
-| `queue_time_seconds` | **Partial** | Low | Quartz has this as ALIAS (computed) |
-| `job_time_seconds` | **Partial** | Low | Quartz has `execution_time_seconds` as ALIAS |
 
 ---
 
 ## Detailed Gap Analysis
 
-### 1. `os` — Operating System (HIGH PRIORITY)
+### 1. `os` — Operating System
 
 **Current State:** Quartz has `platform` (Enum8: unknown/linux/windows) but lacks granular OS information.
 
@@ -105,7 +103,7 @@ os String CODEC(ZSTD(1))
 
 ---
 
-### 2. `target` — Build/Test Target (HIGH PRIORITY)
+### 2. `target` — Build/Test Target
 
 **Current State:** Quartz has no direct equivalent. Partial overlap with `architecture` and `build_variant`.
 
@@ -123,7 +121,7 @@ target String CODEC(ZSTD(1))
 
 ---
 
-### 3. `owner` — Repository Owner (MEDIUM PRIORITY)
+### 3. `owner` — Repository Owner
 
 **Current State:** Quartz stores `repository` but not the owner separately.
 
@@ -134,20 +132,7 @@ target String CODEC(ZSTD(1))
 - Store as `repository` in format `owner/repo` and parse at query time
 
 **Use Cases:**
-- Filter CI data by organization
-- Support multi-org dashboards
-- Enable cross-organization analysis
-
----
-
-### 4. Computed Fields (LOW PRIORITY)
-
-| Field | rocm-ci-data | Quartz |
-|-------|--------------|--------|
-| `queue_time_seconds` | Stored | Computed ALIAS: `dateDiff('second', created_at, started_at)` |
-| `job_time_seconds` | Stored | Computed ALIAS: `execution_time_seconds` |
-
-**Status:** No action required. Quartz's approach of computing these values is more maintainable and avoids data inconsistency.
+- Support for forked repos data collection
 
 ---
 
@@ -160,54 +145,3 @@ target String CODEC(ZSTD(1))
 os String DEFAULT '' CODEC(ZSTD(1)),
 target String DEFAULT '' CODEC(ZSTD(1)),
 ```
-
-### Optional: Both Tables — New Column
-
-```sql
--- Add to both therock_workflow_runs and therock_workflow_jobs
-owner String DEFAULT '' CODEC(ZSTD(1)),
-```
-
----
-
-## Migration Impact
-
-| Change | Breaking? | Migration Strategy |
-|--------|-----------|-------------------|
-| Add `os` | No | Backfill from `platform` mapping or leave empty for historical data |
-| Add `target` | No | Parse from `job_name` or `architecture` for historical data |
-| Add `owner` | No | Parse from `repository` field |
-
----
-
-## Data Ingestion Updates
-
-The following data sources will need updates to populate the new fields:
-
-1. **GitHub Webhook Handler** — Extract `os` from runner labels, `target` from job name parsing
-2. **Backfill Scripts** — One-time population of historical data
-3. **Data Validation** — Ensure new fields are populated for incoming data
-
----
-
-## Open Questions
-
-1. Should `target` be an Enum8 or String?
-   - Enum provides type safety but requires updates for new GPU targets
-   - String provides flexibility but less query optimization
-
-2. Should `os` include full version (e.g., "ubuntu-22.04") or just distribution (e.g., "ubuntu")?
-   - Full version provides more granularity
-   - Distribution only reduces cardinality
-
-3. Is `owner` necessary if `repository` already contains `owner/repo` format?
-   - Separate field enables faster queries
-   - Can be computed at query time if storage is a concern
-
----
-
-## References
-
-- [Quartz Schema v2.2.0](https://gist.github.com/geomin12/fd436098e13dd19fe70e5a16e8ae4c8c)
-- [rocm-ci-data-retrieval Schema](https://gist.github.com/geomin12/6d6cc06d5b289150cfb3811eb1282dc7)
-- [RFC0001: Quartz & HUD ClickHouse DB Schema](./RFC0001-Appendix-Quartz-HUD-Metrics.md)

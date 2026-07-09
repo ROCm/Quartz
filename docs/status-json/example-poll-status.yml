@@ -1,0 +1,53 @@
+# Example: poll Quartz status.json for the latest ROCm nightly and act on it.
+#
+# Copy this into your downstream project's .github/workflows/ and adapt the
+# "React to the build" step. No GitHub App or credentials are required to read
+# status.json - it is a public file.
+#
+# What it does:
+#   - Runs hourly (and can be triggered manually from the Actions tab).
+#   - Runs example_consume_status.py, which fetches release-nightly/latest.json,
+#     gates on the Linux ROCm build, and reports the wheels and a tarball for it.
+#     The script sets step outputs (ready / rocm_version / build_date); the
+#     "React to the build" step runs only when ready == true.
+#
+# Both scripts come from the Quartz repository and use only the Python standard
+# library - nothing to install. Copy them into your own repository preserving
+# the scripts/consumer/ layout:
+#   scripts/consumer/read_status_json.py       (the read helper)
+#   scripts/consumer/example_consume_status.py (this example's entry point)
+# example_consume_status.py imports read_status_json.py from that same directory.
+
+name: Poll ROCm nightly status
+
+on:
+  schedule:
+    # Hourly at :17. Nightlies land once a day, so hourly polling is plenty.
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  poll:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out the repository running this workflow
+        # Needed so your copy of the scripts/consumer/ scripts is on the runner.
+        uses: actions/checkout@v4
+
+      - name: Consume the latest nightly status
+        id: status
+        # Sets outputs ready / rocm_version / build_date (see the script).
+        run: python3 scripts/consumer/example_consume_status.py
+
+      # >>> Replace this with your project's real work. <<<
+      # Runs only when the build you depend on passed the gate. For example:
+      # build against the new ROCm version, run a smoke test, or dispatch another
+      # workflow that opens a PR bumping your ROCm pin.
+      - name: React to the build
+        if: steps.status.outputs.ready == 'true'
+        run: |
+          echo "ROCm ${{ steps.status.outputs.rocm_version }} (${{ steps.status.outputs.build_date }}) is ready."
+          echo "Add your downstream build/test step here."

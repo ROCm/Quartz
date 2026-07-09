@@ -1,0 +1,257 @@
+// Reference layout for status.json v2.
+// NOTE: This file is a human-readable spec and contains `//` comments. The
+// real status.json emitted by Quartz is strict JSON with comments stripped.
+//
+// Conventions:
+// - Status values everywhere: "in_progress" | "success" | "failure" | "cancelled" | "skipped"
+// - Quartz writes this file; TheRock workflows push events via notify_quartz.py.
+// - A pipeline/phase appears only after it has emitted at least one notify event.
+//   Anything not reported is simply absent (no nulls, no "pending" placeholders).
+// - Tarball URLs are not enumerated; consumers use the Quartz Python helper
+//   to construct per-arch tarball filenames from the base URL + version.
+{
+  "schema_version": "2.0",
+  "release_type": "nightly",                    // "nightly" | "rc" | "dev"
+  "rocm_version": "7.13.0a20260408",
+  "build_date": "20260408",
+  "trigger_workflow_run_id": 12340000,          // run_id of the orchestrator (multi_arch_ci)
+  "created_at":             "2026-04-08T06:00:00Z",
+  "completed_at":           null,               // set when orchestrator emits run_phase=completed
+  "orchestrator_conclusion": null,              // top-level orchestrator's own terminal conclusion ("success"|"failure"|"cancelled"); folded into summary.overall_status so an aborted/failed release is never reported as success
+  "status_json_created":      "2026-04-08T06:05:00Z",
+  "status_json_last_updated": "2026-04-08T14:30:00Z",
+
+  // ---------------------------------------------------------------------
+  // SUMMARY: Quartz-computed rollup. Per-platform view of overall progress.
+  // ---------------------------------------------------------------------
+  "summary": {
+    "overall_status": "in_progress",            // worst-of across platforms
+
+    "linux": {
+      "status": "in_progress",                  // worst-of across this platform's pipelines
+
+      "architectures": [                        // requested arches for this platform (set once at creation)
+        "gfx942",
+        "gfx1101",
+        "gfx1200",
+        "gfx1201"
+      ],
+
+      "urls": {                                 // platform-level artifact locations (NOT per-arch); populated once the setup step runs, even before the build finishes
+        "tarballs":  "https://rocm.nightlies.amd.com/tarball-multi-arch/",  // base URL; use Quartz helper to build per-arch names
+        "wheels":    "https://rocm.nightlies.amd.com/whl-multi-arch/",
+        "rpm":       "https://rocm.nightlies.amd.com/packages-multi-arch/packages-multi-arch/rpm/20260408-12340000/",
+        "deb":       "https://rocm.nightlies.amd.com/packages-multi-arch/packages-multi-arch/deb/20260408-12340000/",
+        "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/12340000-linux/index.html"
+      },
+
+      // Per-pipeline rollup. Build phases carry a single {status}. Test phases
+      // carry counters: one count per matrix entry, NOT one per arch. E.g.
+      // pytorch.test for an arch with a 3 py x 2 torch matrix contributes 6 to
+      // the counters, not 1.
+      "rocm": {
+        "build": { "status": "success" },
+        "test":  { "success": 1, "failure": 1, "in_progress": 1, "cancelled": 0, "skipped": 0 }  // counts of matrix entries across all arches
+      },
+      "pytorch": {
+        "build": { "status": "success" },
+        "test":  { "success": 0, "failure": 0, "in_progress": 3, "cancelled": 0, "skipped": 0 }
+      },
+      "jax": {                                  // linux-only pipeline; always present on linux (placeholder until it reports)
+        "build": { "status": "in_progress" },
+        "test":  { "success": 0, "failure": 0, "in_progress": 0, "cancelled": 0, "skipped": 0 }
+      },
+      "native_packages": {                      // linux-only pipeline; rpm/deb are platform-wide (not per-arch)
+        "rpm": { "status": "success" },
+        "deb": { "status": "in_progress" }
+      }
+    },
+
+    "windows": {
+      "status": "in_progress",
+      "architectures": ["gfx1100"],
+
+      "urls": {                                 // populated once the setup step runs, even before the build finishes (empty/absent until then)
+        "tarballs":  "https://rocm.nightlies.amd.com/tarball-multi-arch/",  // base URL; use Quartz helper to build per-arch names
+        "wheels":    "https://rocm.nightlies.amd.com/whl-multi-arch/",
+        "artifacts": "https://therock-ci-artifacts.s3.amazonaws.com/12340000-windows/index.html"
+        // rpm/deb omitted - native_packages is linux-only
+      },
+
+      "rocm": {
+        "build": { "status": "in_progress" },
+        "test":  { "success": 0, "failure": 0, "in_progress": 1, "cancelled": 0, "skipped": 0 }
+      },
+      "pytorch": {
+        "build": { "status": "in_progress" },
+        "test":  { "success": 0, "failure": 0, "in_progress": 1, "cancelled": 0, "skipped": 0 }
+      }
+      // jax, native_packages omitted - not supported on windows
+    }
+  },
+
+  // ---------------------------------------------------------------------
+  // PIPELINES: per-pipeline / per-phase detail. Tree depth varies per
+  // (pipeline, phase) based on the actual workflow granularity:
+  //   - Build phases run once per platform           -> entry at .<platform>
+  //   - Test phases fan out per arch                 -> entry at .<platform>.<arch>
+  //   - native_packages.{rpm,deb} run once per platform -> entry at .<platform>
+  // Entry shape: { run_id, run_attempt, status, started_at, completed_at }
+  // Pipelines with a matrix on extra dimensions (pytorch py x torch,
+  // jax py x jax_ref) carry an additional "variants" array on the entry.
+  // ---------------------------------------------------------------------
+  "pipelines": {
+
+    "rocm": {
+      // rocm.build: single workflow run builds all arches together (matrix only on math-libs stage).
+      "build": {
+        "linux": {
+          "run_id":       12345678,
+          "run_attempt":  1,
+          "status":       "success",
+          "started_at":   "2026-04-08T06:00:00Z",
+          "completed_at": "2026-04-08T08:45:00Z"
+        },
+        "windows": {
+          "run_id":       12347000,
+          "run_attempt":  1,
+          "status":       "in_progress",
+          "started_at":   "2026-04-08T06:30:00Z",
+          "completed_at": null
+        }
+      },
+      // rocm.test: one workflow run per arch.
+      "test": {
+        "linux": {
+          "gfx942": {
+            "run_id":       12345700,
+            "run_attempt":  2,
+            "status":       "failure",
+            "started_at":   "2026-04-08T09:00:00Z",
+            "completed_at": "2026-04-08T10:30:00Z"
+          },
+          "gfx1101": {
+            "run_id":       12346100,
+            "run_attempt":  1,
+            "status":       "success",
+            "started_at":   "2026-04-08T09:00:00Z",
+            "completed_at": "2026-04-08T10:00:00Z"
+          },
+          "gfx1201": {
+            "run_id":       12346500,
+            "run_attempt":  1,
+            "status":       "in_progress",
+            "started_at":   "2026-04-08T12:00:00Z",
+            "completed_at": null
+          }
+        },
+        "windows": {
+          "gfx1100": {
+            "run_id":       12347100,
+            "run_attempt":  1,
+            "status":       "in_progress",
+            "started_at":   "2026-04-08T07:00:00Z",
+            "completed_at": null
+          }
+        }
+      }
+    },
+
+    "pytorch": {
+      // pytorch.build: matrix on (py x torch), each cell is its own reusable-workflow
+      // call -> its own run_id. Each variant builds for all arches internally, so
+      // there is no per-arch dimension. Platform entry carries only the rolled-up status.
+      "build": {
+        "linux": {
+          "status": "success",                   // worst-of across variants
+          "variants": [
+            { "py": "3.10", "torch": "release/2.10", "run_id": 12345800, "run_attempt": 1, "status": "success", "started_at": "2026-04-08T09:00:00Z", "completed_at": "2026-04-08T11:00:00Z" },
+            { "py": "3.12", "torch": "release/2.10", "run_id": 12345801, "run_attempt": 1, "status": "success", "started_at": "2026-04-08T09:00:00Z", "completed_at": "2026-04-08T11:05:00Z" }
+          ]
+        },
+        "windows": {
+          "status": "in_progress",
+          "variants": [
+            { "py": "3.10", "torch": "release/2.10", "run_id": 12347200, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T08:00:00Z", "completed_at": null }
+          ]
+        }
+      },
+      // pytorch.test: per-arch run with variants (py x torch) inside each.
+      "test": {
+        "linux": {
+          "gfx942": {
+            "run_id":       12345900,
+            "run_attempt":  1,
+            "status":       "in_progress",
+            "started_at":   "2026-04-08T11:30:00Z",
+            "completed_at": null,
+            "variants": [
+              { "py": "3.10", "torch": "release/2.10", "run_id": 12345900, "run_attempt": 1, "status": "success", "started_at": "2026-04-08T11:30:00Z", "completed_at": "2026-04-08T12:15:00Z" },
+              { "py": "3.12", "torch": "release/2.10", "run_id": 12345900, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T11:30:00Z", "completed_at": null }
+            ]
+          },
+          "gfx1101": {
+            "run_id":       12346300,
+            "run_attempt":  1,
+            "status":       "in_progress",
+            "started_at":   "2026-04-08T11:00:00Z",
+            "completed_at": null,
+            "variants": [
+              { "py": "3.10", "torch": "release/2.10", "run_id": 12346300, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T11:00:00Z", "completed_at": null }
+            ]
+          }
+          // gfx1201 omitted - pytorch.test not yet dispatched for this arch
+        },
+        "windows": {
+          "gfx1100": {
+            "run_id":       12347300,
+            "run_attempt":  1,
+            "status":       "in_progress",
+            "started_at":   "2026-04-08T09:00:00Z",
+            "completed_at": null,
+            "variants": [
+              { "py": "3.10", "torch": "release/2.10", "run_id": 12347300, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T09:00:00Z", "completed_at": null }
+            ]
+          }
+        }
+      }
+    },
+
+    // jax is linux-only. Commented out: multi-arch implementation TBD; revisit once
+    // TheRock workflows for multi-arch jax build/test land and the entry shape is known.
+    // "jax": {
+    //   "build": {
+    //     "linux": {
+    //       "run_id":       12346700,
+    //       "run_attempt":  1,
+    //       "status":       "in_progress",
+    //       "started_at":   "2026-04-08T10:00:00Z",
+    //       "completed_at": null,
+    //       "variants": [
+    //         { "py": "3.11", "jax_ref": "rocm-jaxlib-v0.9.1", "status": "in_progress" },
+    //         { "py": "3.12", "jax_ref": "rocm-jaxlib-v0.9.1", "status": "in_progress" }
+    //       ]
+    //     }
+    //   }
+    // },
+
+    // native_packages is linux-only (no platform level). Each package type runs as
+    // a single workflow building all arches in one job step. No per-arch granularity.
+    "native_packages": {
+      "rpm": {
+        "run_id":       12345750,
+        "run_attempt":  1,
+        "status":       "success",
+        "started_at":   "2026-04-08T09:00:00Z",
+        "completed_at": "2026-04-08T09:45:00Z"
+      },
+      "deb": {
+        "run_id":       12345760,
+        "run_attempt":  1,
+        "status":       "in_progress",
+        "started_at":   "2026-04-08T09:00:00Z",
+        "completed_at": null
+      }
+    }
+  }
+}

@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
 """Example: consume a Quartz status.json from a downstream project.
 
 Runnable companion to tutorial.md. It loads the latest nightly status and asks

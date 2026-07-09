@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
 """Read helper for Quartz status.json files.
 
 A small, dependency-free API for downstream projects that consume the

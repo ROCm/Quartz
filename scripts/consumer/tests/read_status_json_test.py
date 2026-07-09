@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
 """Tests for read_status_json, the consumer read helper.
 
 Standard-library only (unittest), matching the helper it exercises. The

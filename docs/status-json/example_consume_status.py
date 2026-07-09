@@ -29,7 +29,7 @@ when there is simply nothing new to do yet, and non-zero only on an actual error
 
 When run inside GitHub Actions it also writes step outputs (ready, rocm_version,
 build_date) to $GITHUB_OUTPUT, so a later step can gate on the build without
-re-parsing anything. See example-poll-status.yml for the wiring.
+re-parsing anything. See example_poll_status.yml for the wiring.
 
 To reuse it in your own project, copy read_status_json.py into scripts/consumer/
 and this file next to it (scripts/consumer/example_consume_status.py). The

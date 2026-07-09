@@ -17,11 +17,11 @@ workflows and files in this repository.
 
 ## How to interact with Quartz
 
-| Interaction | Direction | Status | Guide |
-|---|---|---|---|
-| Poll `status.json` for ROCm release results | Read | Available | [docs/status-json/](docs/status-json/) |
-| Push notifications on new results | Read | Planned | n/a |
-| Report downstream build/test results back | Write | Planned | n/a |
+| Interaction                                 | Direction | Status    | Guide                                  |
+| ------------------------------------------- | --------- | --------- | -------------------------------------- |
+| Poll `status.json` for ROCm release results | Read      | Available | [docs/status-json/](docs/status-json/) |
+| Push notifications on new results           | Read      | Planned   | n/a                                    |
+| Report downstream build/test results back   | Write     | Planned   | n/a                                    |
 
 Today the only way to interact with Quartz is to poll the published
 `status.json` files. If you maintain a downstream project and want to react to
@@ -47,10 +47,9 @@ readable and is not buried under that automated churn.
 Open your pull request against **`develop`**:
 
 1. Branch off `develop` and make your change.
-2. Open a pull request targeting `develop` (not `main`).
-3. Once it is reviewed and merged into `develop`, automation promotes it to
+1. Open a pull request targeting `develop` (not `main`).
+1. Once it is reviewed and merged into `develop`, automation promotes it to
    `main`.
-
 
 > Always open pull requests against `develop`; they will be later merged into `main`!
 

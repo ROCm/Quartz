@@ -25,17 +25,17 @@ kick off your own work. Concretely:
 1. **Fetch** `release-nightly/latest.json` on a schedule. A cron job or a
    scheduled GitHub Actions workflow both work well. Note that `latest.json` can
    point at a build still in progress, so step 3 matters.
-2. **Skip what you have seen.** Read `rocm_version` / `build_date` and compare
+1. **Skip what you have seen.** Read `rocm_version` / `build_date` and compare
    against the last build you acted on. If it is unchanged, there is nothing to
    do, so stop here.
-3. **Check it passed.** Gate on the specific pipeline and phase you depend on,
+1. **Check it passed.** Gate on the specific pipeline and phase you depend on,
    for example `summary.linux.rocm.build.status == "success"`. Do not gate on
    `summary.overall_status`: it folds in every pipeline and phase across both
    platforms, and because some test suites are still routinely red, the overall
    rollup tends to converge to `failure` even when the part you need is fine. If
    the build is new and the status you care about is `success`, trigger your
    downstream work.
-4. **Grab the artifacts.** Build the download URLs from `summary.<platform>.urls`.
+1. **Grab the artifacts.** Build the download URLs from `summary.<platform>.urls`.
 
 You do not have to write the fetching and parsing yourself. The
 [Reading it in Python](#reading-it-in-python) section below ships a small helper
@@ -60,12 +60,12 @@ Step 4 is where you actually pull the build down. `summary.<platform>.urls` hold
 the base locations. Each entry is a base directory (or index page), not a direct
 per-file link:
 
-| Key | What it points to |
-|---|---|
-| `tarballs` | Directory of `.tar.*` archives of the full ROCm build. |
-| `wheels` | Directory of Python wheels (the ROCm Python packages, and PyTorch/JAX wheels when built). |
-| `rpm` / `deb` | Directories of native Linux packages (Linux only). |
-| `artifacts` | A browsable index page listing everything published for the build. |
+| Key           | What it points to                                                                         |
+| ------------- | ----------------------------------------------------------------------------------------- |
+| `tarballs`    | Directory of `.tar.*` archives of the full ROCm build.                                    |
+| `wheels`      | Directory of Python wheels (the ROCm Python packages, and PyTorch/JAX wheels when built). |
+| `rpm` / `deb` | Directories of native Linux packages (Linux only).                                        |
+| `artifacts`   | A browsable index page listing everything published for the build.                        |
 
 Tarball filenames follow the pattern
 `therock-dist-{platform}-{target}[-tests]-{version}.tar.gz`, where `target` is

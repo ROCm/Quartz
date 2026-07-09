@@ -42,25 +42,25 @@ For example, to know if ROCm built successfully, check
 The tree uses a handful of terms that recur throughout this guide and map
 directly to keys in the document:
 
-| Term | Meaning |
-|---|---|
-| **TheRock** | The build system that produces ROCm releases. Its CI is what Quartz reports on. |
-| **nightly** | An automatic build produced once a day. |
-| **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release. |
-| **architecture** | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses). |
-| **pipeline** | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several. |
-| **phase** | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead. |
-| **variant** | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail. |
+| Term                  | Meaning                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                        |
+| **nightly**           | An automatic build produced once a day.                                                                                                                |
+| **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                |
+| **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                      |
+| **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.              |
+| **phase**             | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead.                                                              |
+| **variant**           | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail. |
 
 Not every pipeline runs on every platform, and `native_packages` is a special
 case with no `build` / `test` phases:
 
-| Pipeline | Phases | Platforms |
-|---|---|---|
-| `rocm` | `build`, `test` | linux, windows |
-| `pytorch` | `build`, `test` | linux, windows |
-| `jax` | `build`, `test` | linux only |
-| `native_packages` | per package type (`rpm`, `deb`) | linux only |
+| Pipeline          | Phases                          | Platforms      |
+| ----------------- | ------------------------------- | -------------- |
+| `rocm`            | `build`, `test`                 | linux, windows |
+| `pytorch`         | `build`, `test`                 | linux, windows |
+| `jax`             | `build`, `test`                 | linux only     |
+| `native_packages` | per package type (`rpm`, `deb`) | linux only     |
 
 `build` is a single status; `test` carries pass/fail counters. Each block is
 described in detail in [What is in a status.json](#what-is-in-a-statusjson)
@@ -71,13 +71,13 @@ below.
 Quartz publishes one `status.json` per release build (nightly/prerelease), plus stable pointers to the
 most recent builds.
 
-| Endpoint | Points to |
-|---|---|
+| Endpoint                             | Points to                                                              |
+| ------------------------------------ | ---------------------------------------------------------------------- |
 | `release-nightly/<date>/status.json` | A specific nightly, for example `release-nightly/20260707/status.json` |
-| `release-nightly/latest.json` | The most recent nightly (any result, including still in progress) |
-| `release-nightly/latest_good.json` | The most recent fully-passing nightly |
-| `prerelease/<version>/status.json` | A specific prerelease, for example `prerelease/7.14.0rc1/status.json` |
-| `prerelease/latest.json` | The most recent prerelease |
+| `release-nightly/latest.json`        | The most recent nightly (any result, including still in progress)      |
+| `release-nightly/latest_good.json`   | The most recent fully-passing nightly                                  |
+| `prerelease/<version>/status.json`   | A specific prerelease, for example `prerelease/7.14.0rc1/status.json`  |
+| `prerelease/latest.json`             | The most recent prerelease                                             |
 
 Each is served as raw content. The raw URL form is:
 
@@ -85,7 +85,7 @@ Each is served as raw content. The raw URL form is:
 https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json
 ```
 
-> **Note on `latest_good.json`:** Is currently unavailable, as the definition of "fully passing" 
+> **Note on `latest_good.json`:** Is currently unavailable, as the definition of "fully passing"
 > still needs to be determined.
 
 > These endpoints go live as TheRock release workflows are instrumented to report
@@ -98,10 +98,10 @@ Each file has three parts:
 
 1. **Top-level release metadata**: schema version, release type, ROCm version,
    build date, run id of the triggering workflow, and timestamps.
-2. **`summary`**: a Quartz-computed at-a-glance rollup: overall status,
+1. **`summary`**: a Quartz-computed at-a-glance rollup: overall status,
    per-platform (`linux` / `windows`) status, requested architectures, artifact
    download URLs, and per-pipeline pass/fail counts.
-3. **`pipelines`**: the detailed per-pipeline, per-phase, per-architecture
+1. **`pipelines`**: the detailed per-pipeline, per-phase, per-architecture
    breakdown, including individual workflow `run_id`s and timestamps.
 
 Most consumers need only the top-level metadata and `summary`. The `pipelines`
@@ -112,17 +112,17 @@ For a complete, annotated example, see
 
 ### Most-used fields
 
-| Field | Meaning |
-|---|---|
-| `release_type` | `nightly`, `rc` (prerelease/release candidate) |
-| `rocm_version` | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different). |
-| `build_date` | `YYYYMMDD` of the build. |
-| `completed_at` | `null` while the build is still running; a timestamp once done. |
-| `summary.overall_status` | Roll-up status over all platforms and pipelines. |
-| `summary.<platform>.status` | Per-platform roll-up (`linux` / `windows`). |
-| `summary.<platform>.architectures` | Requested architectures for the platform. |
-| `summary.<platform>.urls` | Base URLs for tarballs, wheels, packages, and the artifact index. |
-| `summary.<platform>.<pipeline>` | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters. |
+| Field                              | Meaning                                                                                                          |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `release_type`                     | `nightly`, `rc` (prerelease/release candidate)                                                                   |
+| `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different). |
+| `build_date`                       | `YYYYMMDD` of the build.                                                                                         |
+| `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                  |
+| `summary.overall_status`           | Roll-up status over all platforms and pipelines.                                                                 |
+| `summary.<platform>.status`        | Per-platform roll-up (`linux` / `windows`).                                                                      |
+| `summary.<platform>.architectures` | Requested architectures for the platform.                                                                        |
+| `summary.<platform>.urls`          | Base URLs for tarballs, wheels, packages, and the artifact index.                                                |
+| `summary.<platform>.<pipeline>`    | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters.                       |
 
 A pipeline or phase appears only after it has reported at least once. Anything
 not yet reported is absent; there are no `null` or `"pending"` placeholders, only `in_progress`.
@@ -130,13 +130,13 @@ Consumers must guard for missing keys.
 
 ## Status values
 
-| Value | Meaning |
-|---|---|
-| `in_progress` | Running, not yet finished. |
-| `success` | Completed successfully. |
-| `failure` | Completed with a failure. |
-| `cancelled` | Cancelled before completion. |
-| `skipped` | Not run (for example, a platform not built this release). |
+| Value         | Meaning                                                   |
+| ------------- | --------------------------------------------------------- |
+| `in_progress` | Running, not yet finished.                                |
+| `success`     | Completed successfully.                                   |
+| `failure`     | Completed with a failure.                                 |
+| `cancelled`   | Cancelled before completion.                              |
+| `skipped`     | Not run (for example, a platform not built this release). |
 
 `overall_status` and per-platform `status` are **worst-of** rollups: if any
 constituent is `failure`, the rollup is `failure`; if any is still

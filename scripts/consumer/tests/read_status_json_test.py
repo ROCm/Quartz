@@ -8,11 +8,11 @@ check that the helper still reads a document shaped like the spec.
 
 Run from the repository root:
 
-    python3 -m unittest scripts.consumer.read_status_json_test
+    python3 -m unittest scripts.consumer.tests.read_status_json_test
 
 or directly:
 
-    python3 scripts/consumer/read_status_json_test.py
+    python3 scripts/consumer/tests/read_status_json_test.py
 """
 
 import json
@@ -22,9 +22,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-SCRIPT_DIR = Path(__file__).resolve().parent
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+CONSUMER_DIR = Path(__file__).resolve().parent.parent
+if str(CONSUMER_DIR) not in sys.path:
+    sys.path.insert(0, str(CONSUMER_DIR))
 
 from read_status_json import (  # noqa: E402
     PlatformStatus,
@@ -34,7 +34,7 @@ from read_status_json import (  # noqa: E402
 )
 
 REFERENCE_JSONC = (
-    SCRIPT_DIR.parents[1] / "docs" / "status-json" / "status_json_reference.jsonc"
+    CONSUMER_DIR.parents[1] / "docs" / "status-json" / "status_json_reference.jsonc"
 )
 
 
@@ -212,9 +212,7 @@ class PlatformStatusFromReferenceTest(unittest.TestCase):
 class LoadStatusTest(unittest.TestCase):
     def test_load_from_local_path(self):
         data = _load_reference()
-        with tempfile.NamedTemporaryFile(
-            "w", suffix=".json", delete=False
-        ) as handle:
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
             json.dump(data, handle)
             path = handle.name
         try:

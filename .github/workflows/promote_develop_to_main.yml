@@ -1,0 +1,42 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+#
+
+name: Promote develop to main
+
+# Every push to develop (i.e. a real code change) is merged into main. This
+# keeps develop as a code-change-only history while main also accumulates the
+# high-frequency bot commits.
+on:
+  push:
+    branches:
+      - develop
+
+# Serialize promotions so overlapping pushes to develop cannot race on the
+# merge + push to main. Never cancel an in-flight promotion.
+concurrency:
+  group: promote-develop-to-main
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    name: Merge develop into main
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge develop into main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin develop
+          git merge --no-ff "${GITHUB_SHA}" \
+            -m "Merge develop into main (${GITHUB_SHA})"
+          git push origin HEAD:main

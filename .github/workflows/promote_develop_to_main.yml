@@ -1,8 +1,7 @@
 # Copyright Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
-#
 
-name: Promote develop to main
+name: Sync develop to main
 
 on:
   push:
@@ -35,11 +34,18 @@ jobs:
           fetch-depth: 0
           token: ${{ steps.app-token.outputs.token }}
 
+      # TODO(quartz-active): once the ingestion bot pushes status.json commits to
+      # main, this needs a fetch-and-retry loop to survive push races (main can
+      # move between checkout and push). Port the push-race logic from
+      # therock_update_status_json.py into a shared script rather than growing
+      # bash here.
       - name: Merge develop into main
         run: |
           git config user.name "quartz-hauly[bot]"
           git config user.email "quartz-hauly[bot]@users.noreply.github.com"
           git fetch origin develop
-          message="$(git log -1 --format=%B "${GITHUB_SHA}")"
+          message="$(git log -1 \
+            --format="Merge develop (%h) into main%n%n%h, %s, %aN (%ae), %ad" \
+            "${GITHUB_SHA}")"
           git merge --no-ff "${GITHUB_SHA}" -m "${message}"
           git push origin HEAD:main

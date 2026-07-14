@@ -34,8 +34,9 @@ Notes:
 
 - Each promotion is a `--no-ff` merge commit on `main`, so the promotion points
   stay visible even though `main` is ahead due to bot commits. The merge commit
-  reuses the message of the promoted `develop` commit rather than a fixed
-  string.
+  is titled `Merge develop (<hash>) into main` and records the promoted commit's
+  hash, subject, author, and date in its body, so it is easy to tell the merge
+  commit apart from the original `develop` commit.
 - If a bot commit on `main` and a change on `develop` touch the same lines, the
   merge conflicts and the workflow run fails. Resolve the conflict manually,
   then re-run or push a fix to `develop`.

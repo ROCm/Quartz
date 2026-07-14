@@ -9,13 +9,13 @@ on:
       - develop
 
 concurrency:
-  group: promote-develop-to-main
+  group: sync-develop-to-main
 
 permissions:
   contents: read
 
 jobs:
-  promote:
+  sync:
     name: Merge develop into main
     runs-on: ubuntu-24.04
     steps:

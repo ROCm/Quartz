@@ -8,13 +8,13 @@ Quartz uses two long-lived branches with distinct purposes:
   only human/code commits, making it easy to review what actually changed.
 - **`main`** — the deployment/integration branch. In addition to the code
   changes promoted from `develop`, `main` accumulates high-frequency commits
-  pushed by automation (the hourly ingestion bot). This keeps `develop` readable
+  pushed by automation. This keeps `develop` readable
   while `main` holds the full, up-to-date state.
 
 ```text
 develop:  o──o──o                (code changes only)
              \   \
-main:     o───o───o──b──b──b──o  (b = hourly bot commits, o = promoted merges)
+main:     o───o───o──b──b──b──o  (b = bot commits, o = synced merges)
 ```
 
 ## Where to make changes
@@ -22,11 +22,11 @@ main:     o───o───o──b──b──b──o  (b = hourly bot com
 - **All code changes go to `develop`.** Open pull requests against `develop`,
   not `main`.
 - **Do not push directly to `main`.** Direct changes there are reserved for the
-  ingestion automation and for the promotion workflow described below.
+  ingestion automation and for the sync workflow described below.
 
 ## How changes reach `main`
 
-Promotion is automatic. On every push to `develop`, the
+Syncing from `develop` to `main` is automatic. On every push to `develop`, the
 [`Promote develop to main`](.github/workflows/promote_develop_to_main.yml)
 workflow merges the pushed commit into `main` (`--no-ff`) and pushes the result.
 

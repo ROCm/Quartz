@@ -32,8 +32,10 @@ workflow merges the pushed commit into `main` (`--no-ff`) and pushes the result.
 
 Notes:
 
-- Each promotion leaves a `Merge develop into main` commit on `main`, so the
-  promotion points stay visible even though `main` is ahead due to bot commits.
+- Each promotion is a `--no-ff` merge commit on `main`, so the promotion points
+  stay visible even though `main` is ahead due to bot commits. The merge commit
+  reuses the message of the promoted `develop` commit rather than a fixed
+  string.
 - If a bot commit on `main` and a change on `develop` touch the same lines, the
   merge conflicts and the workflow run fails. Resolve the conflict manually,
   then re-run or push a fix to `develop`.

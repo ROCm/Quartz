@@ -1,0 +1,51 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+name: Sync develop to main
+
+on:
+  push:
+    branches:
+      - develop
+
+concurrency:
+  group: sync-develop-to-main
+
+permissions:
+  contents: read
+
+jobs:
+  sync:
+    name: Merge develop into main
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Generate a Hauly App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.GH_APP_HAULY_ID }}
+          private-key: ${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}
+          owner: "ROCm"
+
+      - name: Checkout main
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      # TODO(quartz-active): once the ingestion bot pushes status.json commits to
+      # main, this needs a fetch-and-retry loop to survive push races (main can
+      # move between checkout and push). Port the push-race logic from
+      # therock_update_status_json.py into a shared script rather than growing
+      # bash here.
+      - name: Merge develop into main
+        run: |
+          git config user.name "quartz-hauly[bot]"
+          git config user.email "quartz-hauly[bot]@users.noreply.github.com"
+          git fetch origin develop
+          message="$(git log -1 \
+            --format="Merge develop (%h) into main%n%n%h, %s, %aN (%ae), %ad" \
+            "${GITHUB_SHA}")"
+          git merge --no-ff "${GITHUB_SHA}" -m "${message}"
+          git push origin HEAD:main

@@ -1,0 +1,48 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+
+repos:
+-   repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v3.2.0
+    hooks:
+    -   id: trailing-whitespace
+    -   id: end-of-file-fixer
+        exclude_types: ["image", "jupyter"]
+    -   id: check-yaml
+    -   id: check-json
+        exclude: '\.jsonc$'
+    -   id: check-merge-conflict
+    -   id: check-added-large-files
+    -   id: mixed-line-ending
+-   repo: https://github.com/psf/black
+    rev: 25.11.0
+    hooks:
+    -   id: black
+
+- repo: https://github.com/hukkin/mdformat
+  rev: 0.7.21
+  hooks:
+  - id: mdformat
+    additional_dependencies:
+    - mdformat-gfm
+    - mdformat-black
+    - mdformat-frontmatter
+
+- repo: https://github.com/Lucas-C/pre-commit-hooks
+  rev: v1.5.5
+  hooks:
+  - id: forbid-tabs
+
+- repo: https://github.com/rhysd/actionlint
+  rev: v1.7.10
+  hooks:
+    - id: actionlint
+      args: [-shellcheck=, -ignore, 'label ".+" is unknown']
+
+- repo: local
+  hooks:
+  - id: test-file-naming
+    name: Enforce *_test.py naming for tests
+    entry: "Test files must use the *_test.py naming convention, not test_*.py"
+    language: fail
+    files: '(^|/)tests/(.*/)?test_[^/]*\.py$'

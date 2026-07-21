@@ -12,12 +12,12 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
-premissions: 
+permissions:
   contents: read
 
 jobs:
   zizmor:
-    uses: ROCm/rocm-tests/.github/workflows/zizmor.yml
+    uses: ROCm/rocm-tests/.github/workflows/zizmor.yml@main
     with:
       scan_mode: all
       report_formats: sarif

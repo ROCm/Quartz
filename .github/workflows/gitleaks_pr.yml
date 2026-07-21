@@ -19,6 +19,6 @@ jobs:
   # artifact and printed to the job summary so reviewers can browse
   # findings directly from the PR's Checks tab.
   gitleaks:
-    uses: ./.github/workflows/gitleaks.yml
+    uses: ROCm/TheRock/.github/workflows/gitleaks.yml@main
     with:
       report_formats: csv

@@ -19,7 +19,7 @@ permissions:
 
 jobs:
   gitleaks:
-    uses: ROCm/TheRock/.github/workflows/gitleaks.yml
+    uses: ROCm/TheRock/.github/workflows/gitleaks.yml@main
     with:
       scan_mode: all
       report_formats: sarif

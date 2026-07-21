@@ -21,7 +21,7 @@ permissions:
 
 jobs:
   bandit:
-    uses: ROCm/TheRock/.github/workflows/bandit.yml
+    uses: ROCm/TheRock/.github/workflows/bandit.yml@main
     with:
       scan_mode: all
       report_formats: sarif

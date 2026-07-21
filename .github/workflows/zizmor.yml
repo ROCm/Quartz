@@ -1,0 +1,30 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+name: Zizmor
+
+on:
+  pull_request:
+  push:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+premissions: 
+  contents: read
+
+jobs:
+  zizmor:
+    uses: ROCm/rocm-tests/.github/workflows/zizmor.yml
+    with:
+      scan_mode: all
+      report_formats: sarif
+    permissions:
+      contents: read
+      # Required so the reusable workflow can call
+      # github/codeql-action/upload-sarif and have the findings
+      # appear under Security -> Code scanning, filterable by
+      # `Tool: zizmor` separately from any other scanner.
+      security-events: write

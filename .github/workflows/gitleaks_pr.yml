@@ -1,0 +1,24 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+name: Gitleaks for PRs
+
+on:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Scan commits introduced by this PR (`scan_mode: changed`, the
+  # reusable workflow's default). CSV report is uploaded as a build
+  # artifact and printed to the job summary so reviewers can browse
+  # findings directly from the PR's Checks tab.
+  gitleaks:
+    uses: ./.github/workflows/gitleaks.yml
+    with:
+      report_formats: csv

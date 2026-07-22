@@ -118,7 +118,9 @@ jobs:
       # stage the tool repo's config at the scan root. It stays untracked;
       # history-based scans key off commits, not the working tree.
       - name: Stage scanner config
-        run: cp "_tool/${{ inputs.config_path }}" ./
+        env:
+          CONFIG_PATH: ${{ inputs.config_path }}
+        run: cp "_tool/${CONFIG_PATH}" ./
 
       - name: Set up Python
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
@@ -144,7 +146,8 @@ jobs:
           ZIZMOR_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
           ZIZMOR_PERSONA: ${{ inputs.persona }}
           GH_TOKEN: ${{ github.token }}
-        run: python "_tool/${{ inputs.script_path }}"
+          SCRIPT_PATH: ${{ inputs.script_path }}
+        run: python "_tool/${SCRIPT_PATH}"
 
       - name: Upload SARIF report to code scanning
         if: always() && steps.scan.outputs.sarif_path != ''

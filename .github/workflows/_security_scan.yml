@@ -78,7 +78,10 @@ jobs:
   scan:
     name: ${{ inputs.tool }} scan
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      security-events: write
     steps:
       # PR-aware checkout depth: PR commits + merge base lets the scanner
       # walk base..head; full history (0) for everything else. GHA
@@ -149,8 +152,16 @@ jobs:
           SCRIPT_PATH: ${{ inputs.script_path }}
         run: python "_tool/${SCRIPT_PATH}"
 
+      # Fork PRs run with a read-only GITHUB_TOKEN regardless of the
+      # requested permissions, so the code-scanning upload would fail with
+      # "Resource not accessible by integration". Skip it for forks --
+      # findings still fail the job (bandit/zizmor) and appear in the log.
       - name: Upload SARIF report to code scanning
-        if: always() && steps.scan.outputs.sarif_path != ''
+        if: >-
+          always()
+          && steps.scan.outputs.sarif_path != ''
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
         uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
         with:
           sarif_file: ${{ steps.scan.outputs.sarif_path }}

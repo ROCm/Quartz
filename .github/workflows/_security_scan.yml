@@ -71,17 +71,19 @@ on:
         type: string
         default: regular
 
-permissions:
-  contents: read
+# No permissions block here on purpose. A reusable workflow inherits the
+# token its caller grants; declaring scopes here that a caller doesn't
+# grant makes that caller fail at startup. So each caller is the single
+# source of truth for its own scopes -- CSV-only callers grant just
+# `contents: read`, SARIF callers additionally grant `security-events:
+# write` (code-scanning API) and `actions: read` (private-repo
+# workflow-run lookup that upload-sarif performs).
 
 jobs:
   scan:
     name: ${{ inputs.tool }} scan
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    permissions:
-      contents: read
-      security-events: write
     steps:
       # PR-aware checkout depth: PR commits + merge base lets the scanner
       # walk base..head; full history (0) for everything else. GHA

@@ -34,3 +34,5 @@ jobs:
       # appear under Security -> Code scanning, filterable by
       # `Tool: gitleaks` separately from any other scanner.
       security-events: write
+      # Private-repo requirement for upload-sarif (workflow-run lookup).
+      actions: read

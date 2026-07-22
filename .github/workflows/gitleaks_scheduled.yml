@@ -19,13 +19,17 @@ permissions:
 
 jobs:
   gitleaks:
-    uses: ROCm/TheRock/.github/workflows/gitleaks.yml@main
+    uses: ./.github/workflows/_security_scan.yml
     with:
+      tool: gitleaks
+      tool_repo: ROCm/TheRock
+      script_path: build_tools/scan_tools/github_actions/gitleaks.py
+      config_path: gitleaks.toml
       scan_mode: all
       report_formats: sarif
     permissions:
       contents: read
-      # Required so the reusable workflow can call
+      # Required so the SARIF upload step can call
       # github/codeql-action/upload-sarif and have the findings
       # appear under Security -> Code scanning, filterable by
       # `Tool: gitleaks` separately from any other scanner.

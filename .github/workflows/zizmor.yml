@@ -17,13 +17,17 @@ permissions:
 
 jobs:
   zizmor:
-    uses: ROCm/rocm-tests/.github/workflows/zizmor.yml@main
+    uses: ./.github/workflows/_security_scan.yml
     with:
+      tool: zizmor
+      tool_repo: ROCm/rocm-tests
+      script_path: scan_tools/github_actions/zizmor.py
+      config_path: zizmor.yml
       scan_mode: all
       report_formats: sarif
     permissions:
       contents: read
-      # Required so the reusable workflow can call
+      # Required so the SARIF upload step can call
       # github/codeql-action/upload-sarif and have the findings
       # appear under Security -> Code scanning, filterable by
       # `Tool: zizmor` separately from any other scanner.

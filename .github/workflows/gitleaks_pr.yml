@@ -14,11 +14,15 @@ permissions:
   contents: read
 
 jobs:
-  # Scan commits introduced by this PR (`scan_mode: changed`, the
-  # reusable workflow's default). CSV report is uploaded as a build
-  # artifact and printed to the job summary so reviewers can browse
-  # findings directly from the PR's Checks tab.
+  # Scan commits introduced by this PR (`scan_mode: changed`). CSV report
+  # is uploaded as a build artifact and printed to the job summary so
+  # reviewers can browse findings directly from the PR's Checks tab.
   gitleaks:
-    uses: ROCm/TheRock/.github/workflows/gitleaks.yml@main
+    uses: ./.github/workflows/_security_scan.yml
     with:
+      tool: gitleaks
+      tool_repo: ROCm/TheRock
+      script_path: build_tools/scan_tools/github_actions/gitleaks.py
+      config_path: gitleaks.toml
+      scan_mode: changed
       report_formats: csv

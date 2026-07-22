@@ -1,11 +1,9 @@
 # Copyright Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
 #
-# Post-merge bandit scan: runs after every push to main (typically the
-# squash/rebase/merge of a PR) and pushes SARIF findings to the
-# repository's code-scanning Security tab. Complements the PR-only
-# bandit job in `ci.yml`, which scans only changed Python files and
-# uploads an HTML artifact for in-review browsing.
+# Post-merge bandit scan: runs after every push to main/develop (typically
+# the squash/rebase/merge of a PR) and pushes SARIF findings to the
+# repository's code-scanning Security tab.
 name: Bandit
 
 on:
@@ -21,13 +19,17 @@ permissions:
 
 jobs:
   bandit:
-    uses: ROCm/TheRock/.github/workflows/bandit.yml@main
+    uses: ./.github/workflows/_security_scan.yml
     with:
+      tool: bandit
+      tool_repo: ROCm/rocm-tests
+      script_path: scan_tools/github_actions/bandit.py
+      config_path: bandit.yaml
       scan_mode: all
       report_formats: sarif
     permissions:
       contents: read
-      # Required so the reusable workflow can call
+      # Required so the SARIF upload step can call
       # github/codeql-action/upload-sarif and have the findings
       # appear under Security -> Code scanning, filterable by
       # `Tool: Bandit` separately from any other scanner.

@@ -18,6 +18,7 @@ jobs:
   sync:
     name: Merge develop into main
     runs-on: ubuntu-24.04
+    environment: prod
     steps:
       - name: Generate a Hauly App token
         id: app-token

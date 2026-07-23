@@ -27,6 +27,8 @@ jobs:
           app-id: ${{ secrets.GH_APP_HAULY_ID }}
           private-key: ${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}
           owner: "ROCm"
+          repositories: Quartz
+          permission-contents: write
 
       - name: Checkout main
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2

@@ -32,31 +32,9 @@ GitHub Actions workflow.
 
 ## Contributing
 
-Quartz keeps human-authored source and machine-generated data on two branches:
-
-- **`develop`** holds everything humans touch: the Python and YAML scripts, the
-  subscription configuration, `CODEOWNERS`, and the docs.
-- **`main`** is `develop` plus the automated data on top. Automated jobs commit
-  status files to `main` continuously, so on a busy day it collects hundreds of
-  bot commits.
-
-`develop` is a subset of `main` - `main` is `develop` with the generated data
-added. Human changes land on `develop` so the history of the source code stays
-readable and is not buried under that automated churn.
-
-Open your pull request against **`develop`**:
-
-1. Branch off `develop` and make your change.
-1. Open a pull request targeting `develop` (not `main`).
-1. Once it is reviewed and merged into `develop`, automation promotes it to
-   `main`.
-
-> Always open pull requests against `develop`; they will be later merged into `main`!
-
-**Note:** the automatic `develop` -> `main` promotion is planned, not yet live.
-Until it lands, a maintainer promotes `develop` to `main` manually. Open your
-PR against `develop` regardless, so no manual rebasing is needed once the
-automation is in place.
+**Open your pull requests against `develop`, not `main`.** See
+[`CONTRIBUTING.md`](CONTRIBUTING.md) for the branching model and contribution
+policies.
 
 ## Reference
 

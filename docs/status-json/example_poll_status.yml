@@ -8,7 +8,8 @@
 # status.json - it is a public file.
 #
 # What it does:
-#   - Runs hourly (and can be triggered manually from the Actions tab).
+#   - Runs hourly during the UTC window when the ROCm release lands (and can be
+#     triggered manually from the Actions tab).
 #   - Runs example_consume_status.py, which fetches release-nightly/latest.json,
 #     gates on the Linux ROCm build, and reports the wheels and a tarball for it.
 #     The script sets step outputs (ready / rocm_version / build_date); the
@@ -25,8 +26,10 @@ name: Poll ROCm nightly status
 
 on:
   schedule:
-    # Hourly at :17. Nightlies land once a day, so hourly polling is plenty.
-    - cron: "17 * * * *"
+    # At :17 past each hour from 5am - 7pm UTC. The ROCm multi-arch release
+    # finishes somewhere in this window, so polling only here (not around the
+    # clock) is plenty.
+    - cron: "17 5-19 * * *"
   workflow_dispatch:
 
 permissions:
@@ -38,7 +41,7 @@ jobs:
     steps:
       - name: Check out the repository running this workflow
         # Needed so your copy of the scripts/consumer/ scripts is on the runner.
-        uses: actions/checkout@v4
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
       - name: Consume the latest nightly status
         id: status

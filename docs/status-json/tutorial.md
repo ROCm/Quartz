@@ -144,7 +144,8 @@ url = linux.tarball_url(status.rocm_version, "gfx94X-dcgpu")
 A ready-to-adapt scheduled GitHub Actions workflow lives next to this guide:
 
 - **[`example_poll_status.yml`](example_poll_status.yml)** runs
-  `example_consume_status.py` hourly to fetch `release-nightly/latest.json`, gate
+  `example_consume_status.py` hourly during the UTC window when the ROCm release
+  lands, to fetch `release-nightly/latest.json`, gate
   on the Linux ROCm build, and report its wheels and a tarball, leaving a clearly
   marked step for your own work.
 

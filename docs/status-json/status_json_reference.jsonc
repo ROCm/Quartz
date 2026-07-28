@@ -40,8 +40,8 @@
       "urls": {                                 // platform-level artifact locations (NOT per-arch); populated once the setup step runs, even before the build finishes
         "tarballs":  "https://rocm.nightlies.amd.com/tarball-multi-arch/",  // base URL; use Quartz helper to build per-arch names
         "wheels":    "https://rocm.nightlies.amd.com/whl-multi-arch/",
-        "rpm":       "https://rocm.nightlies.amd.com/packages-multi-arch/packages-multi-arch/rpm/20260408-12340000/",
-        "deb":       "https://rocm.nightlies.amd.com/packages-multi-arch/packages-multi-arch/deb/20260408-12340000/",
+        "rpm":       "https://rocm.nightlies.amd.com/packages-multi-arch/rpm/20260408-12340000/",
+        "deb":       "https://rocm.nightlies.amd.com/packages-multi-arch/deb/20260408-12340000/",
         "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/12340000-linux/index.html"
       },
 
@@ -55,7 +55,11 @@
       },
       "pytorch": {
         "build": { "status": "success" },
-        "test":  { "success": 0, "failure": 0, "in_progress": 3, "cancelled": 0, "skipped": 0 }
+        "test":  { "success": 0, "failure": 0, "in_progress": 3, "cancelled": 0, "skipped": 0 },
+        // Present ONLY when the full PyTorch suite (test_pytorch_wheels_full) ran;
+        // omitted otherwise. Same counter shape as "test"; kept separate so the
+        // full suite and the smoke "test" phase don't clobber each other.
+        "test_full": { "success": 0, "failure": 0, "in_progress": 1, "cancelled": 0, "skipped": 0 }
       },
       "jax": {                                  // linux-only pipeline; always present on linux (placeholder until it reports)
         "build": { "status": "in_progress" },
@@ -211,6 +215,25 @@
             "completed_at": null,
             "variants": [
               { "py": "3.10", "torch": "release/2.10", "run_id": 12347300, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T09:00:00Z", "completed_at": null }
+            ]
+          }
+        }
+      },
+      // pytorch.test_full: the full PyTorch suite (test_pytorch_wheels_full).
+      // Same per-arch (+ variants) shape as "test"; present ONLY when the full
+      // suite ran (dispatched on a cadence, e.g. nightly gfx94X-dcgpu py3.12).
+      // Kept separate from "test" so smoke and full results don't overwrite
+      // each other on the shared linux/pytorch leaf.
+      "test_full": {
+        "linux": {
+          "gfx942": {
+            "run_id":       12346900,
+            "run_attempt":  1,
+            "status":       "in_progress",
+            "started_at":   "2026-04-08T13:00:00Z",
+            "completed_at": null,
+            "variants": [
+              { "py": "3.12", "torch": "release/2.10", "run_id": 12346900, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T13:00:00Z", "completed_at": null }
             ]
           }
         }

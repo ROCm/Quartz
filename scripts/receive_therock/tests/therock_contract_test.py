@@ -44,6 +44,7 @@ _NOTIFY_QUARTZ_URL = (
     "build_tools/github_actions/notify_quartz.py"
 )
 
+
 @pytest.fixture(scope="module")
 def notify_quartz(tmp_path_factory):
     """Download the producer module from TheRock `main` and import it.
@@ -54,9 +55,7 @@ def notify_quartz(tmp_path_factory):
     dest_dir = tmp_path_factory.mktemp("producer")
     dest = dest_dir / "notify_quartz.py"
     try:
-        with urllib.request.urlopen(
-            _NOTIFY_QUARTZ_URL, timeout=30
-        ) as response:
+        with urllib.request.urlopen(_NOTIFY_QUARTZ_URL, timeout=30) as response:
             dest.write_bytes(response.read())
     except (urllib.error.URLError, OSError) as e:
         pytest.skip(f"could not fetch notify_quartz from TheRock: {e}")

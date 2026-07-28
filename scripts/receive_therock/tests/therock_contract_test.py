@@ -4,9 +4,9 @@
 """Producer<->receiver envelope contract test.
 
 This is the seam the unit tests previously missed: the producer
-(`build_tools/github_actions/notify_quartz.py`) and the receiver
-(`scripts/receive_therock/therock_parse_input.py`) live in different packages
-and were each tested in isolation against their own assumption of the envelope
+(`notify_quartz.py`) and the receiver
+(`scripts/receive_therock/therock_parse_input.py`) live in different repos and
+were each tested in isolation against their own assumption of the envelope
 shape. That let the lifecycle key drift (`dispatch_kind` vs `event_type`)
 without any test failing.
 
@@ -14,27 +14,62 @@ This test crosses the boundary: it builds the real producer payload (GitHub API
 calls mocked) and asserts it passes the receiver's `validate_payload` with the
 expected `event_type`. If either side renames or restructures the top-level
 envelope again, this fails loudly.
+
+The producer lives in ROCm/TheRock, not Quartz, so its module is downloaded
+from TheRock `main` at test time (see the `notify_quartz` fixture). The test
+tracks the producer's tip so real envelope drift is caught; download/network
+failures `skip` rather than fail so infra flakiness never blocks a merge.
 """
 
+import importlib
 import os
 import sys
+import urllib.error
+import urllib.request
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
 RECEIVE_DIR = Path(__file__).resolve().parents[1]
-REPO_ROOT = Path(__file__).resolve().parents[3]
-PRODUCER_DIR = REPO_ROOT / "build_tools" / "github_actions"
-for p in (RECEIVE_DIR, PRODUCER_DIR):
-    if str(p) not in sys.path:
-        sys.path.insert(0, str(p))
+if str(RECEIVE_DIR) not in sys.path:
+    sys.path.insert(0, str(RECEIVE_DIR))
 
-import notify_quartz  # noqa: E402
-from notify_quartz import _GithubApiResponse  # noqa: E402
 from therock_parse_input import validate_payload  # noqa: E402
 
 _REPO = "ROCm/rockrel"
+
+_PRODUCER_URL = (
+    "https://raw.githubusercontent.com/ROCm/TheRock/main/"
+    "build_tools/github_actions/notify_quartz.py"
+)
+_DOWNLOAD_TIMEOUT_SEC = 30
+
+
+@pytest.fixture(scope="module")
+def notify_quartz(tmp_path_factory):
+    """Download the producer module from TheRock `main` and import it.
+
+    Skips (never fails) when the download cannot complete, so offline dev runs
+    and transient network errors do not block the suite.
+    """
+    dest_dir = tmp_path_factory.mktemp("producer")
+    dest = dest_dir / "notify_quartz.py"
+    try:
+        with urllib.request.urlopen(
+            _PRODUCER_URL, timeout=_DOWNLOAD_TIMEOUT_SEC
+        ) as response:
+            dest.write_bytes(response.read())
+    except (urllib.error.URLError, OSError) as e:
+        pytest.skip(f"could not fetch notify_quartz from TheRock: {e}")
+
+    sys.path.insert(0, str(dest_dir))
+    try:
+        module = importlib.import_module("notify_quartz")
+        yield module
+    finally:
+        sys.path.remove(str(dest_dir))
+        sys.modules.pop("notify_quartz", None)
 
 
 def _run_obj(run_phase: str) -> dict:
@@ -51,14 +86,16 @@ def _run_obj(run_phase: str) -> dict:
     }
 
 
-def _build_producer_payload(run_phase: str) -> dict:
+def _build_producer_payload(notify_quartz, run_phase: str) -> dict:
     """Run the real `_build_payload` with its GitHub API surface mocked."""
     with (
         mock.patch.dict(os.environ, {"GITHUB_RUN_ID": "999"}),
         mock.patch.object(
             notify_quartz,
             "_github_api_request",
-            return_value=_GithubApiResponse(body=_run_obj(run_phase), headers={}),
+            return_value=notify_quartz._GithubApiResponse(
+                body=_run_obj(run_phase), headers={}
+            ),
         ),
         mock.patch.object(notify_quartz, "_fetch_jobs", return_value=[]),
     ):
@@ -81,9 +118,9 @@ def _build_producer_payload(run_phase: str) -> dict:
     ],
 )
 def test_producer_payload_passes_receiver_validation(
-    run_phase: str, expected_event: str
+    notify_quartz, run_phase: str, expected_event: str
 ) -> None:
-    payload = _build_producer_payload(run_phase)
+    payload = _build_producer_payload(notify_quartz, run_phase)
 
     # The producer's top-level envelope is exactly what the receiver expects:
     # the lifecycle marker is `event_type` (not `dispatch_kind`).

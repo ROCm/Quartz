@@ -39,12 +39,10 @@ from therock_parse_input import validate_payload  # noqa: E402
 
 _REPO = "ROCm/rockrel"
 
-_PRODUCER_URL = (
+_NOTIFY_QUARTZ_URL = (
     "https://raw.githubusercontent.com/ROCm/TheRock/main/"
     "build_tools/github_actions/notify_quartz.py"
 )
-_DOWNLOAD_TIMEOUT_SEC = 30
-
 
 @pytest.fixture(scope="module")
 def notify_quartz(tmp_path_factory):
@@ -57,7 +55,7 @@ def notify_quartz(tmp_path_factory):
     dest = dest_dir / "notify_quartz.py"
     try:
         with urllib.request.urlopen(
-            _PRODUCER_URL, timeout=_DOWNLOAD_TIMEOUT_SEC
+            _NOTIFY_QUARTZ_URL, timeout=30
         ) as response:
             dest.write_bytes(response.read())
     except (urllib.error.URLError, OSError) as e:

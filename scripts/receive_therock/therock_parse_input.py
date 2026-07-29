@@ -46,6 +46,10 @@ def validate_payload(raw: dict[str, object]) -> TheRockDispatchEvent:
     event_type = raw.get("event_type")
     if not event_type:
         raise PayloadValidationError("Missing required key: 'event_type'")
+    if not isinstance(event_type, str):
+        raise PayloadValidationError(
+            f"'event_type' must be a string, got {type(event_type).__name__}"
+        )
 
     if event_type not in KNOWN_EVENT_TYPES:
         raise PayloadValidationError(
@@ -83,6 +87,11 @@ def validate_payload(raw: dict[str, object]) -> TheRockDispatchEvent:
             raise PayloadValidationError(
                 "event_type 'push_event' requires a top-level 'ref' field"
             )
+    else:
+        raise PayloadValidationError(
+            f"event_type '{event_type}' is in KNOWN_EVENT_TYPES but has no "
+            "structural validation branch in validate_payload()"
+        )
 
     log.info("Payload validated: event_type=%s repository=%s", event_type, repo)
     return TheRockDispatchEvent.from_dict(raw)
@@ -91,13 +100,20 @@ def validate_payload(raw: dict[str, object]) -> TheRockDispatchEvent:
 def load_and_validate(payload_path: Path) -> TheRockDispatchEvent:
     """Load a JSON file and validate its contents as a dispatch payload.
 
-    Raises PayloadValidationError if the file is missing, not valid JSON, or
+    Raises PayloadValidationError if the file is missing, unreadable (e.g. a
+    directory, permission error, or invalid encoding), not valid JSON, or
     fails structural validation.
     """
     if not payload_path.exists():
         raise PayloadValidationError(f"Payload file not found: {payload_path}")
 
-    raw_text = payload_path.read_text(encoding="utf-8")
+    try:
+        raw_text = payload_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise PayloadValidationError(
+            f"Could not read payload file {payload_path}: {exc}"
+        ) from exc
+
     return load_and_validate_string(raw_text, source=str(payload_path))
 
 
@@ -135,13 +151,22 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description="Validate a TheRock dispatch payload JSON file.",
     )
-    parser.add_argument("payload_file", help="Path to the JSON payload file.")
+    parser.add_argument(
+        "payload_file",
+        help=(
+            "Path to the JSON payload file, or '-' to read raw JSON from "
+            "stdin (e.g. `echo \"$DISPATCH_PAYLOAD\" | therock_parse_input.py -`)."
+        ),
+    )
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO, format="%(levelname)-8s %(message)s")
 
     try:
-        payload = load_and_validate(Path(args.payload_file))
+        if args.payload_file == "-":
+            payload = load_and_validate_string(sys.stdin.read(), source="<stdin>")
+        else:
+            payload = load_and_validate(Path(args.payload_file))
     except PayloadValidationError as exc:
         log.error("Validation failed: %s", exc)
         return 1

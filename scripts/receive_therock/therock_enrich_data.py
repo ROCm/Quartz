@@ -49,6 +49,12 @@ class GitHubAPI:
     3. Unauthenticated (rate limited to 60 req/hour)
     """
 
+    # Safety cap on get_workflow_run_jobs' pagination walk. At 100 jobs/page
+    # this covers 10,000 jobs -- far beyond any real TheRock workflow run --
+    # so it only kicks in if the API's "short page = last page" contract is
+    # ever violated (e.g. a bug returning a full page forever).
+    MAX_PAGES = 100
+
     def __init__(self, token: str | None = None):
         self._token = token or os.environ.get("GITHUB_TOKEN", "")
         self._gh_cli_path: str | None = None
@@ -135,11 +141,22 @@ class GitHubAPI:
 
         The Actions API caps results per page, so this walks pages until a
         short page signals the last one, then returns the accumulated jobs.
+
+        Returns raw GitHub API job dicts, not typed WorkflowJobRecord
+        objects; this client stays HTTP-only and leaves typing to the
+        caller (see enrich_payload, which maps these via
+        WorkflowJobRecord.from_dict).
+
+        Each page is fetched with its own DEFAULT_TIMEOUT_SECONDS budget via
+        `get`, not a cumulative one across the whole walk; a run with many
+        pages can take a multiple of that before this returns. `MAX_PAGES`
+        bounds the walk itself so a misbehaving/paginating-forever API
+        can't hang this indefinitely.
         """
         jobs: list[dict[str, Any]] = []
         page = 1
         per_page = 100
-        while True:
+        while page <= self.MAX_PAGES:
             url = (
                 f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
                 f"/jobs?per_page={per_page}&page={page}"
@@ -150,6 +167,14 @@ class GitHubAPI:
             if len(page_jobs) < per_page:
                 break
             page += 1
+        else:
+            log.warning(
+                "get_workflow_run_jobs(%s, %d): stopped after %d pages "
+                "(MAX_PAGES reached); result may be incomplete",
+                repo,
+                run_id,
+                self.MAX_PAGES,
+            )
         return jobs
 
 
@@ -163,9 +188,14 @@ def enrich_payload(
     WorkflowRunRecord.api_jobs from the GitHub API (when fetch_jobs, i.e.
     the dispatcher had to strip the inline jobs to fit the size cap).
 
-    Per-job summaries are not handled here: producing workflows expose them as
-    captured_outputs[<job key>].outputs.summary, which consumers read
-    directly off the forwarded toJSON(needs) blob.
+    Per-job summaries are permanently out of scope here, not just deferred:
+    the `GET .../actions/runs/{run_id}/jobs` endpoint this enrichment calls
+    does not return `$GITHUB_STEP_SUMMARY` content at all, so
+    WorkflowJobRecord.summary stays "" after this step regardless of any
+    future change to it. Producing workflows expose summaries as
+    captured_outputs[<job key>].outputs.summary instead, which consumers
+    should read directly off the forwarded toJSON(needs) blob -- that is the
+    summary's source of truth, not WorkflowJobRecord.summary.
     """
     if payload.event_type not in WORKFLOW_RUN_EVENT_TYPES:
         log.info(

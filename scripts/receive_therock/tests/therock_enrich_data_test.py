@@ -219,3 +219,20 @@ def test_pagination_exact_multiple_fetches_trailing_empty_page() -> None:
 
     assert len(jobs) == 100
     assert gh.get.call_count == 2
+
+
+def test_pagination_stops_at_max_pages_if_pages_never_go_short(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # If the "short page = last page" contract is ever violated (e.g. an API
+    # bug that returns full pages forever), MAX_PAGES bounds the walk
+    # instead of hanging indefinitely.
+    full_page = [_job(i, f"job{i}") for i in range(100)]
+    gh = _api_with_pages([full_page] * 5)
+    gh.MAX_PAGES = 3
+
+    jobs = gh.get_workflow_run_jobs("ROCm/TheRock", 99)
+
+    assert gh.get.call_count == 3
+    assert len(jobs) == 300
+    assert "MAX_PAGES reached" in caplog.text

@@ -103,7 +103,7 @@ def build_parser() -> argparse.ArgumentParser:
             "repository (pull / commit / push, retried with backoff if a "
             "competing update lands first). Pass --commit-and-push to push, "
             "--no-commit-and-push for a dry-run that applies the change on "
-            "disk only. Default: dry-run. CI passes --commit-and-push;"
+            "disk only. Default: dry-run. CI passes --commit-and-push"
         ),
     )
     parser.add_argument(

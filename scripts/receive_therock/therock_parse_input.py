@@ -155,7 +155,7 @@ def main(argv: list[str]) -> int:
         "payload_file",
         help=(
             "Path to the JSON payload file, or '-' to read raw JSON from "
-            "stdin (e.g. `echo \"$DISPATCH_PAYLOAD\" | therock_parse_input.py -`)."
+            'stdin (e.g. `echo "$DISPATCH_PAYLOAD" | therock_parse_input.py -`).'
         ),
     )
     args = parser.parse_args(argv)

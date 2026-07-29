@@ -85,12 +85,8 @@ def test_validate_payload_rejects_unknown_event_type() -> None:
 
 
 def test_validate_payload_rejects_non_string_event_type() -> None:
-    with pytest.raises(
-        PayloadValidationError, match="'event_type' must be a string"
-    ):
-        validate_payload(
-            {"event_type": ["push_event"], "repository": "ROCm/TheRock"}
-        )
+    with pytest.raises(PayloadValidationError, match="'event_type' must be a string"):
+        validate_payload({"event_type": ["push_event"], "repository": "ROCm/TheRock"})
 
 
 def test_validate_payload_fails_closed_for_unhandled_known_event_type(
@@ -103,9 +99,7 @@ def test_validate_payload_fails_closed_for_unhandled_known_event_type(
         therock_parse_input.KNOWN_EVENT_TYPES | {fake_type},
     )
 
-    with pytest.raises(
-        PayloadValidationError, match="no structural validation branch"
-    ):
+    with pytest.raises(PayloadValidationError, match="no structural validation branch"):
         validate_payload({"event_type": fake_type, "repository": "ROCm/TheRock"})
 
 

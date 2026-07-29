@@ -35,6 +35,9 @@ RELEASE_VERSION_PRERELEASE_RE = re.compile(r"^\d+\.\d+\.\d+(rc\d+)$")
 # `dev` is not a release routing format: any version carrying a `.dev` local
 # segment or a bare `<X>.<Y>.<Z>dev<N>` is rejected before it can reach a
 # release status.json (see therock_update_status_json._release_version_suffix).
+# The first alternative is intentionally unanchored so it also catches `.dev`
+# inside longer local version segments (e.g. `+rocm...dev`); the second is
+# anchored because it must match the whole bare `X.Y.Zdev<N>` form.
 RELEASE_VERSION_DEV_RE = re.compile(r"\.dev\d*|^\d+\.\d+\.\d+dev\d*")
 
 
@@ -838,7 +841,7 @@ class PullRequestInput:
         return cls(
             number=raw["number"],
             id=raw["id"],
-            state=raw["state"],
+            state=raw.get("state", ""),
             title=raw.get("title", ""),
             draft=bool(raw.get("draft")),
             merged=bool(raw.get("merged")),

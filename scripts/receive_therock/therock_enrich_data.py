@@ -49,11 +49,12 @@ class GitHubAPI:
     3. Unauthenticated (rate limited to 60 req/hour)
     """
 
-    # Safety cap on get_workflow_run_jobs' pagination walk. At 100 jobs/page
-    # this covers 10,000 jobs -- far beyond any real TheRock workflow run --
-    # so it only kicks in if the API's "short page = last page" contract is
-    # ever violated (e.g. a bug returning a full page forever).
     MAX_PAGES = 100
+
+    # Pinned rather than following GH_HOST: this class only ever talks to
+    # the public GitHub API, so the auth probe and every `gh api` call must
+    # agree on the same host regardless of the environment's default.
+    GITHUB_HOSTNAME = "github.com"
 
     def __init__(self, token: str | None = None):
         self._token = token or os.environ.get("GITHUB_TOKEN", "")
@@ -64,7 +65,14 @@ class GitHubAPI:
             if gh_path:
                 try:
                     result = subprocess.run(
-                        [gh_path, "auth", "status"],
+                        [
+                            gh_path,
+                            "auth",
+                            "status",
+                            "--active",
+                            "--hostname",
+                            self.GITHUB_HOSTNAME,
+                        ],
                         capture_output=True,
                         text=True,
                         timeout=DEFAULT_TIMEOUT_SECONDS,
@@ -100,7 +108,13 @@ class GitHubAPI:
         api_path = url.removeprefix("https://api.github.com")
         try:
             result = subprocess.run(
-                [self._gh_cli_path, "api", api_path],
+                [
+                    self._gh_cli_path,
+                    "api",
+                    api_path,
+                    "--hostname",
+                    self.GITHUB_HOSTNAME,
+                ],
                 capture_output=True,
                 text=True,
                 encoding="utf-8",
@@ -136,8 +150,11 @@ class GitHubAPI:
         except json.JSONDecodeError as exc:
             raise GitHubAPIError(f"Invalid JSON from {url}: {exc}") from exc
 
-    def get_workflow_run_jobs(self, repo: str, run_id: int) -> list[dict[str, Any]]:
-        """Return all jobs for a workflow run, following API pagination.
+    def get_workflow_run_jobs(
+        self, repo: str, run_id: int, run_attempt: int
+    ) -> list[dict[str, Any]]:
+        """Return all jobs for one attempt of a workflow run, following
+        API pagination.
 
         The Actions API caps results per page, so this walks pages until a
         short page signals the last one, then returns the accumulated jobs.
@@ -147,32 +164,48 @@ class GitHubAPI:
         caller (see enrich_payload, which maps these via
         WorkflowJobRecord.from_dict).
 
-        Each page is fetched with its own DEFAULT_TIMEOUT_SECONDS budget via
-        `get`, not a cumulative one across the whole walk; a run with many
-        pages can take a multiple of that before this returns. `MAX_PAGES`
-        bounds the walk itself so a misbehaving/paginating-forever API
-        can't hang this indefinitely.
+        `run_attempt` pins the request to
+        `/actions/runs/{run_id}/attempts/{run_attempt}/jobs` for a specific
+        attempt. The unqualified `/actions/runs/{run_id}/jobs` endpoint
+        defaults to `filter=latest`, so if the run is rerun after the
+        dispatch fires but before this executes, that endpoint would return
+        jobs from the newer attempt -- silently mismatching the attempt the
+        dispatch actually describes. Callers should pass the dispatch's own
+        WorkflowRunRecord.run_attempt (which defaults to 1).
         """
         jobs: list[dict[str, Any]] = []
         page = 1
         per_page = 100
+        base_url = (
+            f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
+            f"/attempts/{run_attempt}/jobs"
+        )
         while page <= self.MAX_PAGES:
-            url = (
-                f"https://api.github.com/repos/{repo}/actions/runs/{run_id}"
-                f"/jobs?per_page={per_page}&page={page}"
-            )
+            url = f"{base_url}?per_page={per_page}&page={page}"
             data = self.get(url)
-            page_jobs = data.get("jobs", [])
+            if not isinstance(data, dict):
+                raise GitHubAPIError(
+                    f"Unexpected response for {url}: expected a JSON "
+                    f"object, got {type(data).__name__}"
+                )
+            page_jobs = data.get("jobs")
+            if not isinstance(page_jobs, list):
+                got = "null/missing" if page_jobs is None else type(page_jobs).__name__
+                raise GitHubAPIError(
+                    f"Unexpected 'jobs' field in response for {url}: "
+                    f"expected a list, got {got}"
+                )
             jobs.extend(page_jobs)
             if len(page_jobs) < per_page:
                 break
             page += 1
         else:
             log.warning(
-                "get_workflow_run_jobs(%s, %d): stopped after %d pages "
-                "(MAX_PAGES reached); result may be incomplete",
+                "get_workflow_run_jobs(%s, %d, attempt=%d): stopped after "
+                "%d pages (MAX_PAGES reached); result may be incomplete",
                 repo,
                 run_id,
+                run_attempt,
                 self.MAX_PAGES,
             )
         return jobs
@@ -222,7 +255,7 @@ def enrich_payload(
             gh = GitHubAPI()
         try:
             raw_api_jobs = gh.get_workflow_run_jobs(
-                payload.repository, wr.workflow_run_id
+                payload.repository, wr.workflow_run_id, wr.run_attempt
             )
             if raw_api_jobs:
                 wr.api_jobs = [WorkflowJobRecord.from_dict(j) for j in raw_api_jobs]

@@ -4,12 +4,17 @@
 """Derived-field classifiers for TheRock workflow runs.
 
 Resolution tiers per field:
-  - Tier 1: explicit `inputs` / `env` / `release_type`, or the workflow
-    `path` looked up in `WORKFLOW_SPECS`.
-  - Tier 2: fallback heuristics over data already on the record
-    (job-name regex for `architectures`; `release_version` parsing for
-    `release_type`). No tier-2 for pipeline_type / pipeline_phase /
-    test_type / build_variant -- they default to `""`.
+  - Tier 1 (all fields): explicit `inputs` / `env` / `release_type` values,
+    or the workflow `path` looked up in `WORKFLOW_SPECS` / `ORCHESTRATOR_SPECS`.
+    Everything defaults to `""` (or `[]` / `None`) when its tier-1 source is
+    absent.
+  - Tier 2 (architectures only): the one field with a fallback heuristic --
+    when no arch input is present, families are scraped from job names
+    (`derive_architectures`). No other field has a tier-2.
+
+`release_type` in particular is never inferred from the version string: a bare
+`7.13.0` may ship to the dev bucket, so the version cannot tell you the type
+(see `derive_release_type`).
 """
 
 import logging

@@ -11,8 +11,8 @@ does it go on to resolve the wheels index and check a distribution tarball
 exists - all without downloading anything heavy.
 
 Deduplication (the "skip what you have seen" step) is stubbed in
-already_processed(): it returns False by default so the example runs end to end,
-with a comment showing where each project plugs in its own state store keyed on
+should_process(): it returns True by default so the example runs end to end, with
+a comment showing where each project plugs in its own state store keyed on
 build_id (rocm_version + build_date).
 
 The gate is the important part. This example depends on the Linux ROCm build,
@@ -102,10 +102,10 @@ def should_process(status: StatusDocument) -> bool:
     here. Compare status.build_id, the (rocm_version, build_date) pair, against
     that stored identity and return False when they match (already seen).
 
-    For this example it always returns True so that it runs
-    the full pipeline end to end. Without this check the workflow re-triggers on
-    every poll once latest.json turns successful, for the same nightly. 
-    
+    For this example it always returns True so it runs the full pipeline end to
+    end. Without this check the workflow re-triggers on every poll once
+    latest.json turns successful, for the same nightly.
+
     For example, you can wire it like this so you trigger only once per build:
 
         last = Path("state/last_build_id.txt")          # your state store

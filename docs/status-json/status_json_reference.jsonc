@@ -5,15 +5,17 @@
 // Conventions:
 // - Status values everywhere: "in_progress" | "success" | "failure" | "cancelled" | "skipped"
 // - Quartz writes this file; TheRock workflows push events via notify_quartz.py.
-// - Expected pipelines carry an "in_progress" placeholder while the release is
-//   live: from creation until the platform orchestrator reports finished, an
-//   expected-but-unreported pipeline is rendered as in_progress (see the
+// - Placeholders are a SUMMARY-only concept. In "summary", an expected-but-
+//   unreported pipeline is rendered as "in_progress" while the release is live
+//   (from creation until the platform orchestrator reports finished; see the
 //   producer's _unstarted_pipeline_status). This placeholder also feeds the
 //   platform worst-of, so a platform never reads e.g. "success" while a pipeline
-//   it will still run is pending below it.
-// - Once the platform is finalized, unreported pipelines are removed: a pipeline
-//   that never emitted a notify event did not run this release, so it is simply
-//   absent (no nulls, no "pending" placeholders) rather than left as in_progress.
+//   it will still run is pending below it. Once the platform is finalized, a
+//   pipeline that never reported is dropped from the summary - it did not run
+//   this release.
+// - The "pipelines" detail below carries only actually-reported entries: a phase
+//   appears there after it emits its first notify event, and is simply absent
+//   otherwise (no nulls, no "pending" placeholders, no injected in_progress).
 // - Tarball URLs are not enumerated; consumers use the Quartz Python helper
 //   to construct per-arch tarball filenames from the base URL + version.
 {

@@ -43,7 +43,7 @@ jobs:
         # Needed so your copy of the scripts/consumer/ scripts is on the runner.
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
 
-      - name: Consume the latest nightly status
+      - name: Consume and install the latest nightly (if not already processed)
         id: status
         # Sets outputs ready / rocm_version / build_date (see the script).
         run: python3 scripts/consumer/example_consume_status.py

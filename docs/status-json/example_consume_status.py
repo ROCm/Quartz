@@ -6,8 +6,14 @@
 
 Runnable companion to tutorial.md. It loads the latest nightly status and asks
 the one question a consumer cares about: is the build I depend on ready to act
-on? Only if so does it go on to resolve the wheels index and check a
-distribution tarball exists - all without downloading anything heavy.
+on - meaning it passed the gate and I have not already processed it? Only if so
+does it go on to resolve the wheels index and check a distribution tarball
+exists - all without downloading anything heavy.
+
+Deduplication (the "skip what you have seen" step) is stubbed in
+already_processed(): it returns False by default so the example runs end to end,
+with a comment showing where each project plugs in its own state store keyed on
+build_id (rocm_version + build_date).
 
 The gate is the important part. This example depends on the Linux ROCm build,
 so it checks summary.linux.rocm.build. It deliberately does not gate on
@@ -87,6 +93,31 @@ def ready_platform(status: StatusDocument) -> PlatformStatus | None:
     return platform
 
 
+def should_process(status: StatusDocument) -> bool:
+    """Return True if this build is new and should be processed (dedup).
+
+    Placeholder: each downstream project owns where it records the last build it
+    processed - a file in the repo, a cache key, a workflow artifact, a row in a
+    database, a git tag, etc. - so the persistence lives in your project, not
+    here. Compare status.build_id, the (rocm_version, build_date) pair, against
+    that stored identity and return False when they match (already seen).
+
+    For this example it always returns True so that it runs
+    the full pipeline end to end. Without this check the workflow re-triggers on
+    every poll once latest.json turns successful, for the same nightly. 
+    
+    For example, you can wire it like this so you trigger only once per build:
+
+        last = Path("state/last_build_id.txt")          # your state store
+        if last.exists() and last.read_text() == "\\n".join(status.build_id):
+            return False                                 # already processed
+        last.parent.mkdir(parents=True, exist_ok=True)
+        last.write_text("\\n".join(status.build_id))     # record before acting
+        return True
+    """
+    return True
+
+
 def process(status: StatusDocument, platform: PlatformStatus) -> None:
     """Do the downstream work for a build that passed the gate.
 
@@ -131,7 +162,11 @@ def main() -> None:
     print(f"{status.rocm_version} (overall: {status.overall_status})")
 
     platform = ready_platform(status)
-    ready = platform is not None
+    # ready means "this build should be processed": it passed the gate AND we
+    # have not acted on this exact (rocm_version, build_date) before. The later
+    # workflow step gates on this output, so dedup here keeps it from re-firing
+    # on every poll for the same nightly.
+    ready = platform is not None and should_process(status)
     set_github_outputs(
         ready=str(ready).lower(),
         rocm_version=status.rocm_version,
@@ -140,8 +175,11 @@ def main() -> None:
     if platform is None:
         print("Build not ready; nothing to do.")
         return
+    if not ready:
+        print(f"{status.rocm_version} ({status.build_date}) already processed; skipping.")
+        return
 
-    # >>> The gate passed: this is where your project's real work goes. <<<
+    # >>> The gate passed and the build is new: your project's real work goes here. <<<
     # The process() call currently is a dry-run of pip install and check
     # if the tarball exists. You can also just take the github output
     # and do the follow-up steps in a later workflow step, without

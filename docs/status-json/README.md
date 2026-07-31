@@ -124,9 +124,12 @@ For a complete, annotated example, see
 | `summary.<platform>.urls`          | Base URLs for tarballs, wheels, packages, and the artifact index.                                                |
 | `summary.<platform>.<pipeline>`    | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters.                       |
 
-A pipeline or phase appears only after it has reported at least once. Anything
-not yet reported is absent; there are no `null` or `"pending"` placeholders, only `in_progress`.
-Consumers must guard for missing keys.
+While the release is live, an expected-but-unreported pipeline is shown as
+`in_progress` (a placeholder that also feeds the platform worst-of, so a platform
+never reads `success` while a pipeline it will still run is pending). Once the
+platform is finalized, a pipeline that never reported is removed — it did not run
+this release — so it is simply absent, with no `null` or `"pending"`
+placeholders. Consumers must still guard for missing keys.
 
 ## Status values
 

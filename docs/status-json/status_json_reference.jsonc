@@ -5,8 +5,15 @@
 // Conventions:
 // - Status values everywhere: "in_progress" | "success" | "failure" | "cancelled" | "skipped"
 // - Quartz writes this file; TheRock workflows push events via notify_quartz.py.
-// - A pipeline/phase appears only after it has emitted at least one notify event.
-//   Anything not reported is simply absent (no nulls, no "pending" placeholders).
+// - Expected pipelines carry an "in_progress" placeholder while the release is
+//   live: from creation until the platform orchestrator reports finished, an
+//   expected-but-unreported pipeline is rendered as in_progress (see the
+//   producer's _unstarted_pipeline_status). This placeholder also feeds the
+//   platform worst-of, so a platform never reads e.g. "success" while a pipeline
+//   it will still run is pending below it.
+// - Once the platform is finalized, unreported pipelines are removed: a pipeline
+//   that never emitted a notify event did not run this release, so it is simply
+//   absent (no nulls, no "pending" placeholders) rather than left as in_progress.
 // - Tarball URLs are not enumerated; consumers use the Quartz Python helper
 //   to construct per-arch tarball filenames from the base URL + version.
 {
@@ -61,7 +68,7 @@
         // full suite and the smoke "test" phase don't clobber each other.
         "test_full": { "success": 0, "failure": 0, "in_progress": 1, "cancelled": 0, "skipped": 0 }
       },
-      "jax": {                                  // linux-only pipeline; always present on linux (placeholder until it reports)
+      "jax": {                                  // linux-only pipeline;
         "build": { "status": "in_progress" },
         "test":  { "success": 0, "failure": 0, "in_progress": 0, "cancelled": 0, "skipped": 0 }
       },
@@ -99,7 +106,7 @@
   // (pipeline, phase) based on the actual workflow granularity:
   //   - Build phases run once per platform           -> entry at .<platform>
   //   - Test phases fan out per arch                 -> entry at .<platform>.<arch>
-  //   - native_packages.{rpm,deb} run once per platform -> entry at .<platform>
+  //   - native_packages.{rpm,deb} run once on linux  -> entry at .<rpm|deb>
   // Entry shape: { run_id, run_attempt, status, started_at, completed_at }
   // Pipelines with a matrix on extra dimensions (pytorch py x torch,
   // jax py x jax_ref) carry an additional "variants" array on the entry.

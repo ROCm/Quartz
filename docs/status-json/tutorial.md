@@ -107,10 +107,10 @@ A complete, runnable example lives next to this guide:
 
 ### API reference
 
-`load_status(source)` returns a `Status`. From there:
+`load_status(source)` returns a `StatusDocument`. From there:
 
 ```text
-Status
+StatusDocument
 ├─ rocm_version, build_date, release_type    release metadata
 ├─ overall_status                            worst-of rollup across platforms
 ├─ is_complete                               True once the build has finished

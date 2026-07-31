@@ -176,7 +176,9 @@ def main() -> None:
         print("Build not ready; nothing to do.")
         return
     if not ready:
-        print(f"{status.rocm_version} ({status.build_date}) already processed; skipping.")
+        print(
+            f"{status.rocm_version} ({status.build_date}) already processed; skipping."
+        )
         return
 
     # >>> The gate passed and the build is new: your project's real work goes here. <<<

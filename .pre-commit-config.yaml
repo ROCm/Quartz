@@ -40,6 +40,14 @@ repos:
     - id: actionlint
       args: [-shellcheck=, -ignore, 'label ".+" is unknown']
 
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v2.3.0
+  hooks:
+  - id: mypy
+    files: ^scripts/receive_therock/therock_status_document\.py$
+    additional_dependencies: [pydantic>=2]
+    args: [--config-file=mypy.ini]
+
 - repo: local
   hooks:
   - id: test-file-naming

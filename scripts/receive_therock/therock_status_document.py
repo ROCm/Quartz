@@ -431,7 +431,10 @@ class PlatformSummary(BaseModel):
         if platform == "linux":
             fields.setdefault("jax", PipelineRollup())
             fields.setdefault("native_packages", NativePackagesRollup())
-        return cls(**fields)
+        # Dynamic **kwargs passthrough: pydantic validates each field at
+        # runtime, but mypy cannot match the object-typed splat to the strict
+        # constructor signature.
+        return cls(**fields)  # type: ignore[arg-type]
 
 
 class Summary(BaseModel):

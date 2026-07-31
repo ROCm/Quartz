@@ -40,7 +40,7 @@ repos:
       args: [-shellcheck=, -ignore, 'label ".+" is unknown']
 
 - repo: https://github.com/pre-commit/mirrors-mypy
-  rev: v1.18.2
+  rev: v2.3.0
   hooks:
   - id: mypy
     files: ^scripts/receive_therock/therock_status_document\.py$

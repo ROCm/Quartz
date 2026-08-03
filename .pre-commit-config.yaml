@@ -14,6 +14,7 @@ repos:
     -   id: check-merge-conflict
     -   id: check-added-large-files
     -   id: mixed-line-ending
+    -   id: requirements-txt-fixer
 -   repo: https://github.com/psf/black
     rev: 25.11.0
     hooks:
@@ -38,6 +39,14 @@ repos:
   hooks:
     - id: actionlint
       args: [-shellcheck=, -ignore, 'label ".+" is unknown']
+
+- repo: https://github.com/pre-commit/mirrors-mypy
+  rev: v2.3.0
+  hooks:
+  - id: mypy
+    files: ^scripts/receive_therock/therock_status_document\.py$
+    additional_dependencies: [pydantic>=2]
+    args: [--config-file=mypy.ini]
 
 - repo: local
   hooks:

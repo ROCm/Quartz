@@ -312,6 +312,26 @@ class MainStepOutputsValidationTest(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertEqual(self._captured["job_name"], "multi_arch_build_portable_linux")
 
+    def test_job_name_all_fallbacks_empty_fails_loud(self):
+        # No --job-name, no GITHUB_JOB, no --reporting-workflow: there is
+        # nothing to key the needs-shape entry on. Must fail rather than
+        # silently dispatch under an empty-string job key.
+        rc = self._run_main(
+            [
+                "--token",
+                "t",
+                "--run-phase",
+                "completed",
+                "--run-conclusion",
+                "success",
+                "--step-outputs",
+                json.dumps({"a": {"outputs": {}}}),
+            ],
+            env={"GITHUB_JOB": ""},
+        )
+        self.assertEqual(rc, 1)
+        self.assertNotIn("job_name", self._captured)
+
     def test_explicit_job_name_wins_over_env(self):
         rc = self._run_main(
             [

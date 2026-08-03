@@ -495,9 +495,6 @@ def dispatch_to_quartz(
     original_inputs_size = len(json.dumps(inputs))
     if original_inputs_size > GITHUB_INPUTS_MAX_CHARS:
         original_payload_size = len(payload_json)
-        # Copy rather than mutate: `payload` is caller-owned, and a caller
-        # inspecting or reusing it afterwards (e.g. a future retry path)
-        # should still see its own `jobs` array intact.
         workflow_run = dict(payload.get("workflow_run") or {})
         workflow_run.pop("jobs", None)
         payload = {**payload, "workflow_run": workflow_run}
@@ -842,6 +839,14 @@ def main(argv: list[str]) -> int:
             os.environ.get("GITHUB_JOB", "")
             or PurePosixPath(_normalize_reporting_path(args.reporting_workflow)).stem
         )
+        if not args.job_name:
+            log.error(
+                "--step-outputs requires a non-empty job identity to key the "
+                "needs-shape entry on, but --job-name, WORKFLOW_JOB_NAME/"
+                "GITHUB_JOB env vars, and --reporting-workflow were all empty. "
+                "Pass at least one."
+            )
+            return 1
 
     try:
         payload = _load_payload(args, token, repo)

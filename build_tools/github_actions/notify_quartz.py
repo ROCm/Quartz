@@ -495,7 +495,12 @@ def dispatch_to_quartz(
     original_inputs_size = len(json.dumps(inputs))
     if original_inputs_size > GITHUB_INPUTS_MAX_CHARS:
         original_payload_size = len(payload_json)
-        payload.get("workflow_run", {}).pop("jobs", None)
+        # Copy rather than mutate: `payload` is caller-owned, and a caller
+        # inspecting or reusing it afterwards (e.g. a future retry path)
+        # should still see its own `jobs` array intact.
+        workflow_run = dict(payload.get("workflow_run") or {})
+        workflow_run.pop("jobs", None)
+        payload = {**payload, "workflow_run": workflow_run}
         payload_json = json.dumps(payload)
         fetch_jobs = True
         inputs = {"payload_json": payload_json, "fetch_jobs": str(fetch_jobs).lower()}
@@ -736,9 +741,14 @@ def _load_payload(
 ) -> dict[str, JSONValue]:
     """Build the dispatch payload from CLI args + GITHUB_RUN_ID."""
     embedded = json.loads(args.embedded_inputs) if args.embedded_inputs else {}
-    captured_outputs = (
-        json.loads(args.captured_outputs) if args.captured_outputs else {}
-    )
+    try:
+        captured_outputs = (
+            json.loads(args.captured_outputs) if args.captured_outputs else {}
+        )
+    except json.JSONDecodeError as exc:
+        raise _DispatchConfigError(
+            f"--captured-outputs is not valid JSON: {exc}"
+        ) from exc
     if args.step_outputs:
         captured_outputs = _step_outputs_to_needs_shape(
             json.loads(args.step_outputs),

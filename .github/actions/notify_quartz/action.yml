@@ -26,16 +26,16 @@ inputs:
     description: >-
       Overall conclusion (success / failure / cancelled). Optional when run_phase=completed
       and workflow_captured_outputs is a toJSON(needs) blob (derived from per-job results).
-      Pass ${{ job.status }} when folding 'completed' into a single monitored job.
+      Pass the job's status (job.status) when folding 'completed' into a single monitored job.
     required: false
     default: ""
   workflow_inputs:
-    description: "JSON string of workflow inputs, i.e. ${{ toJSON(inputs) }}."
+    description: "JSON string of workflow inputs, i.e. toJSON(inputs)."
     required: false
     default: "{}"
   workflow_captured_outputs:
     description: >-
-      JSON object of caller-supplied job context, canonically ${{ toJSON(needs) }}.
+      JSON object of caller-supplied job context, canonically toJSON(needs).
       Stored verbatim by Quartz: do NOT include secrets. Use for a dedicated
       notify_completed job that has a `needs:` list. Mutually exclusive with
       workflow_step_outputs.
@@ -43,11 +43,11 @@ inputs:
     default: "{}"
   workflow_step_outputs:
     description: >-
-      JSON object of ${{ toJSON(steps) }} for the folded 'completed' case where
+      JSON object of toJSON(steps) for the folded 'completed' case where
       the notify step lives inside the single monitored job (no `needs:` context
       to serialize). The script rewrites it into the toJSON(needs) shape keyed by
       the job id (GITHUB_JOB), with `result` taken from run_conclusion. Pass
-      run_conclusion=${{ job.status }} alongside it. Mutually exclusive with
+      run_conclusion set to the job's status (job.status) alongside it. Mutually exclusive with
       workflow_captured_outputs. Do NOT include secrets.
     required: false
     default: ""

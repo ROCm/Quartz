@@ -1275,6 +1275,91 @@ def test_newer_parent_leaf_promotes_owner_and_clears_previous_run(
     assert doc.pipelines.rocm.build["windows"].status is Status.failure
 
 
+# --- orchestrator re-run: ownership is (run_id, run_attempt) -----------------
+#
+# A GitHub re-run keeps the run id but bumps run_attempt, so ownership is the
+# pair and not the id alone. Attempt 2 re-opens attempt 1's finalized document
+# while keeping the passing leaves (partial re-runs only re-report failed ones),
+# and a late attempt-1 completion is rejected rather than overwriting attempt 2.
+
+
+def test_rerun_higher_attempt_reopens_finalized_document(tmp_path: Path) -> None:
+    # Attempt 1 finalizes the release as failure. The orchestrator is then 
+    # re-run: attempt 2's in_progress (same run id, higher attempt) must re-open
+    # the document -- drop completed_at and recap overall_status to in_progress
+    # -- yet keep the passing leaves, since a partial re-run never re-reports them.
+    orch1 = _orchestrator_run()
+    orch1.workflow_run_id = 100
+    orch1.run_attempt = 1
+    orch1.conclusion = "failure"
+    tusj.update_status_json(
+        _event(orch1, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    tusj.update_status_json(
+        _event(_linux_build(101, parent_run_id=100)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    tusj.update_status_json(_event(orch1), repo_dir=tmp_path, commit_and_push=False)
+
+    finalized = _load(_nightly_status_path(tmp_path))
+    assert finalized.completed_at is not None
+    assert finalized.trigger_run_attempt == 1
+    assert finalized.orchestrator_conclusion is Status.failure
+    assert finalized.summary.overall_status is Status.failure
+
+    orch2 = _orchestrator_run()
+    orch2.workflow_run_id = 100
+    orch2.run_attempt = 2
+    tusj.update_status_json(
+        _event(orch2, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 100
+    assert doc.trigger_run_attempt == 2
+    # Re-opened: no longer finalized, back to in_progress...
+    assert doc.completed_at is None
+    assert doc.orchestrator_conclusion is None
+    assert doc.summary.overall_status is Status.in_progress
+    # ... but the passing leaf from attempt 1 survives (partial re-run keeps it).
+    assert _linux_build_leaf(tmp_path).run_id == 101
+    assert _linux_build_leaf(tmp_path).status is Status.success
+
+
+def test_stale_lower_attempt_completion_does_not_overwrite_newer(
+    tmp_path: Path,
+) -> None:
+    # Attempt 2 is running (in_progress) after a re-run. A delayed attempt-1
+    # completion then arrives. It is a superseded attempt, so its finalize must
+    # be rejected -- the document must not be stamped completed by attempt 1.
+    orch2 = _orchestrator_run()
+    orch2.workflow_run_id = 100
+    orch2.run_attempt = 2
+    tusj.update_status_json(
+        _event(orch2, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert _load(_nightly_status_path(tmp_path)).trigger_run_attempt == 2
+
+    stale = _orchestrator_run()
+    stale.workflow_run_id = 100
+    stale.run_attempt = 1
+    stale.conclusion = "failure"
+    tusj.update_status_json(_event(stale), repo_dir=tmp_path, commit_and_push=False)
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_run_attempt == 2
+    assert doc.completed_at is None
+    assert doc.orchestrator_conclusion is None
+    assert doc.summary.overall_status is Status.in_progress
+
+
 # --- variant derivation (pytorch/jax py x torch/jax) -------------------------
 #
 # Builds fan the matrix axis out across jobs named `Build | py X | torch Y`, so

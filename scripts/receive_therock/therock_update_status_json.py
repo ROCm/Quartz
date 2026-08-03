@@ -581,21 +581,39 @@ def _update_release_cdn_urls(
 def _record_orchestrator_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
-    """Record the top-level orchestrator run as the document owner (newest wins)."""
+    """Record the top-level orchestrator run as the document owner.
+
+    Ownership is the pair (workflow_run_id, run_attempt). A GitHub re-run
+    keeps the same run id but bumps the attempt, so both must be compared:
+      - newer run id               -> full reset, the release was re-dispatched;
+      - same run id, newer attempt -> finalization-only reset, a re-run of the
+        same release (partial re-runs only re-report their failed leaves, so the
+        passing leaves must survive);
+      - older run id, or same run id with an older attempt -> rejected, so a
+        late attempt-1 completion never overwrites attempt 2.
+    """
     rid = workflow_run.workflow_run_id
-    owner = doc.trigger_workflow_run_id
-    if owner not in (None, 0) and rid is not None and rid < owner:
-        log.info(
-            "ignoring event from superseded orchestrator run_id=%s; document "
-            "is owned by newer run_id=%s",
-            rid,
-            owner,
-        )
-        return False
+    attempt = workflow_run.run_attempt
+    owner_rid = doc.trigger_workflow_run_id
+    owner_attempt = doc.trigger_run_attempt or 0
+    if owner_rid not in (None, 0) and rid is not None:
+        if rid < owner_rid or (rid == owner_rid and attempt < owner_attempt):
+            log.info(
+                "ignoring event from superseded orchestrator run_id=%s "
+                "attempt=%s; document is owned by run_id=%s attempt=%s",
+                rid,
+                attempt,
+                owner_rid,
+                owner_attempt,
+            )
+            return False
     if rid is not None:
-        if owner not in (None, 0, rid) and rid > owner:
+        if owner_rid not in (None, 0, rid) and rid > owner_rid:
             _reset_document_for_new_owner(doc)
+        elif rid == owner_rid and attempt > owner_attempt:
+            _reset_finalization_for_rerun(doc)
         doc.trigger_workflow_run_id = rid
+        doc.trigger_run_attempt = attempt
     return True
 
 
@@ -609,6 +627,21 @@ def _reset_document_for_new_owner(doc: StatusDocument) -> None:
     doc.linux_urls.clear()
     doc.windows_urls.clear()
     doc.pipelines = Pipelines()
+    rebuild_summary(doc)
+
+
+def _reset_finalization_for_rerun(doc: StatusDocument) -> None:
+    """Re-open a finalized document when the same run re-runs at a higher attempt.
+
+    A re-run keeps the run id but bumps the attempt. Partial re-runs only
+    re-report their failed leaves, so the pipeline tree, urls and architectures
+    are kept: the failed leaves get overwritten as the re-run reports them
+    (RunLeaf.should_replace prefers the higher attempt), while the passing
+    leaves survive. Only the document-level finalized state is cleared so the
+    release drops back to `in_progress` until the re-run finalizes.
+    """
+    doc.completed_at = None
+    doc.orchestrator_conclusion = None
     rebuild_summary(doc)
 
 

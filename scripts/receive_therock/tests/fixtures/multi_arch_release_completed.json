@@ -1,0 +1,813 @@
+{
+  "event_type": "workflow_run_completed",
+  "repository": "ROCm/Quartz-Tester",
+  "workflow_run": {
+    "id": 27833567140,
+    "name": "Multi-Arch Release (dev) | Linux: gfx1152 | Windows: gfx1152",
+    "display_title": "Multi-Arch Release (dev) | Linux: gfx1152 | Windows: gfx1152",
+    "path": ".github/workflows/multi_arch_release.yml",
+    "workflow_id": 287546636,
+    "status": "completed",
+    "conclusion": "success",
+    "event": "workflow_dispatch",
+    "head_branch": "users/cgoea/quartz",
+    "head_sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+    "run_number": 39,
+    "run_attempt": 1,
+    "html_url": "https://github.com/ROCm/Quartz-Tester/actions/runs/27833567140",
+    "created_at": "2026-06-19T15:08:05Z",
+    "updated_at": "2026-06-19T15:18:22Z",
+    "run_started_at": "2026-06-19T15:08:05Z",
+    "actor": {
+      "login": "cgoea",
+      "id": 84181019
+    },
+    "triggering_actor": {
+      "login": "cgoea",
+      "id": 84181019
+    },
+    "pull_requests": [],
+    "inputs": {
+      "stage_name": "profiler-apps",
+      "stage_display_name": "Stage - Profiler Apps",
+      "timeout_minutes": 180,
+      "amdgpu_family": "",
+      "dist_amdgpu_families": "gfx1152",
+      "rocm_package_version": "0.0.0.dev0+15929f492254f359f1e88d402fe8adb29b4c75f5",
+      "build_variant_cmake_preset": "",
+      "release_type": "dev",
+      "build_runs_on": "ubuntu-24.04",
+      "repository": "ROCm/Quartz-Tester",
+      "ref": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+      "external_repo_config": "",
+      "linux_amdgpu_families": "gfx1152",
+      "windows_amdgpu_families": "gfx1152"
+    },
+    "release_type": "dev",
+    "captured_outputs": {
+      "build_stage": {
+        "result": "success",
+        "outputs": {}
+      },
+      "artifacts_summary": {
+        "result": "success",
+        "outputs": {
+          "summary": "### Portable Linux Artifacts (Stage - Profiler Apps)\n- Build: success\n- Run: https://github.com/ROCm/Quartz-Tester/actions/runs/27833567140\n- _summary_probe: portable_linux_artifacts\n"
+        }
+      }
+    },
+    "jobs": [
+      {
+        "id": 82376037443,
+        "name": "setup / setup",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:09Z",
+        "started_at": "2026-06-19T15:08:41Z",
+        "completed_at": "2026-06-19T15:08:46Z",
+        "runner_name": "GitHub Actions 1004677106",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139479,
+        "name": "notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:47Z",
+        "completed_at": "2026-06-19T15:09:55Z",
+        "runner_name": "GitHub Actions 1004677179",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139643,
+        "name": "Windows::release / Build Artifacts / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:56Z",
+        "completed_at": "2026-06-19T15:10:06Z",
+        "runner_name": "GitHub Actions 1004677180",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139682,
+        "name": "Linux::release / Build Artifacts / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:49Z",
+        "completed_at": "2026-06-19T15:09:58Z",
+        "runner_name": "GitHub Actions 1004677177",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139690,
+        "name": "Windows::release / Build Artifacts / foundation / Stage - Foundation",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:47Z",
+        "completed_at": "2026-06-19T15:09:59Z",
+        "runner_name": "GitHub Actions 1004677202",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139702,
+        "name": "Linux::release / Build Artifacts / foundation / Stage - Foundation",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:47Z",
+        "completed_at": "2026-06-19T15:10:02Z",
+        "runner_name": "GitHub Actions 1004677211",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139773,
+        "name": "Windows::release / Build Artifacts / foundation / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:48Z",
+        "completed_at": "2026-06-19T15:09:58Z",
+        "runner_name": "GitHub Actions 1004677178",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376139785,
+        "name": "Linux::release / Build Artifacts / foundation / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:08:47Z",
+        "started_at": "2026-06-19T15:09:48Z",
+        "completed_at": "2026-06-19T15:09:55Z",
+        "runner_name": "GitHub Actions 1004677181",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376332526,
+        "name": "Windows::release / Build Artifacts / foundation / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:09:59Z",
+        "started_at": "2026-06-19T15:10:50Z",
+        "completed_at": "2026-06-19T15:10:56Z",
+        "runner_name": "GitHub Actions 1004677304",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376342338,
+        "name": "Linux::release / Build Artifacts / foundation / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:10:03Z",
+        "started_at": "2026-06-19T15:10:50Z",
+        "completed_at": "2026-06-19T15:10:54Z",
+        "runner_name": "GitHub Actions 1004677343",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376482273,
+        "name": "Linux::release / Build Artifacts / foundation / notify_quartz / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:10:54Z",
+        "started_at": "2026-06-19T15:11:50Z",
+        "completed_at": "2026-06-19T15:11:58Z",
+        "runner_name": "GitHub Actions 1004677354",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376489974,
+        "name": "Windows::release / Build Artifacts / foundation / notify_quartz / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:10:57Z",
+        "started_at": "2026-06-19T15:11:50Z",
+        "completed_at": "2026-06-19T15:12:00Z",
+        "runner_name": "GitHub Actions 1004677364",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376653848,
+        "name": "Linux::release / Build Artifacts / compiler-runtime / Stage - Compiler Runtime",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:11:58Z",
+        "started_at": "2026-06-19T15:12:54Z",
+        "completed_at": "2026-06-19T15:13:08Z",
+        "runner_name": "GitHub Actions 1004677460",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376654016,
+        "name": "Linux::release / Build Artifacts / compiler-runtime / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:11:58Z",
+        "started_at": "2026-06-19T15:12:54Z",
+        "completed_at": "2026-06-19T15:13:01Z",
+        "runner_name": "GitHub Actions 1004677450",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376658699,
+        "name": "Windows::release / Build Artifacts / compiler-runtime / Stage - Compiler Runtime",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:12:00Z",
+        "started_at": "2026-06-19T15:12:54Z",
+        "completed_at": "2026-06-19T15:13:05Z",
+        "runner_name": "GitHub Actions 1004677425",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376658740,
+        "name": "Windows::release / Build Artifacts / compiler-runtime / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:12:00Z",
+        "started_at": "2026-06-19T15:12:55Z",
+        "completed_at": "2026-06-19T15:13:04Z",
+        "runner_name": "GitHub Actions 1004677455",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376834380,
+        "name": "Windows::release / Build Artifacts / compiler-runtime / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:13:06Z",
+        "started_at": "2026-06-19T15:13:58Z",
+        "completed_at": "2026-06-19T15:14:03Z",
+        "runner_name": "GitHub Actions 1004677538",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376843830,
+        "name": "Linux::release / Build Artifacts / compiler-runtime / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:13:09Z",
+        "started_at": "2026-06-19T15:13:58Z",
+        "completed_at": "2026-06-19T15:14:03Z",
+        "runner_name": "GitHub Actions 1004677514",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376990953,
+        "name": "Windows::release / Build Artifacts / compiler-runtime / notify_quartz / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:14:03Z",
+        "started_at": "2026-06-19T15:15:02Z",
+        "completed_at": "2026-06-19T15:15:12Z",
+        "runner_name": "GitHub Actions 1004677589",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82376991563,
+        "name": "Linux::release / Build Artifacts / compiler-runtime / notify_quartz / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:14:03Z",
+        "started_at": "2026-06-19T15:15:02Z",
+        "completed_at": "2026-06-19T15:15:09Z",
+        "runner_name": "GitHub Actions 1004677590",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171414,
+        "name": "Linux::release / Build Artifacts / wsl-rocdxg / Stage - WSL ROCDXG",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:22Z",
+        "runner_name": "GitHub Actions 1004677710",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171417,
+        "name": "Linux::release / Build Artifacts / comm-libs / Stage - Comm Libs",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:07Z",
+        "completed_at": "2026-06-19T15:16:23Z",
+        "runner_name": "GitHub Actions 1004677713",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171427,
+        "name": "Linux::release / Build Artifacts / debug-tools / Stage - Debug Tools",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:07Z",
+        "completed_at": "2026-06-19T15:16:21Z",
+        "runner_name": "GitHub Actions 1004677714",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171460,
+        "name": "Linux::release / Build Artifacts / dctools-core / Stage - DC Tools Core",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:24Z",
+        "runner_name": "GitHub Actions 1004677715",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171487,
+        "name": "Linux::release / Build Artifacts / profiler-apps / Stage - Profiler Apps",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:20Z",
+        "runner_name": "GitHub Actions 1004677717",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171523,
+        "name": "Linux::release / Build Artifacts / math-libs (gfx1152, false) / Stage - Math Libs (gfx1152)",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:18Z",
+        "runner_name": "GitHub Actions 1004677718",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171540,
+        "name": "Linux::release / Build Artifacts / comm-libs / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:07Z",
+        "completed_at": "2026-06-19T15:16:16Z",
+        "runner_name": "GitHub Actions 1004677729",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171562,
+        "name": "Linux::release / Build Artifacts / media-libs / Stage - Media Libs",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:17Z",
+        "runner_name": "GitHub Actions 1004677716",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171565,
+        "name": "Linux::release / Build Artifacts / profiler-apps / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:19Z",
+        "runner_name": "GitHub Actions 1004677730",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171592,
+        "name": "Linux::release / Build Artifacts / media-libs / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:14Z",
+        "runner_name": "GitHub Actions 1004677726",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171611,
+        "name": "Linux::release / Build Artifacts / debug-tools / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:16Z",
+        "runner_name": "GitHub Actions 1004677732",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171650,
+        "name": "Linux::release / Build Artifacts / dctools-core / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:14Z",
+        "runner_name": "GitHub Actions 1004677731",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377171731,
+        "name": "Linux::release / Build Artifacts / math-libs (gfx1152, false) / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:10Z",
+        "started_at": "2026-06-19T15:16:06Z",
+        "completed_at": "2026-06-19T15:16:14Z",
+        "runner_name": "GitHub Actions 1004677733",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377181178,
+        "name": "Windows::release / Build Artifacts / debug-tools / Stage - Debug Tools",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:13Z",
+        "started_at": "2026-06-19T15:16:09Z",
+        "completed_at": "2026-06-19T15:16:24Z",
+        "runner_name": "GitHub Actions 1004677834",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377181302,
+        "name": "Windows::release / Build Artifacts / debug-tools / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:13Z",
+        "started_at": "2026-06-19T15:16:09Z",
+        "completed_at": "2026-06-19T15:16:20Z",
+        "runner_name": "GitHub Actions 1004677770",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377181340,
+        "name": "Windows::release / Build Artifacts / math-libs (gfx1152, false) / Stage - Math Libs (gfx1152)",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:13Z",
+        "started_at": "2026-06-19T15:16:09Z",
+        "completed_at": "2026-06-19T15:16:27Z",
+        "runner_name": "GitHub Actions 1004677835",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377181406,
+        "name": "Windows::release / Build Artifacts / math-libs (gfx1152, false) / notify_quartz_start / notify",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:15:13Z",
+        "started_at": "2026-06-19T15:16:09Z",
+        "completed_at": "2026-06-19T15:16:21Z",
+        "runner_name": "GitHub Actions 1004677771",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377358408,
+        "name": "Linux::release / Build Artifacts / media-libs / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:18Z",
+        "started_at": "2026-06-19T15:17:14Z",
+        "completed_at": "2026-06-19T15:17:20Z",
+        "runner_name": "GitHub Actions 1004677946",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377358551,
+        "name": "Linux::release / Build Artifacts / math-libs (gfx1152, false) / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:18Z",
+        "started_at": "2026-06-19T15:17:15Z",
+        "completed_at": "2026-06-19T15:17:21Z",
+        "runner_name": "GitHub Actions 1004677945",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377365879,
+        "name": "Linux::release / Build Artifacts / profiler-apps / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:21Z",
+        "started_at": "2026-06-19T15:17:17Z",
+        "completed_at": "2026-06-19T15:17:24Z",
+        "runner_name": "GitHub Actions 1004678060",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377368503,
+        "name": "Linux::release / Build Artifacts / debug-tools / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:22Z",
+        "started_at": "2026-06-19T15:17:17Z",
+        "completed_at": "2026-06-19T15:17:23Z",
+        "runner_name": "GitHub Actions 1004678064",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377374554,
+        "name": "Linux::release / Build Artifacts / comm-libs / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:24Z",
+        "started_at": "2026-06-19T15:17:16Z",
+        "completed_at": "2026-06-19T15:17:22Z",
+        "runner_name": "GitHub Actions 1004678082",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377376209,
+        "name": "Linux::release / Build Artifacts / dctools-core / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:24Z",
+        "started_at": "2026-06-19T15:17:16Z",
+        "completed_at": "2026-06-19T15:17:20Z",
+        "runner_name": "GitHub Actions 1004678084",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377376361,
+        "name": "Windows::release / Build Artifacts / debug-tools / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:24Z",
+        "started_at": "2026-06-19T15:17:16Z",
+        "completed_at": "2026-06-19T15:17:22Z",
+        "runner_name": "GitHub Actions 1004678051",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377384915,
+        "name": "Windows::release / Build Artifacts / math-libs (gfx1152, false) / Artifacts Summary",
+        "status": "completed",
+        "conclusion": "success",
+        "created_at": "2026-06-19T15:16:27Z",
+        "started_at": "2026-06-19T15:17:19Z",
+        "completed_at": "2026-06-19T15:17:23Z",
+        "runner_name": "GitHub Actions 1004678130",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377525918,
+        "name": "Linux::release / Build Artifacts / media-libs / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:20Z",
+        "started_at": "2026-06-19T15:18:18Z",
+        "runner_name": "GitHub Actions 1004678184",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377527137,
+        "name": "Linux::release / Build Artifacts / dctools-core / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:20Z",
+        "started_at": "2026-06-19T15:18:19Z",
+        "runner_name": "GitHub Actions 1004678190",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377531378,
+        "name": "Linux::release / Build Artifacts / math-libs (gfx1152, false) / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:22Z",
+        "started_at": "2026-06-19T15:18:18Z",
+        "runner_name": "GitHub Actions 1004678207",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377533814,
+        "name": "Windows::release / Build Artifacts / debug-tools / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:23Z",
+        "started_at": "2026-06-19T15:18:18Z",
+        "runner_name": "GitHub Actions 1004678215",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377534242,
+        "name": "Linux::release / Build Artifacts / comm-libs / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:23Z",
+        "started_at": "2026-06-19T15:18:18Z",
+        "runner_name": "GitHub Actions 1004678217",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377534661,
+        "name": "Windows::release / Build Artifacts / math-libs (gfx1152, false) / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:23Z",
+        "started_at": "2026-06-19T15:18:18Z",
+        "runner_name": "GitHub Actions 1004678219",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377535194,
+        "name": "Linux::release / Build Artifacts / debug-tools / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:23Z",
+        "started_at": "2026-06-19T15:18:18Z",
+        "runner_name": "GitHub Actions 1004678222",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      },
+      {
+        "id": 82377538494,
+        "name": "Linux::release / Build Artifacts / profiler-apps / notify_quartz / notify",
+        "status": "in_progress",
+        "conclusion": null,
+        "created_at": "2026-06-19T15:17:25Z",
+        "started_at": "2026-06-19T15:18:21Z",
+        "runner_name": "GitHub Actions 1004678271",
+        "labels": [
+          "ubuntu-24.04"
+        ]
+      }
+    ],
+    "parent_workflow": {
+      "id": 27833567140
+    },
+    "referenced_workflows": [
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/setup_multi_arch.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/build_windows_python_packages.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_tarballs.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_windows.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_windows_artifacts.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_native_linux_packages.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_portable_linux.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_portable_linux_artifacts.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_wsl_rocdxg_artifacts.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_release_windows.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/notify_quartz.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_release_linux.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/build_portable_linux_python_packages.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      }
+    ]
+  }
+}

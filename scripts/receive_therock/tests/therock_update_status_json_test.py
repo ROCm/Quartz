@@ -1284,7 +1284,7 @@ def test_newer_parent_leaf_promotes_owner_and_clears_previous_run(
 
 
 def test_rerun_higher_attempt_reopens_finalized_document(tmp_path: Path) -> None:
-    # Attempt 1 finalizes the release as failure. The orchestrator is then 
+    # Attempt 1 finalizes the release as failure. The orchestrator is then
     # re-run: attempt 2's in_progress (same run id, higher attempt) must re-open
     # the document -- drop completed_at and recap overall_status to in_progress
     # -- yet keep the passing leaves, since a partial re-run never re-reports them.

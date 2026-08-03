@@ -6,7 +6,7 @@
 For completed workflow_run dispatches, re-fetches the full job list for the
 dispatch's specific run attempt (via
 `GET .../actions/runs/{run_id}/attempts/{run_attempt}/jobs`) onto
-`WorkflowRunRecord.api_jobs`, restoring detail the dispatcher may have
+`WorkflowRunRecord.api_jobs`, restoring details the dispatcher may have
 stripped to fit the workflow_dispatch inputs size cap. Fetching parent
 workflow info or other metadata is out of scope for this module.
 

@@ -94,13 +94,19 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
         assert _process(fixture, tmp_path) == 0
 
     nightly_dir = tmp_path / "release-nightly"
+    latest_good = nightly_dir / "latest_good.json"
+
+    # latest_good is a success-only snapshot and must not exist until
+    # the top-level release finalizes and overall status is "success".
+    assert not latest_good.exists()
+
+    assert _process(_RELEASE, tmp_path) == 0
 
     latest = nightly_dir / "latest.json"
     assert latest.is_symlink()
-    assert latest.readlink().parts[0] == _NIGHTLY_DATE
+    assert latest.readlink() == Path(_NIGHTLY_DATE) / "status.json"
 
     # latest_good is the success snapshot, written only after finalize.
-    latest_good = nightly_dir / "latest_good.json"
     assert latest_good.exists() and not latest_good.is_symlink()
     snapshot = StatusDocument.from_dict(
         json.loads(latest_good.read_text(encoding="utf-8"))
@@ -112,4 +118,6 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
 def test_dev_capture_fixture_is_gated_out(tmp_path: Path) -> None:
     rc = _process("multi_arch_build_portable_linux_completed.json", tmp_path)
     assert rc == 0
-    assert not (tmp_path / "release-nightly").exists()
+    # The candidacy gate rejects dev builds before any routing, so no status
+    # output should land anywhere under the repo tree.
+    assert not list(tmp_path.rglob("*.json"))

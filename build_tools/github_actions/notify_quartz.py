@@ -87,11 +87,17 @@ import sys
 from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import PurePosixPath
-from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 log = logging.getLogger(__name__)
+
+# GitHub API responses and the payloads we build from them are arbitrary JSON:
+# heterogeneous, externally-defined, and not something we control the shape
+# of. `JSONValue` documents that constraint precisely (a JSON-compatible
+# value) rather than reaching for `Any`, which would silently accept
+# anything, JSON or not.
+JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 
 # workflow_dispatch caps the *serialized* `inputs` object at 65,535 bytes. We
 # measure the encoded inputs dict (after JSON re-escaping) against this; a
@@ -112,7 +118,7 @@ class _DispatchConfigError(RuntimeError):
 class _GithubApiResponse:
     """Decoded body and response headers from a GitHub REST API call."""
 
-    body: Any
+    body: JSONValue
     headers: dict[str, str]
 
 
@@ -121,7 +127,7 @@ def _github_api_request(
     method: str,
     path: str,
     *,
-    body: dict[str, Any] | None = None,
+    body: dict[str, JSONValue] | None = None,
 ) -> _GithubApiResponse:
     """Make an authenticated GitHub REST API request.
 
@@ -150,7 +156,7 @@ def _github_api_request(
         raise
 
 
-def _workflow_job_dispatch_fields(job: dict[str, Any]) -> dict[str, Any]:
+def _workflow_job_dispatch_fields(job: dict[str, JSONValue]) -> dict[str, JSONValue]:
     """Project a GitHub Actions Job object down to the fields we ship to Quartz.
 
     `conclusion` is kept even when null because downstream consumers
@@ -159,7 +165,7 @@ def _workflow_job_dispatch_fields(job: dict[str, Any]) -> dict[str, Any]:
     progressed that far — we omit them when null to keep the payload
     small rather than emit a row of nullable noise.
     """
-    row: dict[str, Any] = {
+    row: dict[str, JSONValue] = {
         "id": job["id"],
         "name": job["name"],
         "status": job["status"],
@@ -195,7 +201,7 @@ def _iter_paginated(
     *,
     key: str,
     per_page: int = 100,
-) -> Iterator[dict[str, Any]]:
+) -> Iterator[dict[str, JSONValue]]:
     """Yield items from every page of a paginated GitHub API endpoint.
 
     Follows `Link: rel="next"` until exhausted, so this works regardless of
@@ -209,7 +215,9 @@ def _iter_paginated(
         url = _next_link_url(resp.headers.get("Link"))
 
 
-def _get_list_referenced_workflows(source: dict[str, Any]) -> list[dict[str, Any]]:
+def _get_list_referenced_workflows(
+    source: dict[str, JSONValue],
+) -> list[dict[str, JSONValue]]:
     """Extract the `referenced_workflows` list from a run or run-details dict."""
     return [
         {"path": rw["path"], "sha": rw["sha"], "ref": rw.get("ref")}
@@ -222,7 +230,7 @@ def _fetch_jobs(
     token: str,
     repo: str,
     run_id: int | str,
-) -> list[dict[str, Any]]:
+) -> list[dict[str, JSONValue]]:
     """Fetch and normalize the jobs list for a run. Returns [] and logs on API errors."""
     try:
         return [
@@ -248,7 +256,7 @@ def _fetch_parent_workflow(
     repo: str,
     check_suite_id: int,
     self_run_id: int,
-) -> dict[str, Any] | None:
+) -> dict[str, JSONValue] | None:
     """Find the parent (caller) workflow run sharing this check suite, if any."""
     try:
         suite_data = _github_api_request(
@@ -277,7 +285,7 @@ def _fetch_parent_workflow(
     return None
 
 
-def _normalize_actor(actor: dict[str, Any] | None) -> dict[str, Any] | None:
+def _normalize_actor(actor: dict[str, JSONValue] | None) -> dict[str, JSONValue] | None:
     """Return `{login, id}` for a GitHub actor object, or `None` if missing.
 
     Guards against the API returning `null`, `{}`, or an object missing
@@ -289,16 +297,16 @@ def _normalize_actor(actor: dict[str, Any] | None) -> dict[str, Any] | None:
 
 
 def _build_workflow_run_dict(
-    wr: dict[str, Any],
+    wr: dict[str, JSONValue],
     *,
     status: str | None,
     conclusion: str | None,
-    inputs: dict[str, Any],
-    captured_outputs: dict[str, Any],
-    jobs: list[dict[str, Any]],
-    parent_workflow: dict[str, Any] | None,
-    referenced_workflows: list[dict[str, Any]],
-) -> dict[str, Any]:
+    inputs: dict[str, JSONValue],
+    captured_outputs: dict[str, JSONValue],
+    jobs: list[dict[str, JSONValue]],
+    parent_workflow: dict[str, JSONValue] | None,
+    referenced_workflows: list[dict[str, JSONValue]],
+) -> dict[str, JSONValue]:
     """Build the `workflow_run` sub-dict for the dispatch payload."""
     return {
         "id": wr["id"],
@@ -364,12 +372,12 @@ def _build_payload(
     *,
     token: str,
     repo: str,
-    embedded_inputs: dict[str, Any],
-    captured_outputs: dict[str, Any],
+    embedded_inputs: dict[str, JSONValue],
+    captured_outputs: dict[str, JSONValue],
     run_conclusion: str,
     run_phase: str = "completed",
     reporting_workflow: str = "",
-) -> dict[str, Any]:
+) -> dict[str, JSONValue]:
     """Build a payload for the current run using GITHUB_RUN_ID.
 
     Workflow inputs and the calling workflow's hand-picked job outputs
@@ -471,7 +479,7 @@ def dispatch_to_quartz(
     quartz_repo: str,
     workflow_file: str,
     workflow_ref: str,
-    payload: dict[str, Any],
+    payload: dict[str, JSONValue],
 ) -> None:
     """Trigger the ingest workflow in Quartz via workflow_dispatch.
 
@@ -637,7 +645,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def _derive_run_conclusion_from_captured_outputs(
-    captured_outputs: dict[str, Any],
+    captured_outputs: dict[str, JSONValue],
 ) -> str | None:
     """Derive a workflow-run conclusion from a `toJSON(needs)` blob.
 
@@ -690,11 +698,11 @@ def _derive_run_conclusion_from_captured_outputs(
 
 
 def _step_outputs_to_needs_shape(
-    step_outputs: dict[str, Any],
+    step_outputs: dict[str, JSONValue],
     *,
     job_name: str,
     run_conclusion: str,
-) -> dict[str, Any]:
+) -> dict[str, JSONValue]:
     """Rewrite a `${{ toJSON(steps) }}` blob into the `toJSON(needs)` shape.
 
     When `completed` is folded into the single monitored job (rather than a
@@ -714,7 +722,7 @@ def _step_outputs_to_needs_shape(
     step wins, matching how a `notify_completed` job's `outputs:` block would
     have to pick one value anyway.
     """
-    merged_outputs: dict[str, Any] = {}
+    merged_outputs: dict[str, JSONValue] = {}
     for step in step_outputs.values():
         if isinstance(step, dict):
             merged_outputs.update(step.get("outputs") or {})
@@ -725,7 +733,7 @@ def _load_payload(
     args: argparse.Namespace,
     token: str,
     repo: str,
-) -> dict[str, Any]:
+) -> dict[str, JSONValue]:
     """Build the dispatch payload from CLI args + GITHUB_RUN_ID."""
     embedded = json.loads(args.embedded_inputs) if args.embedded_inputs else {}
     captured_outputs = (

@@ -352,6 +352,9 @@ def test_all_success_is_success() -> None:
 def test_all_skipped_rolls_up_to_skipped() -> None:
     # a platform whose only reported leaves are skipped must roll up to
     # skipped, not success (matching Variant.rollup_status).
+    # This is pure hypothetical to test the rollup logic:
+    # it cannot happen in reality as notify_quartz
+    # is only dispatched if a workflow is not skipped.
     doc = StatusDocument()
     doc.completed_at = "2026-04-08T02:00:00Z"
     _freeze(doc, "linux", ["gfx942"])
@@ -430,6 +433,47 @@ def test_native_packages_counts_rpm_and_deb_into_platform_status() -> None:
     assert native.deb.status is Status.failure
     # deb failure drags the platform rollup.
     assert doc.summary.linux.status is Status.failure
+
+
+def test_native_packages_pending_until_both_rpm_and_deb_report() -> None:
+    # rpm and deb are both always expected. With every other pipeline green but
+    # only rpm reported, the live release must stay in_progress -- the missing
+    # deb keeps native_packages pending so the platform cannot read success.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    native = doc.summary.linux.native_packages
+    assert native is not None
+    assert native.rpm.status is Status.success
+    # deb never reported: renders its in_progress default and holds the platform.
+    assert native.deb.status is Status.in_progress
+    assert doc.summary.linux.status is Status.in_progress
+
+
+def test_native_packages_single_side_does_not_wedge_finalized_release() -> None:
+    # For the moment: hypothetical test:
+    # Once finalized, a side that never reported was gated out: it renders
+    # `skipped` (not a wedging `in_progress`) and the platform follows the
+    # reported statuses (here, rpm success).
+    doc = StatusDocument()
+    doc.completed_at = "2026-04-08T02:00:00Z"
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    native = doc.summary.linux.native_packages
+    assert native is not None
+    assert native.rpm.status is Status.success
+    assert native.deb.status is Status.skipped
+    assert doc.summary.linux.status is Status.success
 
 
 # --- freeze / urls projection -----------------------------------------------

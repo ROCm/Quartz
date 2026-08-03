@@ -227,22 +227,29 @@ def _native_rollup(
     doc: StatusDocument, platform: str, seen_statuses: list[Status]
 ) -> NativePackagesRollup | None:
     """Native packages are placed without a platform; the producer only builds
-    them for linux, so they only count there. Returns `None` when nothing has
-    reported (e.g. on windows), dropping the pipeline from the projection."""
+    them for linux, so they only count there. Returns `None` when neither rpm nor
+    deb has reported, dropping the pipeline so the expected-pipeline placeholder
+    (gate-derived: cancelled / skipped / pending) covers it.
+
+    rpm and deb are both blocking `workflow_call` builds, so the orchestrator
+    cannot finalize until both are terminal or gated-skipped. A side still missing
+    while the release is live is genuinely pending (`in_progress`) and holds the
+    platform below `success`; a side still missing once finalized was gated out and
+    renders `skipped` (it never produced, and cannot wedge the finished release)."""
     if platform != "linux":
         return None
     native = doc.pipelines.native_packages
-    rollup = NativePackagesRollup()
-    seen_any = False
-    if native.rpm is not None:
-        seen_any = True
-        seen_statuses.append(native.rpm.status)
-        rollup.rpm = BuildRollup(status=native.rpm.status)
-    if native.deb is not None:
-        seen_any = True
-        seen_statuses.append(native.deb.status)
-        rollup.deb = BuildRollup(status=native.deb.status)
-    return rollup if seen_any else None
+    if native.rpm is None and native.deb is None:
+        return None
+    missing = Status.skipped if doc.completed_at is not None else Status.in_progress
+    rpm_status = native.rpm.status if native.rpm is not None else missing
+    deb_status = native.deb.status if native.deb is not None else missing
+    seen_statuses.append(rpm_status)
+    seen_statuses.append(deb_status)
+    return NativePackagesRollup(
+        rpm=BuildRollup(status=rpm_status),
+        deb=BuildRollup(status=deb_status),
+    )
 
 
 def _test_rollup(leaves: Iterable[RunLeaf], seen_statuses: list[Status]) -> TestRollup:

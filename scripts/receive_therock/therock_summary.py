@@ -77,7 +77,7 @@ def rebuild_summary(doc: StatusDocument) -> None:
         # the negative conclusion wins.
         if conclusion in (Status.failure, Status.cancelled):
             statuses = [s for s in statuses if s is not Status.in_progress]
-        overall_status = _rollup(statuses)
+        overall_status = rollup_statuses(statuses, Status.in_progress)
     else:
         overall_status = Status.in_progress
     doc.summary = Summary(overall_status=overall_status, linux=linux, windows=windows)
@@ -149,7 +149,7 @@ def _build_platform_summary(
         status_inputs.append(unstarted_status)
 
     fields: dict[str, object] = {
-        "status": _rollup(status_inputs, empty_default=empty_platform_status),
+        "status": rollup_statuses(status_inputs, empty_platform_status),
         "architectures": list(architectures),
         "urls": dict(urls),
         "rocm": rocm or placeholder,
@@ -279,30 +279,3 @@ def _cell_statuses(leaf: RunLeaf) -> list[Status]:
     if leaf.variants:
         return [v.status for v in leaf.variants]
     return [leaf.status]
-
-
-def _rollup(
-    statuses: list[Status], empty_default: Status = Status.in_progress
-) -> Status:
-    """Worst-of reducer over a flat list of statuses.
-
-    Precedence failure > in_progress > cancelled > success > skipped matches
-    `Variant.rollup_status`: a failed leaf is terminal and irreversible, so it
-    must not be masked by a sibling that is still `in_progress` (a stuck or
-    never-completing leaf would otherwise hide a real failure on the same
-    platform). `empty_default` is returned when nothing has been reported:
-    `in_progress` for a release that is still pending, but callers pass `skipped`
-    for a platform with no requested arches (not part of this release).
-    """
-    seen = set(statuses)
-    if Status.failure in seen:
-        return Status.failure
-    if Status.in_progress in seen:
-        return Status.in_progress
-    if Status.cancelled in seen:
-        return Status.cancelled
-    if Status.success in seen:
-        return Status.success
-    if Status.skipped in seen:
-        return Status.skipped
-    return empty_default

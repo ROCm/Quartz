@@ -46,15 +46,6 @@ jobs:
           ref: main
           token: ${{ steps.sync-app-token.outputs.token }}
 
-      - name: Generate GitHub App token for TheRock API reads
-        id: app-token
-        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
-        with:
-          app-id: ${{ secrets.GH_APP_HAULY_ID }}
-          private-key: ${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}
-          owner: "ROCm"
-          repositories: TheRock
-
       - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: "3.12"
@@ -70,7 +61,6 @@ jobs:
       - name: Process TheRock data
         env:
           DISPATCH_PAYLOAD: ${{ inputs.payload_json }}
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           python scripts/receive_therock/therock_process_data.py \
             ${{ inputs.fetch_jobs && '--fetch-jobs' || '--no-fetch-jobs' }} \

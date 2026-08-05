@@ -42,8 +42,8 @@ jobs:
       # bash here.
       - name: Merge develop into main
         run: |
-          git config user.name "quartz-hauly[bot]"
-          git config user.email "quartz-hauly[bot]@users.noreply.github.com"
+          git config user.name "quartz-sync[bot]"
+          git config user.email "quartz-sync[bot]@users.noreply.github.com"
           git fetch origin develop
           message="$(git log -1 \
             --format="Merge develop (%h) into main%n%n%h, %s, %aN (%ae), %ad" \

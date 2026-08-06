@@ -481,6 +481,11 @@ class StatusDocument(BaseModel):
     rocm_version: str = ""
     build_date: str = ""
     trigger_workflow_run_id: int | None = None
+    # Attempt number of the owning orchestrator run. Ownership is the pair
+    # (trigger_workflow_run_id, trigger_run_attempt): a GitHub re-run keeps the
+    # same run id but bumps the attempt, so the attempt breaks ties between a
+    # re-run and the run it supersedes.
+    trigger_run_attempt: int | None = None
     created_at: str | None = None
     completed_at: str | None = None
     # The top-level orchestrator's own terminal conclusion (success / failure /

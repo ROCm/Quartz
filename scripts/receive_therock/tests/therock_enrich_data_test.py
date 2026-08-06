@@ -19,6 +19,7 @@ import json
 import sys
 from pathlib import Path
 from unittest.mock import MagicMock
+from urllib.request import Request
 
 import pytest
 
@@ -374,6 +375,27 @@ def test_no_gh_installed_falls_back_to_unauthenticated(
     gh = GitHubAPI()
 
     assert gh._gh_cli_path is None
+
+    # Exercise the advertised fallback itself, not just the absence of a gh
+    # CLI path: get() with no token and no gh CLI must route through
+    # _get_via_urllib with no Authorization header, never the gh CLI.
+    gh_cli_mock = MagicMock()
+    monkeypatch.setattr(gh, "_get_via_gh_cli", gh_cli_mock)
+    captured: dict[str, Request] = {}
+
+    def _fake_urlopen(request: Request, timeout: int | None = None) -> MagicMock:
+        captured["request"] = request
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b"{}"
+        return response
+
+    monkeypatch.setattr(ted, "urlopen", _fake_urlopen)
+
+    result = gh.get("https://api.github.com/x")
+
+    gh_cli_mock.assert_not_called()
+    assert result == {}
+    assert captured["request"].get_header("Authorization") is None
 
 
 def test_failed_gh_auth_status_falls_back_to_unauthenticated(

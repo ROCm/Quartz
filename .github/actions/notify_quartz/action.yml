@@ -9,9 +9,9 @@ description: >-
   (stripping them when the payload exceeds the workflow_dispatch size cap), and
   dispatch the Quartz ingest workflow.
 
-  Self-contained: it checks out this action's own repo/ref (ROCm/Quartz) into a
-  private path to reach the script, so it works as the first step of a job
-  regardless of what the host job has checked out (including external-repo builds).
+  Self-contained: it checks out ROCm/Quartz `main` into a private path to reach
+  the script, so it works as the first step of a job regardless of what the
+  host job has checked out (including external-repo builds).
 
 inputs:
   run_phase:
@@ -51,8 +51,8 @@ inputs:
       workflow_captured_outputs. Do NOT include secrets.
     required: false
     default: ""
-  gh_app_id:
-    description: "App ID for the GitHub App used to mint the Quartz dispatch token."
+  gh_app_client_id:
+    description: "Client ID for the GitHub App used to mint the Quartz dispatch token."
     required: true
   gh_app_private_key:
     description: "Private key for the GitHub App used to mint the Quartz dispatch token."
@@ -76,8 +76,8 @@ runs:
     - name: Checkout Quartz (notify_quartz script)
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
-        repository: ${{ github.action_repository }}
-        ref: ${{ github.action_ref }}
+        repository: ROCm/Quartz
+        ref: main
         path: .quartz-notify-quartz
         sparse-checkout: |
           scripts/notify_quartz/notify_quartz.py
@@ -87,7 +87,7 @@ runs:
       id: app-token
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
-        app-id: ${{ inputs.gh_app_id }}
+        client-id: ${{ inputs.gh_app_client_id }}
         private-key: ${{ inputs.gh_app_private_key }}
         repositories: ${{ inputs.quartz_repo }}
 

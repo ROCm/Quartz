@@ -1,5 +1,18 @@
 # Contributing to Quartz
 
+Quartz stays closely in sync with [ROCm/TheRock](https://github.com/ROCm/TheRock).
+For the general contribution policies — AI tool use, `pre-commit` setup, coding
+style guides, branch naming, and the pull request / review flow — follow
+[TheRock's `CONTRIBUTING.md`](https://github.com/ROCm/TheRock/blob/main/CONTRIBUTING.md).
+
+This file covers only what is specific to Quartz: its two-branch layout and how
+changes are synced from `develop` to `main`.
+
+> [!IMPORTANT]
+> **Open all code-change PRs against `develop`, never against
+> `main`.** `main` is written only by automation; human changes land on
+> `develop` and are synced to `main` automatically.
+
 ## Branching model
 
 Quartz uses two long-lived branches with distinct purposes:
@@ -8,13 +21,13 @@ Quartz uses two long-lived branches with distinct purposes:
   only human/code commits, making it easy to review what actually changed.
 - **`main`** — the production branch. In addition to the code
   changes synced from `develop`, `main` accumulates high-frequency commits
-  pushed by automation (the hourly ingestion bot). This keeps `develop` readable
+  pushed by automation (the ingestion bot). This keeps `develop` readable
   while `main` holds the full, up-to-date state.
 
 ```text
 develop:  o──o──o                (code changes only)
              \   \
-main:     o───o───o──b──b──b──o  (b = hourly bot commits, o = synced merges)
+main:     o───o───o──b──b──b──o  (b = bot commits, o = synced merges)
 ```
 
 ## Where to make changes
@@ -24,7 +37,7 @@ main:     o───o───o──b──b──b──o  (b = hourly bot com
 - **Do not push directly to `main`.** Direct changes there are reserved for the
   ingestion automation and for the sync workflow described below.
 
-## How changes reach `main`
+## Syncing `develop` to `main`
 
 Syncing is automatic. On every push to `develop`, the
 [`Sync develop to main`](.github/workflows/sync_develop_to_main.yml)

@@ -83,8 +83,14 @@ runs:
           scripts/notify_quartz/notify_quartz.py
         sparse-checkout-cone-mode: false
 
+    - name: Warn on missing GH App credentials
+      if: inputs.gh_app_client_id == '' && inputs.gh_app_private_key == ''
+      shell: bash
+      run: echo "::warning::GH App credentials are empty; skipping Quartz notification. This is expected on TheRock standalone CI where the secrets are not defined."
+
     - name: Generate GitHub App token
       id: app-token
+      if: ${{ !(inputs.gh_app_client_id == '' && inputs.gh_app_private_key == '') }}
       uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
       with:
         client-id: ${{ inputs.gh_app_client_id }}
@@ -92,6 +98,7 @@ runs:
         repositories: ${{ inputs.quartz_repo }}
 
     - name: Notify Quartz
+      if: steps.app-token.outputs.token != ''
       continue-on-error: true
       shell: bash
       env:

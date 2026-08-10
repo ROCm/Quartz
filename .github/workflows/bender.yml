@@ -1,15 +1,19 @@
 # Copyright Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
 
-# Bender checks that pull requests target the develop branch. main is kept in
-# sync via the "Sync develop to main" workflow, so PRs should never target it
-# directly.
+# Bender checks that pull requests target the develop branch, and that the
+# source branch itself was forked from develop rather than main. main is kept
+# in sync via the "Sync develop to main" workflow (which merges develop into
+# main), so a branch forked from main will contain one of those merge commits
+# as its most recent commit shared with main, and that merge commit is never
+# an ancestor of develop. PRs should always target and fork from develop.
 name: Bender
 
 on:
   pull_request:
-    # base_ref only changes on these events; synchronize (new commits) never
-    # affects the target branch, so it's omitted to avoid redundant runs.
+    # base_ref and head.sha only change on these events; synchronize (new
+    # commits) never affects the target or source branch, so it's omitted to
+    # avoid redundant runs.
     types: [opened, edited, reopened]
 
 permissions:
@@ -27,3 +31,20 @@ jobs:
         run: |
           echo "::error::Pull requests must target develop, got: ${BASE_REF}"
           exit 1
+
+      - name: Checkout PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify branch was forked from develop
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch origin main develop
+          merge_base_main="$(git merge-base "${HEAD_SHA}" origin/main)"
+          if ! git merge-base --is-ancestor "${merge_base_main}" origin/develop; then
+            echo "::error::This branch looks like it was created from main instead of develop. Recreate it from develop."
+            exit 1
+          fi

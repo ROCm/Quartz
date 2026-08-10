@@ -1,0 +1,29 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+# Bender checks that pull requests target the develop branch. main is kept in
+# sync via the "Sync develop to main" workflow, so PRs should never target it
+# directly.
+name: Bender
+
+on:
+  pull_request:
+    # base_ref only changes on these events; synchronize (new commits) never
+    # affects the target branch, so it's omitted to avoid redundant runs.
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-target-branch:
+    name: Check target branch
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify PR targets develop
+        if: github.base_ref != 'develop'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          echo "::error::Pull requests must target develop, got: ${BASE_REF}"
+          exit 1

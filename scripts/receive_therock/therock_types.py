@@ -37,7 +37,7 @@ RELEASE_VERSION_PRERELEASE_RE = re.compile(r"^\d+\.\d+\.\d+(rc\d+)$")
 # release status.json (see therock_update_status_json._release_version_suffix).
 # The first alternative is intentionally unanchored so it also catches `.dev`
 # inside longer local version segments (e.g. `+rocm...dev`); the second is
-# anchored because it must match the whole bare `X.Y.Zdev<N>` form.
+# anchored because it must match the whole bare `X.Y.Z.dev<N>` form.
 RELEASE_VERSION_DEV_RE = re.compile(r"\.dev\d*|^\d+\.\d+\.\d+dev\d*")
 
 

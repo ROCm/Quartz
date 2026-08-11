@@ -1,12 +1,6 @@
 # Copyright Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
 
-# Bender checks that pull requests target the develop branch, and that the
-# source branch itself was forked from develop rather than main. main is kept
-# in sync via the "Sync develop to main" workflow (which merges develop into
-# main), so a branch forked from main will contain one of those merge commits
-# as its most recent commit shared with main, and that merge commit is never
-# an ancestor of develop. PRs should always target and fork from develop.
 name: Bender
 
 on:

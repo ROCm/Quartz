@@ -1,8 +1,7 @@
 # Copyright Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
-#
 
-name: WIP Receive TheRock Data Placeholder
+name: Receive TheRock Data
 
 on:
   workflow_dispatch:
@@ -20,7 +19,50 @@ permissions:
   contents: read
 
 jobs:
-  receive_data:
+  receive:
     runs-on: ubuntu-24.04
+    environment: prod
     steps:
-      - run: echo "Skipped"
+      - name: Verify caller
+        if: >-
+          github.event.sender.login != 'quartz-hauly[bot]' ||
+          github.actor != 'quartz-hauly[bot]'
+        env:
+          SENDER_LOGIN: ${{ github.event.sender.login }}
+        run: |
+          echo "::error::Workflow must be triggered by quartz-hauly GitHub App, got: ${SENDER_LOGIN}"
+          exit 1
+
+      - name: Generate GitHub App token for status.json push
+        id: sync-app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ secrets.GH_APP_QUARTZ_SYNC_CID }}
+          private-key: ${{ secrets.GH_APP_QUARTZ_SYNC_PRIVATE_KEY }}
+          repositories: Quartz
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: main
+          token: ${{ steps.sync-app-token.outputs.token }}
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip -r requirements.txt
+
+      - name: Configure git identity
+        run: |
+          git config user.name "quartz-therock[bot]"
+          git config user.email "quartz-therock[bot]@users.noreply.github.com"
+
+      - name: Process TheRock data
+        env:
+          DISPATCH_PAYLOAD: ${{ inputs.payload_json }}
+        run: |
+          python scripts/receive_therock/therock_process_data.py \
+            ${{ inputs.fetch_jobs && '--fetch-jobs' || '--no-fetch-jobs' }} \
+            --status-repo "${GITHUB_WORKSPACE}" \
+            --commit-and-push

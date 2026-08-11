@@ -3,8 +3,12 @@
 
 """Enrich dispatch payloads with additional data from the GitHub API.
 
-Fetches workflow run jobs, parent workflow info, and other metadata that
-is not included in the original dispatch payload.
+For completed workflow_run dispatches, re-fetches the full job list for the
+dispatch's specific run attempt (via
+`GET .../actions/runs/{run_id}/attempts/{run_attempt}/jobs`) onto
+`WorkflowRunRecord.api_jobs`, restoring details the dispatcher may have
+stripped to fit the workflow_dispatch inputs size cap. Fetching parent
+workflow info or other metadata is out of scope for this module.
 
 Authentication is resolved in priority order: a GITHUB_TOKEN env var
 (set in CI) is sent as a Bearer token; otherwise an authenticated gh

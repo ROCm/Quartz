@@ -799,6 +799,7 @@ class WorkflowRunRecord:
                 # `2.12.0+rocm7.15.0a20260702`; `_rocm_version_segment`
                 # extracts it back out.
                 or inputs.get("torch_version")
+                or ""
             ),
             inputs=inputs,
             env=env,

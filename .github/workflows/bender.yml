@@ -1,0 +1,44 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+name: Bender
+
+on:
+  pull_request:
+    # base_ref and head.sha only change on these events; synchronize (new
+    # commits) never affects the target or source branch, so it's omitted to
+    # avoid redundant runs.
+    types: [opened, edited, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  check-target-branch:
+    name: Check target branch
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Verify PR targets develop
+        if: github.base_ref != 'develop'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          echo "::error::Pull requests must target develop, got: ${BASE_REF}"
+          exit 1
+
+      - name: Checkout PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Verify branch was forked from develop
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git fetch origin main develop
+          merge_base_main="$(git merge-base "${HEAD_SHA}" origin/main)"
+          if ! git merge-base --is-ancestor "${merge_base_main}" origin/develop; then
+            echo "::error::This branch looks like it was created from main instead of develop. Recreate it from develop."
+            exit 1
+          fi

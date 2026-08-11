@@ -382,12 +382,14 @@ def parse_gh_datetime(value: str | None) -> datetime | None:
     """Parse a GitHub API datetime string into a tz-aware datetime, or None.
 
     GitHub returns ISO 8601 with a trailing `Z`; an empty/missing value
-    returns `None` (the normal "field absent" case).
+    returns `None` (the normal "field absent" case). `datetime.fromisoformat`
+    only accepts a trailing `Z` on Python 3.11+, so it is normalized to an
+    explicit UTC offset first to also support 3.10.
     """
     if not value:
         return None
     try:
-        return datetime.fromisoformat(value)
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
     except ValueError as exc:
         raise ValueError(
             f"parse_gh_datetime: failed to parse {value!r} as ISO 8601"

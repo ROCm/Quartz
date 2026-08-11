@@ -76,7 +76,7 @@ def test_prerelease_regex_captures_rc(version: str, expected: str) -> None:
     [
         "7.13.0a20260415",  # nightly, not prerelease
         "7.13.0rc",  # no number
-        "7.13.0pre1",  # wrong token
+        "7.13.0pre1",  # wrong suffix
         "7.13.0rc1-extra",
     ],
 )

@@ -1,0 +1,117 @@
+{
+  "event_type": "workflow_run_in_progress",
+  "repository": "ROCm/Quartz-Tester",
+  "workflow_run": {
+    "id": 27833561910,
+    "name": "Multi-Arch Release (dev) | Linux: gfx103x | Windows: gfx103x",
+    "display_title": "Multi-Arch Release (dev) | Linux: gfx103x | Windows: gfx103x",
+    "path": ".github/workflows/multi_arch_build_native_linux_packages.yml",
+    "workflow_id": 287546636,
+    "status": "in_progress",
+    "conclusion": null,
+    "event": "workflow_dispatch",
+    "head_branch": "users/cgoea/quartz",
+    "head_sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+    "run_number": 37,
+    "run_attempt": 1,
+    "html_url": "https://github.com/ROCm/Quartz-Tester/actions/runs/27833561910",
+    "created_at": "2026-06-19T15:07:58Z",
+    "updated_at": "2026-06-19T15:21:36Z",
+    "run_started_at": "2026-06-19T15:07:58Z",
+    "actor": {
+      "login": "cgoea",
+      "id": 84181019
+    },
+    "triggering_actor": {
+      "login": "cgoea",
+      "id": 84181019
+    },
+    "pull_requests": [],
+    "inputs": {
+      "dist_amdgpu_families": "gfx103X-dgpu",
+      "artifact_run_id": "27833561910",
+      "rocm_version": "",
+      "rocm_package_version": "0.0.0.dev0+15929f492254f359f1e88d402fe8adb29b4c75f5",
+      "native_package_type": "rpm",
+      "package_suffix": "",
+      "release_type": "dev",
+      "repository": "ROCm/Quartz-Tester",
+      "ref": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+      "linux_amdgpu_families": "gfx103x",
+      "windows_amdgpu_families": "gfx103x"
+    },
+    "release_type": "dev",
+    "captured_outputs": null,
+    "jobs": [],
+    "parent_workflow": {
+      "id": 27833561910
+    },
+    "referenced_workflows": [
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_portable_linux_artifacts.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_wsl_rocdxg_artifacts.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_release_windows.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_windows_artifacts.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/notify_quartz.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_release_linux.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_native_linux_packages.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_windows.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/build_windows_python_packages.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/setup_multi_arch.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_tarballs.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/build_portable_linux_python_packages.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      },
+      {
+        "path": "ROCm/Quartz-Tester/.github/workflows/multi_arch_build_portable_linux.yml@15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "sha": "15929f492254f359f1e88d402fe8adb29b4c75f5",
+        "ref": "refs/heads/users/cgoea/quartz"
+      }
+    ]
+  }
+}

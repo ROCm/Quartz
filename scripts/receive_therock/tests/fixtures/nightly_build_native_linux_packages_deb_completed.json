@@ -1,0 +1,39 @@
+{
+  "event_type": "workflow_run_completed",
+  "repository": "ROCm/rockrel",
+  "workflow_run": {
+    "id": 27797822903,
+    "name": "Multi arch build native linux packages",
+    "display_title": "Multi arch build native linux packages",
+    "path": ".github/workflows/multi_arch_build_native_linux_packages.yml",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "run_number": 12,
+    "run_attempt": 1,
+    "head_branch": "main",
+    "head_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "html_url": "https://github.com/ROCm/rockrel/actions/runs/27797822903",
+    "created_at": "2026-06-19T15:08:00Z",
+    "run_started_at": "2026-06-19T15:08:00Z",
+    "updated_at": "2026-06-19T15:22:00Z",
+    "actor": {
+      "login": "octocat"
+    },
+    "release_type": "nightly",
+    "inputs": {
+      "release_type": "nightly",
+      "rocm_version": "7.14.0a20260619",
+      "amdgpu_families": "gfx942",
+      "native_package_type": "deb"
+    },
+    "captured_outputs": {
+      "build_deb": {
+        "result": "success",
+        "outputs": {
+          "package_repository_url": "https://therock-nightly-artifacts.s3.amazonaws.com/27797822903-linux/deb/"
+        }
+      }
+    }
+  }
+}

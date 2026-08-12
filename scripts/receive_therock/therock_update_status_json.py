@@ -326,8 +326,14 @@ _CONCLUSION_MAP: dict[str, Status] = {
 # Matrix-cell job name for fan-out builds, e.g. TheRock's
 #   "Build | py 3.12 | torch release/2.10"   (pytorch)
 #   "Build | py 3.12 | jax rocm-jaxlib-v0.9" (jax)
-# `.search` (not fullmatch) so a reusable-workflow prefix/suffix still matches.
-_MATRIX_JOB_RE = re.compile(r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)")
+# Case-insensitive: a calling orchestrator's own composite job name can wrap
+# this in a differently-cased ancestor segment, e.g. rockrel's
+# "Release | py 3.12 | JAX 0.11.0 / Build | py 3.12 | jax rocm-jaxlib-v0.11.0"
+# -- the nested Test sub-job under that same cell has no (py, ref) of its own
+# and relies entirely on that ancestor segment to be recognized.
+_MATRIX_JOB_RE = re.compile(
+    r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)", re.IGNORECASE
+)
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
@@ -366,9 +372,17 @@ def _variants_from_jobs(
     cells: dict[tuple[str, str], list[WorkflowJobRecord]] = {}
     order: list[tuple[str, str]] = []
     for j in jobs:
-        match = _MATRIX_JOB_RE.search(j.name)
-        if not match:
+        # Take the *last* match, not the first: a nested job's composite name
+        # is "ancestor segment(s) / ... / own segment", and the own segment
+        # (closest to the actual job) is the authoritative (py, ref) -- e.g.
+        # a build job's own tail carries the full ref, while an orchestrator
+        # ancestor segment upstream of it may carry a shorter/looser one. A
+        # job with no segment of its own (a nested test sub-job) falls back
+        # to whichever ancestor segment matched.
+        matches = list(_MATRIX_JOB_RE.finditer(j.name))
+        if not matches:
             continue
+        match = matches[-1]
         key = (match.group("py"), match.group("ref"))
         if key not in cells:
             cells[key] = []
@@ -477,6 +491,14 @@ def _refresh_same_run_fanout_tests(
     leaves while some matrix cells are still in progress; the final top-level
     completion is classified as the build phase, so it would otherwise leave
     those same-run test leaves stale.
+
+    `leaf.status` is the *build* run's own top-level GitHub conclusion, which
+    is not necessarily the worst-of its `variants` (e.g. a matrix cell whose
+    nested test job failed/cancelled does not always flip the run's own
+    conclusion). Projected test leaves must not inherit that raw status
+    verbatim -- they re-derive their status from the same variants they are
+    given, exactly like `_merge_variant_leaf` does for every other
+    variant-carrying leaf.
     """
     cls = workflow_run.classification
     if (
@@ -488,6 +510,7 @@ def _refresh_same_run_fanout_tests(
     ):
         return False
 
+    projected_status = Variant.rollup_status(leaf.variants, leaf.status)
     pipeline = getattr(doc.pipelines, cls.pipeline_type)
     wrote = False
     for phase_map in (pipeline.test, pipeline.test_full):
@@ -499,7 +522,7 @@ def _refresh_same_run_fanout_tests(
                     continue
                 if not existing.should_replace(leaf):
                     continue
-                existing.status = leaf.status
+                existing.status = projected_status
                 existing.completed_at = leaf.completed_at
                 existing.variants = leaf.variants
                 wrote = True

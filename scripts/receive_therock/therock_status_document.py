@@ -344,10 +344,8 @@ class Pipelines(BaseModel):
 def _merge_variant_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLeaf":
     """Merge one leaf update carrying `variants` (a matrix cell) into another.
 
-    Shared by both the `build` phase (pytorch/jax py x ref cells, all derived
-    from one workflow run's own job list) and the `test`/`test-full` phase
-    (ROCm's per-component `test_component.yml` cells, one dispatch per
-    component)."""
+    Used for the `build` phase's pytorch/jax py x ref cells, all derived from
+    one workflow run's own job list."""
     variants: list[Variant] = []
     positions: dict[tuple[tuple[str, str], ...], int] = {}
 
@@ -583,11 +581,6 @@ class StatusDocument(BaseModel):
         )
         arch_map = phase_map.setdefault(platform, {})
         existing = arch_map.get(arch)
-        if pipeline_type == "rocm" and (
-            leaf.variants or (existing is not None and existing.variants)
-        ):
-            arch_map[arch] = _merge_variant_leaf(existing, leaf)
-            return True
         if existing is not None and not existing.should_replace(leaf):
             return False
         arch_map[arch] = leaf

@@ -1609,91 +1609,58 @@ def _test_component_run(
     run_id: int = 200,
 ) -> WorkflowRunRecord:
     """A `test_component.yml` completion for one ROCm component."""
-    return _variant_run(
+    run = _run(
+        path="test_component.yml",
+        platform="linux",
         pipeline_type="rocm",
         pipeline_phase="test",
         architectures=["gfx1151"],
-        run_id=run_id,
-        conclusion=conclusion,
-        inputs={"component": json.dumps({"job_name": job_name, "total_shards": 3})},
-        path="test_component.yml",
     )
+    run.workflow_run_id = run_id
+    run.conclusion = conclusion
+    run.inputs = {"component": json.dumps({"job_name": job_name, "total_shards": 3})}
+    return run
 
 
-def test_test_component_leaf_carries_one_component_variant() -> None:
-    run = _test_component_run(job_name="hipblaslt")
-    leaf = tusj._create_leaf(run)
-    assert leaf.variants is not None and len(leaf.variants) == 1
-    assert leaf.variants[0].matrix == {"component": "hipblaslt"}
-    assert leaf.variants[0].status is Status.success
-
-
-def test_test_component_leaf_has_no_variant_without_component_input() -> None:
-    run = _variant_run(
-        pipeline_type="rocm",
-        pipeline_phase="test",
-        architectures=["gfx1151"],
-        path="test_component.yml",
+def test_test_component_completion_is_skipped(tmp_path: Path) -> None:
+    # test_component.yml is registered in WORKFLOW_SPECS solely so
+    # classification doesn't raise; its per-component completions must be
+    # disregarded entirely (component-level granularity is not yet decided),
+    # not written anywhere.
+    out = tusj.update_status_json(
+        _event(_test_component_run(job_name="hipblaslt")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
-    assert tusj._create_leaf(run).variants is None
+    assert out is None
+    assert not any(tmp_path.rglob("status.json"))
 
 
-def test_rocm_test_components_accumulate_across_separate_dispatches() -> None:
-    # `test_artifacts.yml` fans out one `test_component.yml` call per ROCm
-    # component; each self-reports independently, so two components' leaves
-    # must accumulate onto the same [platform][arch] leaf rather than the
-    # second overwriting the first.
-    doc = StatusDocument()
-    doc.upsert_leaf(
-        "linux",
-        "gfx1151",
-        "rocm",
-        "test",
-        tusj._create_leaf(_test_component_run(job_name="hipblaslt", run_id=201)),
-    )
-    doc.upsert_leaf(
-        "linux",
-        "gfx1151",
-        "rocm",
-        "test",
-        tusj._create_leaf(
-            _test_component_run(job_name="rocblas", conclusion="failure", run_id=202)
+def test_test_component_completion_does_not_affect_artifact_level_leaf(
+    tmp_path: Path,
+) -> None:
+    # A failing test_component.yml completion arriving either before or after
+    # test_artifacts.yml's own (artifact-level) report must not influence the
+    # [platform][arch] leaf at all -- it stays exactly what test_artifacts.yml
+    # itself reported, with no variants.
+    tusj.update_status_json(
+        _event(
+            _test_component_run(job_name="hipblaslt", conclusion="failure", run_id=201)
         ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
-
-    leaf = doc.pipelines.rocm.test["linux"]["gfx1151"]
-    assert leaf.variants is not None and len(leaf.variants) == 2
-    by_component = {v.matrix["component"]: v.status for v in leaf.variants}
-    assert by_component == {
-        "hipblaslt": Status.success,
-        "rocblas": Status.failure,
-    }
-    # failure > success in the rollup precedence.
-    assert leaf.status is Status.failure
-
-
-def test_rocm_test_artifacts_completion_preserves_component_variants() -> None:
-    # test_artifacts.yml's own (variant-less) run-level completion typically
-    # lands last (after every test_component.yml child); it must not discard
-    # the per-component breakdown already accumulated.
-    doc = StatusDocument()
-    doc.upsert_leaf(
-        "linux",
-        "gfx1151",
-        "rocm",
-        "test",
-        tusj._create_leaf(_test_component_run(job_name="hipblaslt", run_id=201)),
-    )
-
-    top_level = _variant_run(
+    artifact_run = _run(
+        path=".github/workflows/test_artifacts.yml",
+        platform="linux",
         pipeline_type="rocm",
         pipeline_phase="test",
         architectures=["gfx1151"],
-        run_id=203,
-        path="test_artifacts.yml",
     )
-    doc.upsert_leaf("linux", "gfx1151", "rocm", "test", tusj._create_leaf(top_level))
-
-    leaf = doc.pipelines.rocm.test["linux"]["gfx1151"]
-    assert leaf.variants is not None and len(leaf.variants) == 1
-    assert leaf.variants[0].matrix == {"component": "hipblaslt"}
+    out = tusj.update_status_json(
+        _event(artifact_run), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out is not None
+    leaf = _load(out).pipelines.rocm.test["linux"]["gfx1151"]
+    assert leaf.status is Status.success
+    assert leaf.variants is None

@@ -334,10 +334,15 @@ _MATRIX_JOB_RE = re.compile(r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S
 _VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_ref"}
 
 # `test_artifacts.yml` fans out one `test_component.yml` call per ROCm test
-# component (each internally sharded via its own matrix); `wr.path` is
-# rewritten to the *reporting* workflow's filename (see notify_quartz.py's
-# `reporting_workflow` override), so this distinguishes those per-component
-# completions from `test_artifacts.yml`'s own (variant-less) run-level report.
+# component (each internally sharded via its own matrix), and each self-
+# reports independently via notify_quartz. `wr.path` is rewritten to the
+# *reporting* workflow's filename (see notify_quartz.py's `reporting_workflow`
+# override), so this distinguishes those per-component completions from
+# `test_artifacts.yml`'s own run-level report. Registered in WORKFLOW_SPECS
+# so classification doesn't raise, but disregarded entirely (see
+# `update_status_json`'s skip below) until we decide whether component-level
+# granularity is worth tracking; `test_artifacts.yml`'s own report is still
+# the artifact-level source of truth for the `[platform][arch]` leaf.
 _TEST_COMPONENT_WORKFLOW = "test_component.yml"
 
 # Run inputs that carry the (py, ref) cell for single-cell runs (tests), tried
@@ -444,50 +449,12 @@ def _variants_from_inputs(
     ]
 
 
-def _variant_from_test_component(workflow_run: WorkflowRunRecord) -> Variant | None:
-    """One variant for a `test_component.yml` completion, keyed by component.
-
-    Each call already rolls up every one of its own shards into a single
-    result before notifying Quartz -- `run_conclusion` is derived from
-    `needs.test_component.result`, GitHub's own aggregate across the shard
-    matrix (see notify_quartz.py's `_derive_run_conclusion_from_captured_outputs`)
-    -- so no shard-level parsing is needed here; `workflow_run.conclusion` is
-    already that component's shard-aggregated result.
-    """
-    raw_component = workflow_run.inputs.get("component")
-    try:
-        component = (
-            json.loads(raw_component) if isinstance(raw_component, str) else None
-        )
-    except json.JSONDecodeError:
-        component = None
-    job_name = component.get("job_name") if isinstance(component, dict) else None
-    if not job_name:
-        return None
-
-    started = workflow_run.run_started_at or workflow_run.created_at
-    completed = (
-        workflow_run.updated_at
-        if workflow_run.conclusion and workflow_run.updated_at is not None
-        else None
-    )
-    return Variant(
-        matrix={"component": str(job_name)},
-        run_id=workflow_run.workflow_run_id,
-        run_attempt=workflow_run.run_attempt,
-        status=_run_status(workflow_run),
-        started_at=_datetime_to_z(started) if started else None,
-        completed_at=_datetime_to_z(completed) if completed else None,
-    )
-
-
 def _derive_variants(workflow_run: WorkflowRunRecord) -> list[Variant] | None:
-    """Matrix-cell variants for fan-out pipelines (pytorch/jax py x ref), or a
-    single per-component cell for ROCm's `test_component.yml` shard groups."""
-    if PurePosixPath(workflow_run.path).name == _TEST_COMPONENT_WORKFLOW:
-        variant = _variant_from_test_component(workflow_run)
-        return [variant] if variant else None
+    """Matrix-cell variants for fan-out pipelines (pytorch/jax py x ref).
 
+    ROCm's `test_component.yml` shard groups never reach here: they're
+    skipped outright in `update_status_json` (see `_TEST_COMPONENT_WORKFLOW`).
+    """
     axis_key = _VARIANT_AXIS_KEY.get(workflow_run.classification.pipeline_type)
     if axis_key is None:
         return None
@@ -1335,6 +1302,19 @@ def update_status_json(
             log.info(
                 "native package install test is an async sanity check not tracked "
                 "in status.json (workflow_run_id=%s); skipping",
+                workflow_run.workflow_run_id,
+            )
+            return None
+
+        # `test_component.yml` is registered in WORKFLOW_SPECS solely so
+        # classification doesn't raise; its per-component completions are
+        # disregarded until we decide whether component-level granularity is
+        # worth tracking (`test_artifacts.yml`'s own report remains the
+        # artifact-level source of truth for the `[platform][arch]` leaf).
+        if PurePosixPath(workflow_run.path).name == _TEST_COMPONENT_WORKFLOW:
+            log.info(
+                "test_component.yml completion is disregarded (component-level "
+                "granularity not yet tracked; workflow_run_id=%s); skipping",
                 workflow_run.workflow_run_id,
             )
             return None

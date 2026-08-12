@@ -79,6 +79,9 @@ _EXCLUDED_WORKFLOWS = frozenset(
         "publish_no_rocm_image_ubuntu24_04_rocgdb.yml",
         # Upstream test scaffolding (not Quartz-reported).
         "test_artifacts_structure.yml",
+        # Registered separately in users/cgoea/fix_test_artifacts; excluded
+        # here so this branch stays green standalone.
+        "test_component.yml",
         "test_jax_dockerfile.yml",
         # Quartz's own local plumbing (not a rock producer workflow).
         "sync_develop_to_main.yml",

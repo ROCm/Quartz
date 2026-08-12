@@ -1599,3 +1599,85 @@ def test_completed_fanout_build_refreshes_same_run_test_leaves() -> None:
     assert leaf.completed_at == "2026-06-19T15:18:00Z"
     assert leaf.variants is not None
     assert leaf.variants[0].status is Status.success
+
+
+def test_fanout_projection_uses_variant_rollup_not_raw_run_conclusion() -> None:
+    # The build run's own top-level GitHub conclusion is not necessarily the
+    # worst-of its matrix cells (e.g. a cell whose nested test job failed does
+    # not always flip the run's own conclusion). A projected test leaf must
+    # take the worst-of its own variants, not the raw run conclusion.
+    doc = StatusDocument()
+    stale_test = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx110X-all"],
+        run_id=902,
+        conclusion=None,
+        jobs=[
+            _job("Build | py 3.12 | torch release/2.10 / Build"),
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx110X-all",
+                conclusion=None,
+                completed=None,
+            ),
+        ],
+    )
+    doc.upsert_leaf(
+        "linux", "gfx110X-all", "pytorch", "test", tusj._create_leaf(stale_test)
+    )
+
+    # The run's own conclusion reports success even though its nested test
+    # job for this cell failed.
+    completed_build = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=902,
+        conclusion="success",
+        jobs=[
+            _job("Build | py 3.12 | torch release/2.10 / Build"),
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx110X-all",
+                conclusion="failure",
+            ),
+        ],
+    )
+    completed_build.classification.platform = "windows"
+    tusj._merge_run_into_document(
+        doc, completed_build, tusj._create_leaf(completed_build)
+    )
+
+    leaf = doc.pipelines.pytorch.test["linux"]["gfx110X-all"]
+    assert leaf.status is Status.failure
+    assert leaf.variants is not None
+    assert leaf.variants[0].status is Status.failure
+
+
+def test_variant_job_name_matches_uppercase_ancestor_segment() -> None:
+    # A calling orchestrator (e.g. rockrel) can wrap TheRock's own build job
+    # in a differently-cased ancestor segment, e.g.
+    #   "Release | py 3.12 | JAX 0.11.0 / Build | py 3.12 | jax rocm-jaxlib-v0.11.0"
+    # The build job's own tail (lowercase, full ref) must still win over that
+    # ancestor. A nested test sub-job has no (py, ref) segment of its own and
+    # must fall back to the uppercase ancestor instead of being dropped.
+    run = _variant_run(
+        pipeline_type="jax",
+        pipeline_phase="build",
+        jobs=[
+            _job(
+                "build_jax_wheels / Release | py 3.12 | JAX 0.11.0 / "
+                "Build | py 3.12 | jax rocm-jaxlib-v0.11.0"
+            ),
+            _job(
+                "build_jax_wheels / Release | py 3.13 | JAX 0.11.0 / "
+                "Test | gfx94X-dcgpu | linux-gfx942-1gpu-ccs-csp-ossci-rocm / "
+                "Test JAX | gfx94X-dcgpu",
+                conclusion="cancelled",
+            ),
+        ],
+    )
+    variants = tusj._derive_variants(run)
+    by_py = {v.matrix["py"]: v for v in variants}
+    assert by_py["3.12"].matrix["jax_ref"] == "rocm-jaxlib-v0.11.0"
+    assert by_py["3.12"].status is Status.success
+    assert by_py["3.13"].matrix["jax_ref"] == "0.11.0"
+    assert by_py["3.13"].status is Status.cancelled

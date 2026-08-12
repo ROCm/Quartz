@@ -550,9 +550,7 @@ def test_per_platform_orchestrator_does_not_finalize(tmp_path: Path) -> None:
 def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
     tmp_path: Path,
 ) -> None:
-    _establish_owner(
-        tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION
-    )
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
     raw_s3 = "https://therock-prerelease-artifacts.s3.amazonaws.com/27797822902-linux"
     build = _prerelease_leaf_run()
     build.tarball_url = f"{raw_s3}/tarballs/"
@@ -750,9 +748,7 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
 
 
 def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
-    _establish_owner(
-        tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION
-    )
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
     tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )

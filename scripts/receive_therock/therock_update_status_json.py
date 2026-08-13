@@ -486,6 +486,21 @@ def _refresh_same_run_fanout_tests(
 ) -> bool:
     """Refresh same-run test leaves from a completed fan-out workflow snapshot.
 
+    PyTorch/JAX test coverage (`test_pytorch_wheels.yml` / `test_linux_jax_wheels.yml`)
+    is invoked as a reusable `workflow_call` nested inside the delegated release
+    workflow -- not dispatched as its own top-level run -- so its jobs land in
+    the *same* run id, job list, and webhook notifications as the entry build.
+    There is no job-name-level split between "build" and "test" jobs: the
+    registry classifies the whole run as `pipeline_type`/`pipeline_phase="build"`
+    (see `WORKFLOW_SPECS`), and `_variants_from_jobs` already groups every job
+    sharing a (py, ref) cell -- build and nested test alike -- into one
+    `Variant` per cell (see `test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell`).
+    Early notifications can project that job-list snapshot into per-arch test
+    leaves (keyed by the same run id) while some cells are still in progress;
+    the final notification is still classified as the build phase, so without
+    this function those same-run test leaves would go stale once the build
+    itself is done.
+
     `leaf.status` is this run's own top-level GitHub conclusion. It is not
     necessarily the worst-of its `variants` (e.g. a matrix cell whose nested
     test job failed/cancelled does not always flip the run's own conclusion,

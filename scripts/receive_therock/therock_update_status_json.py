@@ -661,10 +661,19 @@ def _reset_finalization_for_rerun(doc: StatusDocument) -> None:
     rebuild_summary(doc)
 
 
-def _release_version_matches_document(
+def _is_ownerless_pytorch_leaf_for_release(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
-    """True when a leaf with no derivable owner still pins to this exact release."""
+    """True for a pytorch leaf with no derivable owner that pins to this release.
+
+    pytorch test runs carry only the rocm version (inside the torch version), no
+    artifact_run_id or parent to derive an owner from. asan does not run pytorch,
+    so a pytorch leaf whose release version matches the document can only be a
+    legit normal/prerelease run. Restricting to `pipeline_type == "pytorch"`
+    keeps this the sole ownerless-acceptance path.
+    """
+    if workflow_run.classification.pipeline_type != "pytorch":
+        return False
     release_version = workflow_run.classification.release_version
     return bool(release_version) and release_version == doc.rocm_version
 
@@ -672,23 +681,34 @@ def _release_version_matches_document(
 def _gate_to_document_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
-    """Allow only updates that belong to the document's top-level orchestrator run."""
+    """Allow only leaf updates that belong to the document's owning run.
+
+    Strict by design: a leaf never establishes, supersedes, or takes over
+    ownership. Ownership is established only on the owner-writer path
+    (`_record_orchestrator_owner`, driven by the setup run and the top-level
+    orchestrator). This keeps a second, later release run (notably an asan run,
+    whose run id is higher) from hijacking the normal release document.
+    """
     owner = doc.trigger_workflow_run_id
     parent = workflow_run.trigger_workflow_run_id
 
+    if owner in (None, 0):
+        log.info(
+            "skipping workflow_run_id=%s: status.json has no owner yet; only a "
+            "setup or top-level orchestrator run may establish ownership",
+            workflow_run.workflow_run_id,
+        )
+        return False
+
+    # `workflow_call` children share the owner's run id but carry no derived
+    # parent; accept them when their own run id is the owner.
     if parent in (None, 0):
-        if owner in (None, 0) or workflow_run.workflow_run_id == owner:
+        if workflow_run.workflow_run_id == owner:
             return True
-        if _release_version_matches_document(doc, workflow_run):
-            log.info(
-                "workflow_run_id=%s has no derived owner run, but its "
-                "release_version=%r matches status.json's rocm_version=%r; "
-                "accepting into trigger_workflow_run_id=%s",
-                workflow_run.workflow_run_id,
-                workflow_run.classification.release_version,
-                doc.rocm_version,
-                owner,
-            )
+        # A pytorch leaf carries only the rocm version and cannot prove ownership
+        # by run id; admit it when its version pins to this release. A mismatched
+        # version, or any non-pytorch ownerless leaf, is still refused.
+        if _is_ownerless_pytorch_leaf_for_release(doc, workflow_run):
             return True
         log.info(
             "skipping workflow_run_id=%s with no derived owner run; status.json "
@@ -698,22 +718,15 @@ def _gate_to_document_owner(
         )
         return False
 
-    if owner in (None, 0):
-        return True
-
-    if parent < owner:
+    if parent != owner:
         log.info(
-            "skipping workflow_run_id=%s from superseded trigger_workflow_run_id=%s; "
-            "status.json is owned by newer trigger_workflow_run_id=%s",
+            "skipping workflow_run_id=%s from trigger_workflow_run_id=%s; "
+            "status.json is owned by trigger_workflow_run_id=%s",
             workflow_run.workflow_run_id,
             parent,
             owner,
         )
         return False
-
-    if parent > owner:
-        _reset_document_for_new_owner(doc)
-        doc.trigger_workflow_run_id = parent
 
     return True
 
@@ -1271,19 +1284,43 @@ def update_status_json(
         )
         return None
 
-    finalize = _is_release_completion(payload, workflow_run)
+    finalize = None
     record_owner_only = False
     update_platform_urls_only = False
-    if finalize is None:
-        if _is_release_cdn_url_update(payload, workflow_run):
-            update_platform_urls_only = True
-        elif (
-            payload.event_type == "workflow_run_in_progress"
-            and is_top_level_orchestrator(workflow_run)
-        ):
-            record_owner_only = True
-        else:
+
+    c = workflow_run.classification
+    if c.pipeline_type == "setup":
+        # The setup run executes via `workflow_call`, so it shares the top-level
+        # orchestrator's run id and can anchor document ownership before any leaf
+        # arrives (owner writer: `_record_orchestrator_owner`). Only the normal
+        # `release` setup may own the normal release document. The top-level
+        # orchestrators pass build_variant verbatim to setup_multi_arch.yml
+        # (multi_arch_release.yml -> "release", multi_arch_release_asan.yml ->
+        # "asan"), and sanitizer variants (asan, host-asan, tsan) get their own
+        # status.json file later. Gate positively on "release" so anything that
+        # is not provably the normal release is refused rather than fail-open.
+        if c.build_variant != "release":
+            log.info(
+                "setup run build_variant=%r is not the normal release; must not "
+                "own the normal release document (workflow_run_id=%s); skipping "
+                "status.json update",
+                c.build_variant,
+                workflow_run.workflow_run_id,
+            )
             return None
+        record_owner_only = True
+    else:
+        finalize = _is_release_completion(payload, workflow_run)
+        if finalize is None:
+            if _is_release_cdn_url_update(payload, workflow_run):
+                update_platform_urls_only = True
+            elif (
+                payload.event_type == "workflow_run_in_progress"
+                and is_top_level_orchestrator(workflow_run)
+            ):
+                record_owner_only = True
+            else:
+                return None
 
     if finalize or record_owner_only or update_platform_urls_only:
         if not workflow_run.classification.release_version:
@@ -1295,7 +1332,6 @@ def update_status_json(
             )
             return None
     else:
-        c = workflow_run.classification
         # Native package install tests are async sanity checks with no per-arch
         # payload; status.json has no native_packages test slot, so skip them.
         if c.pipeline_type == "native_packages" and c.pipeline_phase == "test":

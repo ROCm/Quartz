@@ -5,7 +5,7 @@
   "build_date": "20260813",
   "created_at": "2026-08-13T00:10:19Z",
   "status_json_created": "2026-08-13T00:14:58Z",
-  "status_json_last_updated": "2026-08-13T04:46:39Z",
+  "status_json_last_updated": "2026-08-13T04:47:53Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -33,7 +33,7 @@
         "wheels": "https://rocm.nightlies.amd.com/whl-multi-arch/",
         "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/31654160298-linux/index.html",
         "rpm": "https://therock-nightly-artifacts.s3.amazonaws.com/31654160298-linux/packages/rpm/x86_64",
-        "deb": "https://rocm.nightlies.amd.com/packages-multi-arch/deb/20260813-31653513851/"
+        "deb": "https://therock-nightly-artifacts.s3.amazonaws.com/31654160298-linux/packages/deb"
       },
       "rocm": {
         "build": {
@@ -76,7 +76,7 @@
           "status": "success"
         },
         "deb": {
-          "status": "in_progress"
+          "status": "success"
         }
       }
     },
@@ -3376,10 +3376,11 @@
         "completed_at": "2026-08-13T03:16:53Z"
       },
       "deb": {
-        "status": "in_progress",
+        "status": "success",
         "run_id": 31654160298,
         "run_attempt": 1,
-        "started_at": "2026-08-13T00:21:51Z"
+        "started_at": "2026-08-13T00:21:51Z",
+        "completed_at": "2026-08-13T03:16:53Z"
       }
     }
   }

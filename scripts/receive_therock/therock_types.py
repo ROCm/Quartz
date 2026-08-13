@@ -207,6 +207,23 @@ WORKFLOW_SPECS: dict[str, list[WorkflowSpec]] = {
             platform_from_test_runs_on=True,
         ),
     ],
+    # Per-component ROCm test shard-group: `test_artifacts.yml` fans out one
+    # `test_component.yml` call per component (each internally sharded via a
+    # matrix), and each call self-reports via notify_quartz with its own
+    # already shard-rolled-up result. Registered here only so classification
+    # doesn't raise (see `derive_platform_and_pipeline`) -- these completions
+    # are otherwise disregarded (see `update_status_json`'s skip for this
+    # workflow) until we decide whether component-level granularity is worth
+    # tracking; `test_artifacts.yml`'s own report is still the artifact-level
+    # source of truth for the `[platform][arch]` leaf.
+    "test_component.yml": [
+        WorkflowSpec(
+            platform="",
+            pipeline_type="rocm",
+            pipeline_phase="test",
+            platform_from_test_runs_on=True,
+        ),
+    ],
     # ROCm wheel tests: CI-only in TheRock (TBD whether this workflow is kept),
     # kept so a CI event still classifies as rocm/test, keyed per-arch by
     # `amdgpu_family`.

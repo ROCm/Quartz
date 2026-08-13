@@ -5,10 +5,7 @@ name: Bender
 
 on:
   pull_request:
-    # base_ref and head.sha only change on these events; synchronize (new
-    # commits) never affects the target or source branch, so it's omitted to
-    # avoid redundant runs.
-    types: [opened, edited, reopened]
+    types: [opened, edited, reopened, synchronize]
 
 permissions:
   contents: read

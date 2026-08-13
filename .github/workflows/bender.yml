@@ -5,10 +5,6 @@ name: Bender
 
 on:
   pull_request:
-    # base_ref and the fork point never change on synchronize (new commits),
-    # so this doesn't need to re-verify anything on every push -- but it's a
-    # required check, so it still needs to re-run and report a result for
-    # each new head sha, or GitHub blocks the merge on a missing check.
     types: [opened, edited, reopened, synchronize]
 
 permissions:

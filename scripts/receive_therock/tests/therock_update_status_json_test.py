@@ -1589,6 +1589,12 @@ def test_completed_fanout_build_refreshes_same_run_test_leaves() -> None:
             _job("Build | py 3.12 | torch release/2.10 / Test | gfx110X-all"),
         ],
     )
+    # Deliberately mismatched vs. the linux leaf above: this proves the match
+    # is keyed on (run_id, run_attempt) alone, not platform. That's safe in
+    # practice -- GitHub's run_id is unique per repository across every
+    # workflow/platform, so a real linux and windows run can never collide on
+    # one -- but it's an isolation technique, not a model of real data; don't
+    # read it as "a windows run can update a linux leaf" in production.
     completed_build.classification.platform = "windows"
     tusj._merge_run_into_document(
         doc, completed_build, tusj._create_leaf(completed_build)
@@ -1677,6 +1683,11 @@ def test_fanout_projection_folds_raw_run_conclusion_into_rollup() -> None:
         "linux", "gfx110X-all", "pytorch", "test", tusj._create_leaf(stale_test)
     )
 
+    # Same platform as the stale leaf above: this test is about the
+    # cancellation-folding logic, not about the (run_id, run_attempt)-only
+    # matching (already covered by
+    # test_completed_fanout_build_refreshes_same_run_test_leaves), so it
+    # doesn't need a platform mismatch to make its point.
     cancelled_build = _variant_run(
         pipeline_type="pytorch",
         pipeline_phase="build",
@@ -1689,7 +1700,6 @@ def test_fanout_projection_folds_raw_run_conclusion_into_rollup() -> None:
             ),
         ],
     )
-    cancelled_build.classification.platform = "windows"
     tusj._merge_run_into_document(
         doc, cancelled_build, tusj._create_leaf(cancelled_build)
     )

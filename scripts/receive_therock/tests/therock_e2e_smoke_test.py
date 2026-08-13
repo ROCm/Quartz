@@ -35,6 +35,7 @@ from therock_status_document import Status, StatusDocument  # noqa: E402
 FIXTURES = Path(__file__).resolve().parent / "fixtures"
 _NIGHTLY_DATE = "20260619"
 
+_SETUP = "nightly_setup_completed.json"
 _LINUX_BUILD = "nightly_build_portable_linux_completed.json"
 _WINDOWS_BUILD = "nightly_build_windows_completed.json"
 _NATIVE_DEB = "nightly_build_native_linux_packages_deb_completed.json"
@@ -69,7 +70,7 @@ def _load(status_repo: Path) -> StatusDocument:
 
 
 def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
-    for fixture in (_LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
+    for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
         assert _process(fixture, tmp_path) == 0
 
     mid = _load(tmp_path)
@@ -90,7 +91,7 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
 def test_full_nightly_sequence_writes_symlink_and_latest_good(
     tmp_path: Path,
 ) -> None:
-    for fixture in (_LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB, _RELEASE):
+    for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
         assert _process(fixture, tmp_path) == 0
 
     nightly_dir = tmp_path / "release-nightly"

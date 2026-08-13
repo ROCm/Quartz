@@ -177,7 +177,63 @@ def _nightly_status_path(repo_dir: Path) -> Path:
     return repo_dir / "release-nightly" / _NIGHTLY_DATE / "status.json"
 
 
+def _establish_owner(
+    repo_dir: Path,
+    run_id: int = 27797822902,
+    *,
+    release_type: str = "nightly",
+    version: str = _RELEASE_VERSION,
+) -> None:
+    """Anchor document ownership the way the real pipeline does.
+
+    The strict leaf gate drops any leaf that reaches an ownerless document, so
+    ownership must be established first. The top-level orchestrator's
+    in-progress event (or the setup run) is the only thing that records the
+    owning run. A higher run id here takes over, resetting the previous run's
+    detail -- the same reset a newer release run triggers in production.
+    """
+    orch = _orchestrator_run()
+    orch.workflow_run_id = run_id
+    orch.conclusion = None
+    orch.status = "in_progress"
+    orch.release_type = release_type
+    orch.rocm_version = version
+    orch.classification.release_version = version
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=repo_dir,
+        commit_and_push=False,
+    )
+
+
+def _setup_run(
+    run_id: int,
+    *,
+    build_variant: str = "release",
+    release_type: str = "nightly",
+    version: str = _RELEASE_VERSION,
+) -> WorkflowRunRecord:
+    """A completed setup_multi_arch.yml run. It executes via `workflow_call`, so
+    its run id equals the top-level orchestrator's -- letting it anchor
+    ownership before any leaf lands. `build_variant='asan'` must never own the
+    normal release document."""
+    run = _run(
+        path=".github/workflows/setup_multi_arch.yml",
+        platform="",
+        pipeline_type="setup",
+        pipeline_phase="setup",
+        architectures=[],
+    )
+    run.workflow_run_id = run_id
+    run.release_type = release_type
+    run.rocm_version = version
+    run.classification.release_version = version
+    run.classification.build_variant = build_variant
+    return run
+
+
 def test_leaf_event_leaves_release_in_progress(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
     out = tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -194,6 +250,7 @@ def test_rocm_test_events_populate_test_rollup(tmp_path: Path) -> None:
     # Seed the platform with a rocm build leaf, then deliver two per-arch
     # `test_artifacts.yml` runs (rocm/test). Each arch contributes one entry to
     # the rocm.test counters (no variants).
+    _establish_owner(tmp_path)
     tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -232,6 +289,7 @@ def test_version_less_test_event_routes_by_run_date(tmp_path: Path) -> None:
     # Test workflows are dispatched without a version input, so their events
     # carry no release_version. Routing falls back to the run date (created_at),
     # landing in the same dated document a build leaf seeded.
+    _establish_owner(tmp_path)
     tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -353,13 +411,15 @@ def test_orchestrator_start_then_finalize_records_owner_then_completes(
 def test_leaf_does_not_stamp_orchestrator_owner(tmp_path: Path) -> None:
     # The owner id is the top-level orchestrator run only; a leaf's immediate
     # parent (e.g. a per-platform orchestrator) must never be recorded as it.
+    # Under the strict gate a leaf whose parent differs from the owner is dropped
+    # outright -- it neither takes over ownership nor lands in the document.
+    _establish_owner(tmp_path)
     leaf = _leaf_run()
     leaf.trigger_workflow_run_id = 123456
-    out = tusj.update_status_json(
-        _event(leaf), repo_dir=tmp_path, commit_and_push=False
-    )
-    doc = _load(out)
-    assert doc.trigger_workflow_run_id is None
+    tusj.update_status_json(_event(leaf), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 27797822902
+    assert "linux" not in doc.pipelines.rocm.build
 
 
 def test_older_orchestrator_start_does_not_override_newer_owner(
@@ -383,49 +443,66 @@ def test_older_orchestrator_start_does_not_override_newer_owner(
     assert doc.trigger_workflow_run_id == 29079513704
 
 
-def test_leaf_without_owner_but_matching_release_version_is_accepted(
+def test_ownerless_non_pytorch_leaf_is_rejected(
     tmp_path: Path,
 ) -> None:
-    # test_pytorch_wheels_full.yml (and similar async benc-uk dispatches) carry
-    # no run id or artifact URL to derive a parent from, so trigger_workflow_run_id
-    # is None even once an orchestrator has claimed ownership of the document.
-    # Its classification.release_version -- resolved from the wheel's own
-    # torch_version -- still pins it to this exact release, so it must be
-    # accepted rather than rejected as ownerless.
-    orch = _orchestrator_run()
-    orch.workflow_run_id = 29079513704
-    orch.conclusion = None
-    orch.status = "in_progress"
-    tusj.update_status_json(
-        _event(orch, event_type="workflow_run_in_progress"),
-        repo_dir=tmp_path,
-        commit_and_push=False,
-    )
+    # An ownerless leaf that is NOT a pytorch run cannot be admitted by version
+    # match: only `pipeline_type == "pytorch"` may use the version-match rescue,
+    # since pytorch is the sole pipeline that carries no derivable owner. A rocm
+    # leaf without a derivable owner whose run id is not the owner is dropped.
+    _establish_owner(tmp_path, 29079513704)
 
     ownerless_test = _run(
-        path=".github/workflows/test_pytorch_wheels_full.yml",
+        path=".github/workflows/test_artifacts.yml",
         platform="linux",
         pipeline_type="rocm",
         pipeline_phase="test",
         architectures=["gfx942"],
     )
     ownerless_test.workflow_run_id = 99999999999
-    out = tusj.update_status_json(
+    tusj.update_status_json(
         _event(ownerless_test), repo_dir=tmp_path, commit_and_push=False
     )
-    doc = _load(out)
-    assert doc.summary.linux.rocm.test.success == 1
-    # Acceptance must not disturb the document's recorded owner.
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.linux.rocm.test.success == 0
+    # The rejected leaf must not disturb the document's recorded owner.
+    assert doc.trigger_workflow_run_id == 29079513704
+
+
+def test_ownerless_pytorch_leaf_lands_on_version_match(
+    tmp_path: Path,
+) -> None:
+    # test_pytorch_wheels_full.yml carries only the rocm version (inside the torch
+    # version), no run id or artifact URL to derive a parent from, so
+    # trigger_workflow_run_id is None. asan does not run pytorch, so a pytorch leaf
+    # whose release version matches the document is a legit normal/prerelease run
+    # and is admitted via the version-match rescue.
+    _establish_owner(tmp_path, 29079513704)
+
+    pytorch_test = _run(
+        path=".github/workflows/test_pytorch_wheels_full.yml",
+        platform="linux",
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx942"],
+    )
+    pytorch_test.workflow_run_id = 99999999999
+    tusj.update_status_json(
+        _event(pytorch_test), repo_dir=tmp_path, commit_and_push=False
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.linux.pytorch.test.success == 1
+    # The admitted leaf must not take over the document's recorded owner.
     assert doc.trigger_workflow_run_id == 29079513704
 
 
 def test_leaf_without_owner_and_mismatched_release_version_is_skipped(
     tmp_path: Path,
 ) -> None:
-    # Same shape as above, but the leaf's release_version does not match the
-    # document's: even though it happens to route to the same dated file (the
-    # nightly path suffix is just the embedded date), it must still be
-    # rejected since it isn't provably this release.
+    # A pytorch leaf is eligible for the version-match rescue, but here its
+    # release_version does not match the document's: even though it routes to the
+    # same dated file (the nightly path suffix is just the embedded date), it must
+    # still be rejected since it isn't provably this release.
     orch = _orchestrator_run()
     orch.workflow_run_id = 29079513704
     orch.conclusion = None
@@ -439,7 +516,7 @@ def test_leaf_without_owner_and_mismatched_release_version_is_skipped(
     mismatched_test = _run(
         path=".github/workflows/test_pytorch_wheels_full.yml",
         platform="linux",
-        pipeline_type="rocm",
+        pipeline_type="pytorch",
         pipeline_phase="test",
         architectures=["gfx942"],
     )
@@ -449,11 +526,12 @@ def test_leaf_without_owner_and_mismatched_release_version_is_skipped(
         _event(mismatched_test), repo_dir=tmp_path, commit_and_push=False
     )
     doc = _load(out)
-    assert doc.summary.linux.rocm.test.success == 0
+    assert doc.summary.linux.pytorch.test.success == 0
     assert doc.trigger_workflow_run_id == 29079513704
 
 
 def test_per_platform_orchestrator_does_not_finalize(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
     tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -472,6 +550,7 @@ def test_per_platform_orchestrator_does_not_finalize(tmp_path: Path) -> None:
 def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
     tmp_path: Path,
 ) -> None:
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
     raw_s3 = "https://therock-prerelease-artifacts.s3.amazonaws.com/27797822902-linux"
     build = _prerelease_leaf_run()
     build.tarball_url = f"{raw_s3}/tarballs/"
@@ -619,6 +698,7 @@ def test_leaf_without_architectures_raises(tmp_path: Path) -> None:
 def test_nightly_leaf_creates_latest_symlink_but_not_latest_good(
     tmp_path: Path,
 ) -> None:
+    _establish_owner(tmp_path)
     out = tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -668,6 +748,7 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
 
 
 def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
     tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -679,11 +760,13 @@ def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
 
 
 def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc1")
     tusj.update_status_json(
         _event(_prerelease_leaf_run_version("7.14.0rc1")),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
     tusj.update_status_json(
         _event(_prerelease_leaf_run_version("7.14.0rc2")),
         repo_dir=tmp_path,
@@ -697,11 +780,13 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
     tmp_path: Path,
 ) -> None:
     # rc10 is numerically newer than rc2 even though it sorts lower lexically.
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc10")
     tusj.update_status_json(
         _event(_prerelease_leaf_run_version("7.14.0rc10")),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
     tusj.update_status_json(
         _event(_prerelease_leaf_run_version("7.14.0rc2")),
         repo_dir=tmp_path,
@@ -712,6 +797,7 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
 
 
 def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
     out = tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -732,12 +818,17 @@ def _s3_base(run_id: int) -> str:
 
 
 def _linux_build_with_urls(
-    run_id: int, *, attempt: int = 1, conclusion: str = "success"
+    run_id: int,
+    *,
+    attempt: int = 1,
+    conclusion: str = "success",
+    parent_run_id: int | None = None,
 ) -> WorkflowRunRecord:
     run = _leaf_run()
     run.workflow_run_id = run_id
     run.run_attempt = attempt
     run.conclusion = conclusion
+    run.trigger_workflow_run_id = parent_run_id
     base = _s3_base(run_id)
     run.tarball_url = f"{base}/tarballs/"
     run.wheels_url = f"{base}/python/"
@@ -745,7 +836,9 @@ def _linux_build_with_urls(
     return run
 
 
-def _linux_native_rpm_with_urls(run_id: int, *, attempt: int = 1) -> WorkflowRunRecord:
+def _linux_native_rpm_with_urls(
+    run_id: int, *, attempt: int = 1, parent_run_id: int | None = None
+) -> WorkflowRunRecord:
     run = _run(
         path=".github/workflows/multi_arch_build_native_linux_packages.yml",
         platform="linux",
@@ -755,17 +848,21 @@ def _linux_native_rpm_with_urls(run_id: int, *, attempt: int = 1) -> WorkflowRun
     )
     run.workflow_run_id = run_id
     run.run_attempt = attempt
+    run.trigger_workflow_run_id = parent_run_id
     run.rpm_urls = {"rpm": f"{_s3_base(run_id)}/rpm/"}
     return run
 
 
 def test_urls_pin_to_build_run_and_clear_stale_on_supersede(tmp_path: Path) -> None:
-    # Run A: rocm build + native rpm -> the whole URL block belongs to run A.
+    # Run A owns the document: its rocm build + native rpm form one URL block.
+    _establish_owner(tmp_path, 100)
     tusj.update_status_json(
-        _event(_linux_build_with_urls(100)), repo_dir=tmp_path, commit_and_push=False
+        _event(_linux_build_with_urls(100, parent_run_id=100)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
     tusj.update_status_json(
-        _event(_linux_native_rpm_with_urls(100)),
+        _event(_linux_native_rpm_with_urls(100, parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -773,11 +870,14 @@ def test_urls_pin_to_build_run_and_clear_stale_on_supersede(tmp_path: Path) -> N
     assert "100-linux" in urls["artifacts"]
     assert "100-linux" in urls["rpm"]
 
-    # Run B rebuilds the ROCm build and supersedes A's failed/older build leaf.
-    # The block is rebuilt from B; A's rpm URL (a run B never produced) is
-    # dropped rather than left dangling next to B's artifacts.
+    # Run B takes over ownership (a newer release run) and rebuilds. The takeover
+    # resets A's detail, so the block is rebuilt from B alone; A's rpm URL (a run
+    # B never produced) is gone rather than left dangling next to B's artifacts.
+    _establish_owner(tmp_path, 200)
     tusj.update_status_json(
-        _event(_linux_build_with_urls(200)), repo_dir=tmp_path, commit_and_push=False
+        _event(_linux_build_with_urls(200, parent_run_id=200)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
     urls = _load(_nightly_status_path(tmp_path)).summary.linux.urls
     assert "200-linux" in urls["artifacts"]
@@ -787,16 +887,17 @@ def test_urls_pin_to_build_run_and_clear_stale_on_supersede(tmp_path: Path) -> N
 
 
 def test_stale_build_event_does_not_clobber_urls(tmp_path: Path) -> None:
-    # Run B (attempt 2) owns the block.
+    # Run B owns the document and the block.
+    _establish_owner(tmp_path, 200)
     tusj.update_status_json(
-        _event(_linux_build_with_urls(200, attempt=2)),
+        _event(_linux_build_with_urls(200, attempt=2, parent_run_id=200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    # A late, lower-attempt event from run A loses the don't-downgrade guard, so
-    # its leaf is rejected -- and it must not move the URLs either.
+    # A late event from the superseded run A belongs to a different owner, so the
+    # strict gate rejects its leaf -- and it must not move the URLs either.
     tusj.update_status_json(
-        _event(_linux_build_with_urls(100, attempt=1)),
+        _event(_linux_build_with_urls(100, attempt=1, parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -807,11 +908,14 @@ def test_stale_build_event_does_not_clobber_urls(tmp_path: Path) -> None:
 def test_native_urls_only_fill_for_the_owning_run(tmp_path: Path) -> None:
     # Build owned by run B; a native event from a different run A must not inject
     # its rpm URL (that would mix run ids across the block).
+    _establish_owner(tmp_path, 200)
     tusj.update_status_json(
-        _event(_linux_build_with_urls(200)), repo_dir=tmp_path, commit_and_push=False
+        _event(_linux_build_with_urls(200, parent_run_id=200)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
     tusj.update_status_json(
-        _event(_linux_native_rpm_with_urls(100)),
+        _event(_linux_native_rpm_with_urls(100, parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -819,7 +923,7 @@ def test_native_urls_only_fill_for_the_owning_run(tmp_path: Path) -> None:
 
     # A native event from the owning run B does populate rpm.
     tusj.update_status_json(
-        _event(_linux_native_rpm_with_urls(200)),
+        _event(_linux_native_rpm_with_urls(200, parent_run_id=200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1060,18 +1164,20 @@ def _linux_build_leaf(repo_dir: Path):
     return _load(_nightly_status_path(repo_dir)).pipelines.rocm.build["linux"]
 
 
-def test_newer_run_in_progress_supersedes_older_terminal(tmp_path: Path) -> None:
-    # Older run (100) finishes the build; newer run (200) then reports the same
-    # slot as in_progress. The newer run wins even though it is not terminal, so
-    # the document tracks the run that is actually current -- a stale terminal
-    # from the superseded run does not stick.
+def test_newer_run_takes_over_slot_after_ownership_change(tmp_path: Path) -> None:
+    # Older run (100) owns the document and finishes the build. A newer run (200)
+    # then takes over ownership (a re-dispatched release), which resets the
+    # previous run's detail; run 200's own in_progress build is all that remains,
+    # so the document tracks the run that is actually current.
+    _establish_owner(tmp_path, 100)
     tusj.update_status_json(
-        _event(_linux_build(100, conclusion="success")),
+        _event(_linux_build(100, conclusion="success", parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
+    _establish_owner(tmp_path, 200)
     tusj.update_status_json(
-        _event(_linux_build(200, conclusion="")),
+        _event(_linux_build(200, conclusion="", parent_run_id=200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1081,16 +1187,17 @@ def test_newer_run_in_progress_supersedes_older_terminal(tmp_path: Path) -> None
 
 
 def test_stale_older_run_never_overwrites_newer(tmp_path: Path) -> None:
-    # Newer run (200) finishes first; the older run (100) finishes later and its
-    # event arrives last. Arrival order no longer decides: the older run's
-    # terminal event is rejected, so the newer run keeps the slot.
+    # Newer run (200) owns the document and finishes first. A late build event
+    # from the superseded run (100) belongs to a different owner, so the strict
+    # gate rejects it -- the newer run keeps the slot regardless of arrival order.
+    _establish_owner(tmp_path, 200)
     tusj.update_status_json(
-        _event(_linux_build(200, conclusion="success")),
+        _event(_linux_build(200, conclusion="success", parent_run_id=200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
     tusj.update_status_json(
-        _event(_linux_build(100, conclusion="success")),
+        _event(_linux_build(100, conclusion="success", parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1100,13 +1207,14 @@ def test_stale_older_run_never_overwrites_newer(tmp_path: Path) -> None:
 def test_out_of_order_completed_then_started_keeps_terminal(tmp_path: Path) -> None:
     # Same run, reordered delivery: the completed event lands before the started
     # one. The stray in_progress must not downgrade the finished leaf.
+    _establish_owner(tmp_path, 100)
     tusj.update_status_json(
-        _event(_linux_build(100, conclusion="success")),
+        _event(_linux_build(100, conclusion="success", parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
     tusj.update_status_json(
-        _event(_linux_build(100, conclusion="")),
+        _event(_linux_build(100, conclusion="", parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1118,13 +1226,14 @@ def test_out_of_order_completed_then_started_keeps_terminal(tmp_path: Path) -> N
 def test_higher_attempt_supersedes_even_when_in_progress(tmp_path: Path) -> None:
     # A re-run (attempt 2) of the same run supersedes the finished attempt 1 even
     # though the re-run is only in_progress: a higher attempt always wins.
+    _establish_owner(tmp_path, 100)
     tusj.update_status_json(
-        _event(_linux_build(100, attempt=1, conclusion="success")),
+        _event(_linux_build(100, attempt=1, conclusion="success", parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
     tusj.update_status_json(
-        _event(_linux_build(100, attempt=2, conclusion="")),
+        _event(_linux_build(100, attempt=2, conclusion="", parent_run_id=100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1244,9 +1353,13 @@ def test_superseded_parent_leaf_is_ignored_even_with_newer_child_id(
     assert leaf.status is Status.success
 
 
-def test_newer_parent_leaf_promotes_owner_and_clears_previous_run(
+def test_newer_parent_leaf_never_takes_over_owner(
     tmp_path: Path,
 ) -> None:
+    # A leaf from a different (even newer) run must never promote itself to owner
+    # -- only the owner-writer path (orchestrator start / setup) may change
+    # ownership. This is the core of the strict gate: without it an asan run's
+    # leaves, whose run id is higher, would hijack the normal release document.
     owner = _orchestrator_run()
     owner.workflow_run_id = 100
     tusj.update_status_json(
@@ -1269,10 +1382,79 @@ def test_newer_parent_leaf_promotes_owner_and_clears_previous_run(
     )
 
     doc = _load(_nightly_status_path(tmp_path))
-    assert doc.trigger_workflow_run_id == 200
-    assert "linux" not in doc.pipelines.rocm.build
-    assert doc.pipelines.rocm.build["windows"].run_id == 202
-    assert doc.pipelines.rocm.build["windows"].status is Status.failure
+    # Owner unchanged; the owner's linux leaf stays; the foreign leaf is dropped.
+    assert doc.trigger_workflow_run_id == 100
+    assert doc.pipelines.rocm.build["linux"].run_id == 101
+    assert "windows" not in doc.pipelines.rocm.build
+
+
+# --- issue #65: asan runs must never own or pollute the release document ------
+#
+# An asan release is a second, later run (higher run id) that shares the release
+# version and nightly date. Without the strict gate + setup anchor its leaves
+# would land on -- or take over -- the normal release document. Three guarantees:
+# a normal setup run anchors ownership; an asan setup run never owns; and an asan
+# leaf whose parent is the asan run is dropped from the normally-owned document.
+
+
+def test_setup_release_run_anchors_owner_and_admits_leaf(tmp_path: Path) -> None:
+    # A normal setup_multi_arch.yml run executes via workflow_call, so its run id
+    # is the top-level orchestrator's. It records ownership before any leaf, so a
+    # leaf that names it as parent is admitted.
+    tusj.update_status_json(
+        _event(_setup_run(500)), repo_dir=tmp_path, commit_and_push=False
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 500
+
+    leaf = _leaf_run()
+    leaf.trigger_workflow_run_id = 500
+    tusj.update_status_json(_event(leaf), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.linux.rocm.build.status is Status.success
+
+
+@pytest.mark.parametrize("build_variant", ["asan", "host-asan", "tsan", ""])
+def test_setup_non_release_run_does_not_own_release_document(
+    tmp_path: Path, build_variant: str
+) -> None:
+    # Only a normal `release` setup run may anchor ownership of the normal
+    # release document. Sanitizer variants (asan, host-asan, tsan) get their own
+    # status.json file later, and an unset variant is not provably the normal
+    # release; all are skipped and no document is written. Gating positively on
+    # "release" is what catches host-asan/tsan, which a `== "asan"` check missed.
+    out = tusj.update_status_json(
+        _event(_setup_run(600, build_variant=build_variant)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert out is None
+    assert not _nightly_status_path(tmp_path).exists()
+
+
+def test_asan_leaf_cannot_pollute_normally_owned_document(tmp_path: Path) -> None:
+    # Core #65 regression: the normal setup run (500) owns the document. The asan
+    # release runs later as run 600; its test leaves name 600 as their parent.
+    # The strict gate drops them, so asan results never enter the normal document.
+    tusj.update_status_json(
+        _event(_setup_run(500)), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    asan_leaf = _run(
+        path=".github/workflows/test_artifacts.yml",
+        platform="linux",
+        pipeline_type="rocm",
+        pipeline_phase="test",
+        architectures=["gfx942"],
+    )
+    asan_leaf.workflow_run_id = 601
+    asan_leaf.trigger_workflow_run_id = 600
+    asan_leaf.classification.build_variant = "asan"
+    tusj.update_status_json(_event(asan_leaf), repo_dir=tmp_path, commit_and_push=False)
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 500
+    assert doc.summary.linux.rocm.test.success == 0
 
 
 # --- orchestrator re-run: ownership is (run_id, run_attempt) -----------------

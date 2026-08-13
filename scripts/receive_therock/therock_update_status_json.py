@@ -333,17 +333,21 @@ _MATRIX_JOB_RE = re.compile(r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
 _VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_ref"}
 
-# `test_artifacts.yml` fans out one `test_component.yml` call per ROCm test
+# Workflow filenames (`wr.path`'s basename) that are registered in
+# WORKFLOW_SPECS solely so classification doesn't raise, but whose
+# completions `update_status_json` disregards entirely -- nothing is written
+# to status.json for them. Add an entry here instead of a one-off check
+# whenever a workflow's own report shouldn't move any leaf.
+#
+# `test_component.yml`: `test_artifacts.yml` fans out one call per ROCm test
 # component (each internally sharded via its own matrix), and each self-
 # reports independently via notify_quartz. `wr.path` is rewritten to the
 # *reporting* workflow's filename (see notify_quartz.py's `reporting_workflow`
 # override), so this distinguishes those per-component completions from
-# `test_artifacts.yml`'s own run-level report. Registered in WORKFLOW_SPECS
-# so classification doesn't raise, but disregarded entirely (see
-# `update_status_json`'s skip below) until we decide whether component-level
-# granularity is worth tracking; `test_artifacts.yml`'s own report is still
-# the artifact-level source of truth for the `[platform][arch]` leaf.
-_TEST_COMPONENT_WORKFLOW = "test_component.yml"
+# `test_artifacts.yml`'s own run-level report, which remains the
+# artifact-level source of truth for the `[platform][arch]` leaf. Disregarded
+# until we decide whether component-level granularity is worth tracking.
+_SKIP_WORKFLOW_NAMES: frozenset[str] = frozenset({"test_component.yml"})
 
 # Run inputs that carry the (py, ref) cell for single-cell runs (tests), tried
 # in order. Tests report one arch per run and never fan the axis out into job
@@ -452,8 +456,8 @@ def _variants_from_inputs(
 def _derive_variants(workflow_run: WorkflowRunRecord) -> list[Variant] | None:
     """Matrix-cell variants for fan-out pipelines (pytorch/jax py x ref).
 
-    ROCm's `test_component.yml` shard groups never reach here: they're
-    skipped outright in `update_status_json` (see `_TEST_COMPONENT_WORKFLOW`).
+    Workflows in `_SKIP_WORKFLOW_NAMES` never reach here: `update_status_json`
+    returns before deriving a leaf for them at all.
     """
     axis_key = _VARIANT_AXIS_KEY.get(workflow_run.classification.pipeline_type)
     if axis_key is None:
@@ -1342,15 +1346,13 @@ def update_status_json(
             )
             return None
 
-        # `test_component.yml` is registered in WORKFLOW_SPECS solely so
-        # classification doesn't raise; its per-component completions are
-        # disregarded until we decide whether component-level granularity is
-        # worth tracking (`test_artifacts.yml`'s own report remains the
-        # artifact-level source of truth for the `[platform][arch]` leaf).
-        if PurePosixPath(workflow_run.path).name == _TEST_COMPONENT_WORKFLOW:
+        # See `_SKIP_WORKFLOW_NAMES` for why these workflows are disregarded.
+        workflow_name = PurePosixPath(workflow_run.path).name
+        if workflow_name in _SKIP_WORKFLOW_NAMES:
             log.info(
-                "test_component.yml completion is disregarded (component-level "
-                "granularity not yet tracked; workflow_run_id=%s); skipping",
+                "workflow=%r completion is disregarded (in _SKIP_WORKFLOW_NAMES; "
+                "workflow_run_id=%s); skipping",
+                workflow_name,
                 workflow_run.workflow_run_id,
             )
             return None

@@ -1784,6 +1784,25 @@ def test_completed_fanout_build_refreshes_same_run_test_leaves() -> None:
     assert leaf.variants[0].status is Status.success
 
 
+def test_skip_workflow_names_are_all_disregarded(tmp_path: Path) -> None:
+    # Guards the generic `_SKIP_WORKFLOW_NAMES` mechanism itself, not just the
+    # one workflow it was introduced for: whatever is in the set must be
+    # disregarded outright, with nothing written to status.json.
+    for name in tusj._SKIP_WORKFLOW_NAMES:
+        run = _run(
+            path=name,
+            platform="linux",
+            pipeline_type="rocm",
+            pipeline_phase="test",
+            architectures=["gfx1151"],
+        )
+        out = tusj.update_status_json(
+            _event(run), repo_dir=tmp_path, commit_and_push=False
+        )
+        assert out is None, f"{name!r} was not disregarded"
+    assert not any(tmp_path.rglob("status.json"))
+
+
 def _test_component_run(
     *,
     job_name: str,
@@ -1825,6 +1844,7 @@ def test_test_component_completion_does_not_affect_artifact_level_leaf(
     # test_artifacts.yml's own (artifact-level) report must not influence the
     # [platform][arch] leaf at all -- it stays exactly what test_artifacts.yml
     # itself reported, with no variants.
+    _establish_owner(tmp_path)
     tusj.update_status_json(
         _event(
             _test_component_run(job_name="hipblaslt", conclusion="failure", run_id=201)

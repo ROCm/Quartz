@@ -7,7 +7,7 @@ The emphasis is on the two behaviors that are easy to get wrong and that
 silently corrupt the document when they do:
 
   * matrix-variant merging across multiple workflow runs
-    (`_merge_matrix_build_leaf`), and
+    (`_merge_variant_leaf`), and
   * the don't-downgrade guard that decides whether a newly arrived run/leaf
     overwrites the one already in the tree (`should_replace` / `upsert_leaf`).
 """
@@ -26,7 +26,7 @@ from therock_status_document import (  # noqa: E402
     Status,
     StatusDocument,
     Variant,
-    _merge_matrix_build_leaf,
+    _merge_variant_leaf,
 )
 
 
@@ -336,7 +336,7 @@ def test_same_attempt_terminal_replaced_by_terminal() -> None:
     assert existing.should_replace(new)
 
 
-# --- _merge_matrix_build_leaf -----------------------------------------------
+# --- _merge_variant_leaf -----------------------------------------------
 
 
 def test_merge_into_empty_keeps_all_new_variants() -> None:
@@ -346,7 +346,7 @@ def test_merge_into_empty_keeps_all_new_variants() -> None:
             _variant(matrix={"py": "3.12"}),
         ]
     )
-    merged = _merge_matrix_build_leaf(None, new)
+    merged = _merge_variant_leaf(None, new)
     keys = {v.key() for v in merged.variants or []}
     assert keys == {(("py", "3.11"),), (("py", "3.12"),)}
 
@@ -354,7 +354,7 @@ def test_merge_into_empty_keeps_all_new_variants() -> None:
 def test_merge_appends_new_matrix_cells() -> None:
     existing = _leaf(variants=[_variant(matrix={"py": "3.11"})])
     new = _leaf(variants=[_variant(matrix={"py": "3.12"})])
-    merged = _merge_matrix_build_leaf(existing, new)
+    merged = _merge_variant_leaf(existing, new)
     keys = {v.key() for v in merged.variants or []}
     assert keys == {(("py", "3.11"),), (("py", "3.12"),)}
 
@@ -366,7 +366,7 @@ def test_merge_overwrites_same_cell_on_higher_attempt() -> None:
     new = _leaf(
         variants=[_variant(matrix={"py": "3.11"}, run_attempt=2, status=Status.success)]
     )
-    merged = _merge_matrix_build_leaf(existing, new)
+    merged = _merge_variant_leaf(existing, new)
     assert merged.variants is not None
     assert len(merged.variants) == 1
     assert merged.variants[0].run_attempt == 2
@@ -380,7 +380,7 @@ def test_merge_keeps_existing_cell_on_lower_attempt() -> None:
     new = _leaf(
         variants=[_variant(matrix={"py": "3.11"}, run_attempt=1, status=Status.failure)]
     )
-    merged = _merge_matrix_build_leaf(existing, new)
+    merged = _merge_variant_leaf(existing, new)
     assert merged.variants is not None
     assert merged.variants[0].run_attempt == 2
     assert merged.variants[0].status is Status.success
@@ -407,7 +407,7 @@ def test_merge_does_not_downgrade_terminal_cell_same_attempt() -> None:
             )
         ]
     )
-    merged = _merge_matrix_build_leaf(existing, new)
+    merged = _merge_variant_leaf(existing, new)
     assert merged.variants is not None
     assert merged.variants[0].status is Status.success
 
@@ -426,7 +426,7 @@ def test_merge_preserves_existing_cell_order_with_mixed_update() -> None:
             _variant(matrix={"py": "3.13"}, run_attempt=1),
         ]
     )
-    merged = _merge_matrix_build_leaf(existing, new)
+    merged = _merge_variant_leaf(existing, new)
     assert merged.variants is not None
     keys = [v.key() for v in merged.variants]
     assert keys == [(("py", "3.11"),), (("py", "3.12"),), (("py", "3.13"),)]
@@ -436,7 +436,7 @@ def test_merge_preserves_existing_cell_order_with_mixed_update() -> None:
 
 
 def test_merge_status_rolls_up_failure() -> None:
-    merged = _merge_matrix_build_leaf(
+    merged = _merge_variant_leaf(
         None,
         _leaf(
             variants=[
@@ -516,6 +516,30 @@ def test_upsert_build_with_variants_always_returns_true() -> None:
     assert doc.upsert_leaf(
         "linux", "", "pytorch", "build", _leaf(variants=[_variant(matrix={"py": "3"})])
     )
+
+
+def test_upsert_build_variant_less_completion_preserves_variants() -> None:
+    # A later run-level-only report (no variants of its own) must not
+    # discard matrix cells already accumulated from an earlier one.
+    doc = StatusDocument()
+    doc.upsert_leaf(
+        "linux",
+        "",
+        "pytorch",
+        "build",
+        _leaf(variants=[_variant(matrix={"py": "3.11"})], run_id=1),
+    )
+    doc.upsert_leaf(
+        "linux",
+        "",
+        "pytorch",
+        "build",
+        _leaf(run_id=1, status=Status.success),
+    )
+    leaf = doc.pipelines.pytorch.build["linux"]
+    assert leaf.variants is not None
+    keys = {v.key() for v in leaf.variants}
+    assert keys == {(("py", "3.11"),)}
 
 
 # --- upsert_leaf: test phase ------------------------------------------------

@@ -1589,9 +1589,10 @@ def _variant_run(
     run_attempt: int = 1,
     conclusion: str | None = "success",
     architectures: list[str] | None = None,
+    path: str = ".github/workflows/x.yml",
 ) -> WorkflowRunRecord:
     run = _run(
-        path=".github/workflows/x.yml",
+        path=path,
         platform="linux",
         pipeline_type=pipeline_type,
         pipeline_phase=pipeline_phase,
@@ -1781,3 +1782,87 @@ def test_completed_fanout_build_refreshes_same_run_test_leaves() -> None:
     assert leaf.completed_at == "2026-06-19T15:18:00Z"
     assert leaf.variants is not None
     assert leaf.variants[0].status is Status.success
+
+
+def test_skip_workflow_names_are_all_disregarded(tmp_path: Path) -> None:
+    # Guards the generic `_SKIP_WORKFLOW_NAMES` mechanism itself, not just the
+    # one workflow it was introduced for: whatever is in the set must be
+    # disregarded outright, with nothing written to status.json.
+    for name in tusj._SKIP_WORKFLOW_NAMES:
+        run = _run(
+            path=name,
+            platform="linux",
+            pipeline_type="rocm",
+            pipeline_phase="test",
+            architectures=["gfx1151"],
+        )
+        out = tusj.update_status_json(
+            _event(run), repo_dir=tmp_path, commit_and_push=False
+        )
+        assert out is None, f"{name!r} was not disregarded"
+    assert not any(tmp_path.rglob("status.json"))
+
+
+def _test_component_run(
+    *,
+    job_name: str,
+    conclusion: str | None = "success",
+    run_id: int = 200,
+) -> WorkflowRunRecord:
+    """A `test_component.yml` completion for one ROCm component."""
+    run = _run(
+        path="test_component.yml",
+        platform="linux",
+        pipeline_type="rocm",
+        pipeline_phase="test",
+        architectures=["gfx1151"],
+    )
+    run.workflow_run_id = run_id
+    run.conclusion = conclusion
+    run.inputs = {"component": json.dumps({"job_name": job_name, "total_shards": 3})}
+    return run
+
+
+def test_test_component_completion_is_skipped(tmp_path: Path) -> None:
+    # test_component.yml is registered in WORKFLOW_SPECS solely so
+    # classification doesn't raise; its per-component completions must be
+    # disregarded entirely (component-level granularity is not yet decided),
+    # not written anywhere.
+    out = tusj.update_status_json(
+        _event(_test_component_run(job_name="hipblaslt")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert out is None
+    assert not any(tmp_path.rglob("status.json"))
+
+
+def test_test_component_completion_does_not_affect_artifact_level_leaf(
+    tmp_path: Path,
+) -> None:
+    # A failing test_component.yml completion arriving either before or after
+    # test_artifacts.yml's own (artifact-level) report must not influence the
+    # [platform][arch] leaf at all -- it stays exactly what test_artifacts.yml
+    # itself reported, with no variants.
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(
+            _test_component_run(job_name="hipblaslt", conclusion="failure", run_id=201)
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    artifact_run = _run(
+        path=".github/workflows/test_artifacts.yml",
+        platform="linux",
+        pipeline_type="rocm",
+        pipeline_phase="test",
+        architectures=["gfx1151"],
+    )
+    out = tusj.update_status_json(
+        _event(artifact_run), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out is not None
+    leaf = _load(out).pipelines.rocm.test["linux"]["gfx1151"]
+    assert leaf.status is Status.success
+    assert leaf.variants is None

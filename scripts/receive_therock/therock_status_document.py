@@ -341,7 +341,11 @@ class Pipelines(BaseModel):
         }
 
 
-def _merge_matrix_build_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLeaf":
+def _merge_variant_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLeaf":
+    """Merge one leaf update carrying `variants` (a matrix cell) into another.
+
+    Used for the `build` phase's pytorch/jax py x ref cells, all derived from
+    one workflow run's own job list."""
     variants: list[Variant] = []
     positions: dict[tuple[tuple[str, str], ...], int] = {}
 
@@ -564,8 +568,8 @@ class StatusDocument(BaseModel):
         pipeline: Pipeline = getattr(self.pipelines, pipeline_type)
         if pipeline_phase == "build":
             existing = pipeline.build.get(platform)
-            if leaf.variants:
-                pipeline.build[platform] = _merge_matrix_build_leaf(existing, leaf)
+            if leaf.variants or (existing is not None and existing.variants):
+                pipeline.build[platform] = _merge_variant_leaf(existing, leaf)
                 return True
             if existing is not None and not existing.should_replace(leaf):
                 return False

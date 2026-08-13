@@ -286,7 +286,9 @@ def derive_source_run_id(wr: WorkflowRunRecord) -> str | None:
 # (e.g. python-packages) do not finalize a release either. Consumers such as
 # therock_update_status_json key off this same tuple to decide which
 # orchestrator run stamps the status.json document's completion signal.
-FINALIZING_PHASES: Final = frozenset({"release", "release-asan", "repackage"})
+# `release-asan` is intentionally absent: asan runs must never own or finalize
+# the normal release document (they will get their own status.json file later).
+FINALIZING_PHASES: Final = frozenset({"release"})
 
 
 def is_top_level_orchestrator(wr: WorkflowRunRecord) -> bool:

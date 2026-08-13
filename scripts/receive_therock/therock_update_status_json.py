@@ -326,8 +326,14 @@ _CONCLUSION_MAP: dict[str, Status] = {
 # Matrix-cell job name for fan-out builds, e.g. TheRock's
 #   "Build | py 3.12 | torch release/2.10"   (pytorch)
 #   "Build | py 3.12 | jax rocm-jaxlib-v0.9" (jax)
-# `.search` (not fullmatch) so a reusable-workflow prefix/suffix still matches.
-_MATRIX_JOB_RE = re.compile(r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)")
+# Case-insensitive: a calling orchestrator's own composite job name can wrap
+# this in a differently-cased ancestor segment, e.g. rockrel's
+# "Release | py 3.12 | JAX 0.11.0 / Build | py 3.12 | jax rocm-jaxlib-v0.11.0"
+# -- the nested Test sub-job under that same cell has no (py, ref) of its own
+# and relies entirely on that ancestor segment to be recognized.
+_MATRIX_JOB_RE = re.compile(
+    r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)", re.IGNORECASE
+)
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
@@ -382,9 +388,17 @@ def _variants_from_jobs(
     cells: dict[tuple[str, str], list[WorkflowJobRecord]] = {}
     order: list[tuple[str, str]] = []
     for j in jobs:
-        match = _MATRIX_JOB_RE.search(j.name)
-        if not match:
+        # Take the *last* match, not the first: a nested job's composite name
+        # is "ancestor segment(s) / ... / own segment", and the own segment
+        # (closest to the actual job) is the authoritative (py, ref) -- e.g.
+        # a build job's own tail carries the full ref, while an orchestrator
+        # ancestor segment upstream of it may carry a shorter/looser one. A
+        # job with no segment of its own (a nested test sub-job) falls back
+        # to whichever ancestor segment matched.
+        matches = list(_MATRIX_JOB_RE.finditer(j.name))
+        if not matches:
             continue
+        match = matches[-1]
         key = (match.group("py"), match.group("ref"))
         if key not in cells:
             cells[key] = []
@@ -492,11 +506,30 @@ def _refresh_same_run_fanout_tests(
 ) -> bool:
     """Refresh same-run test leaves from a completed fan-out workflow snapshot.
 
-    Delegated PyTorch/JAX release workflows report the shared entry run id.
-    Early notifications can project the run's job list into per-arch test
-    leaves while some matrix cells are still in progress; the final top-level
-    completion is classified as the build phase, so it would otherwise leave
-    those same-run test leaves stale.
+    PyTorch/JAX test coverage (`test_pytorch_wheels.yml` / `test_linux_jax_wheels.yml`)
+    is invoked as a reusable `workflow_call` nested inside the delegated release
+    workflow -- not dispatched as its own top-level run -- so its jobs land in
+    the *same* run id, job list, and webhook notifications as the entry build.
+    There is no job-name-level split between "build" and "test" jobs: the
+    registry classifies the whole run as `pipeline_type`/`pipeline_phase="build"`
+    (see `WORKFLOW_SPECS`), and `_variants_from_jobs` already groups every job
+    sharing a (py, ref) cell -- build and nested test alike -- into one
+    `Variant` per cell (see `test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell`).
+    Early notifications can project that job-list snapshot into per-arch test
+    leaves (keyed by the same run id) while some cells are still in progress;
+    the final notification is still classified as the build phase, so without
+    this function those same-run test leaves would go stale once the build
+    itself is done.
+
+    `leaf.status` is this run's own top-level GitHub conclusion. It is not
+    necessarily the worst-of its `variants` (e.g. a matrix cell whose nested
+    test job failed/cancelled does not always flip the run's own conclusion,
+    or a cell can be entirely missing from `variants` if its job never
+    started). Fold it into the rollup rather than only using it as an
+    empty-variants fallback, so a terminal failure/cancellation at the run
+    level cannot be masked by whatever the individual cells happened to report
+    -- mirroring what `_merge_matrix_build_leaf` does for the build leaf
+    itself.
     """
     cls = workflow_run.classification
     if (
@@ -508,6 +541,9 @@ def _refresh_same_run_fanout_tests(
     ):
         return False
 
+    projected_status = rollup_statuses(
+        (*(v.status for v in leaf.variants), leaf.status), leaf.status
+    )
     pipeline = getattr(doc.pipelines, cls.pipeline_type)
     wrote = False
     for phase_map in (pipeline.test, pipeline.test_full):
@@ -519,7 +555,7 @@ def _refresh_same_run_fanout_tests(
                     continue
                 if not existing.should_replace(leaf):
                     continue
-                existing.status = leaf.status
+                existing.status = projected_status
                 existing.completed_at = leaf.completed_at
                 existing.variants = leaf.variants
                 wrote = True

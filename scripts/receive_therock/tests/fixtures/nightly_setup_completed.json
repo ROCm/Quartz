@@ -1,0 +1,59 @@
+{
+    "event_type": "workflow_run_completed",
+    "repository": "ROCm/rockrel",
+    "workflow_run": {
+        "id": 27797822900,
+        "name": "Multi-Arch Release (nightly) | Linux: all | Windows: all",
+        "display_title": "Multi-Arch Release (nightly) | Linux: all | Windows: all",
+        "path": ".github/workflows/setup_multi_arch.yml",
+        "event": "workflow_dispatch",
+        "status": "completed",
+        "conclusion": "success",
+        "run_number": 12,
+        "run_attempt": 1,
+        "head_branch": "main",
+        "head_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+        "html_url": "https://github.com/ROCm/rockrel/actions/runs/27797822900",
+        "created_at": "2026-06-19T15:05:00Z",
+        "run_started_at": "2026-06-19T15:05:00Z",
+        "updated_at": "2026-06-19T15:07:00Z",
+        "actor": {
+            "login": "octocat"
+        },
+        "release_type": "nightly",
+        "inputs": {
+            "build_variant": "release",
+            "release_type": "nightly",
+            "prerelease_version": "",
+            "linux_amdgpu_families": "all",
+            "windows_amdgpu_families": "all",
+            "linux_test_labels": "",
+            "windows_test_labels": "",
+            "prebuilt_stages": "",
+            "baseline_run_id": "",
+            "stage_reuse_mode": "dry-run",
+            "stage_reuse_max_age_hours": "72",
+            "stage_reuse_commit_history": "50",
+            "build_python_packages": true,
+            "build_pytorch": true,
+            "build_jax": true,
+            "python_version": "",
+            "repository": "ROCm/TheRock",
+            "ref": "",
+            "external_repo": ""
+        },
+        "captured_outputs": {
+            "setup": {
+                "result": "success",
+                "outputs": {
+                    "test_type": "comprehensive",
+                    "linux_test_labels": "[]",
+                    "windows_test_labels": "[]",
+                    "rocm_package_version": "7.14.0a20260619",
+                    "rocm_deb_package_version": "7.14.0~20260619",
+                    "rocm_rpm_package_version": "7.14.0~20260619"
+                }
+            }
+        }
+    }
+}

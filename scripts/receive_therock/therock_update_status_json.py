@@ -41,7 +41,7 @@ import subprocess
 import time
 from datetime import datetime, timezone
 from enum import Enum
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import ntplib
 
@@ -326,8 +326,14 @@ _CONCLUSION_MAP: dict[str, Status] = {
 # Matrix-cell job name for fan-out builds, e.g. TheRock's
 #   "Build | py 3.12 | torch release/2.10"   (pytorch)
 #   "Build | py 3.12 | jax rocm-jaxlib-v0.9" (jax)
-# `.search` (not fullmatch) so a reusable-workflow prefix/suffix still matches.
-_MATRIX_JOB_RE = re.compile(r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)")
+# Case-insensitive: a calling orchestrator's own composite job name can wrap
+# this in a differently-cased ancestor segment, e.g. rockrel's
+# "Release | py 3.12 | JAX 0.11.0 / Build | py 3.12 | jax rocm-jaxlib-v0.11.0"
+# -- the nested Test sub-job under that same cell has no (py, ref) of its own
+# and relies entirely on that ancestor segment to be recognized.
+_MATRIX_JOB_RE = re.compile(
+    r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)", re.IGNORECASE
+)
 
 # One (py, ref) build cell can nest per-arch test jobs, e.g.
 #   "Build | py 3.12 | torch release/2.10 / Test | gfx942"
@@ -341,6 +347,22 @@ _TEST_ARCH_JOB_RE = re.compile(
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
 _VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_ref"}
+
+# Workflow filenames (`wr.path`'s basename) that are registered in
+# WORKFLOW_SPECS solely so classification doesn't raise, but whose
+# completions `update_status_json` disregards entirely -- nothing is written
+# to status.json for them. Add an entry here instead of a one-off check
+# whenever a workflow's own report shouldn't move any leaf.
+#
+# `test_component.yml`: `test_artifacts.yml` fans out one call per ROCm test
+# component (each internally sharded via its own matrix), and each self-
+# reports independently via notify_quartz. `wr.path` is rewritten to the
+# *reporting* workflow's filename (see notify_quartz.py's `reporting_workflow`
+# override), so this distinguishes those per-component completions from
+# `test_artifacts.yml`'s own run-level report, which remains the
+# artifact-level source of truth for the `[platform][arch]` leaf. Disregarded
+# until we decide whether component-level granularity is worth tracking.
+_SKIP_WORKFLOW_NAMES: frozenset[str] = frozenset({"test_component.yml"})
 
 # Run inputs that carry the (py, ref) cell for single-cell runs (tests), tried
 # in order. Tests report one arch per run and never fan the axis out into job
@@ -370,6 +392,16 @@ def _job_matches_arch(job_name: str, arch: str) -> bool:
     return not named or arch in named
 
 
+def _job_archs(workflow_run: WorkflowRunRecord) -> frozenset[str]:
+    """Distinct architectures named in any job's own "Test | <arch>" segment."""
+    jobs = (
+        workflow_run.api_jobs
+        if workflow_run.api_jobs is not None
+        else workflow_run.jobs
+    )
+    return frozenset(m for j in jobs for m in _TEST_ARCH_JOB_RE.findall(j.name))
+
+
 def _variants_from_jobs(
     workflow_run: WorkflowRunRecord, axis_key: str, *, arch: str | None = None
 ) -> list[Variant]:
@@ -390,9 +422,17 @@ def _variants_from_jobs(
     cells: dict[tuple[str, str], list[WorkflowJobRecord]] = {}
     order: list[tuple[str, str]] = []
     for j in jobs:
-        match = _MATRIX_JOB_RE.search(j.name)
-        if not match:
+        # Take the *last* match, not the first: a nested job's composite name
+        # is "ancestor segment(s) / ... / own segment", and the own segment
+        # (closest to the actual job) is the authoritative (py, ref) -- e.g.
+        # a build job's own tail carries the full ref, while an orchestrator
+        # ancestor segment upstream of it may carry a shorter/looser one. A
+        # job with no segment of its own (a nested test sub-job) falls back
+        # to whichever ancestor segment matched.
+        matches = list(_MATRIX_JOB_RE.finditer(j.name))
+        if not matches:
             continue
+        match = matches[-1]
         key = (match.group("py"), match.group("ref"))
         if key not in cells:
             cells[key] = []
@@ -466,7 +506,9 @@ def _derive_variants(
 ) -> list[Variant] | None:
     """Matrix-cell variants for fan-out pipelines (pytorch/jax py x ref).
 
-    See `_variants_from_jobs` for what `arch` scopes.
+    See `_variants_from_jobs` for what `arch` scopes. Workflows in
+    `_SKIP_WORKFLOW_NAMES` never reach here: `update_status_json` returns
+    before deriving a leaf for them at all.
     """
     axis_key = _VARIANT_AXIS_KEY.get(workflow_run.classification.pipeline_type)
     if axis_key is None:
@@ -512,11 +554,42 @@ def _refresh_same_run_fanout_tests(
 ) -> bool:
     """Refresh same-run test leaves from a completed fan-out workflow snapshot.
 
-    Delegated PyTorch/JAX release workflows report the shared entry run id.
-    Early notifications can project the run's job list into per-arch test
-    leaves while some matrix cells are still in progress; the final top-level
-    completion is classified as the build phase, so it would otherwise leave
-    those same-run test leaves stale.
+    PyTorch/JAX test coverage (`test_pytorch_wheels.yml` / `test_linux_jax_wheels.yml`)
+    is invoked as a reusable `workflow_call` nested inside the delegated release
+    workflow -- not dispatched as its own top-level run -- so its jobs land in
+    the *same* run id, job list, and webhook notifications as the entry build.
+    There is no job-name-level split between "build" and "test" jobs: the
+    registry classifies the whole run as `pipeline_type`/`pipeline_phase="build"`
+    (see `WORKFLOW_SPECS`), and `_variants_from_jobs` already groups every job
+    sharing a (py, ref) cell -- build and nested test alike -- into one
+    `Variant` per cell (see `test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell`).
+    Early notifications can project that job-list snapshot into per-arch test
+    leaves (keyed by the same run id) while some cells are still in progress;
+    the final notification is still classified as the build phase, so without
+    this function those same-run test leaves would go stale once the build
+    itself is done.
+
+    `leaf.status` is this run's own top-level GitHub conclusion. It is not
+    necessarily the worst-of its `variants` (e.g. a matrix cell whose nested
+    test job failed/cancelled does not always flip the run's own conclusion,
+    or a cell can be entirely missing from `variants` if its job never
+    started). When the run only ever reports one architecture, fold it into
+    that architecture's rollup rather than only using it as an
+    empty-variants fallback, so a terminal failure/cancellation at the run
+    level cannot be masked by whatever the individual cells happened to
+    report -- mirroring what `_merge_matrix_build_leaf` does for the build
+    leaf itself.
+
+    One build cell can also nest test jobs for several architectures (see
+    `_variants_from_jobs`), so `leaf.variants` may roll every architecture's
+    outcome together. Re-derive each existing test leaf's variants scoped to
+    its *own* architecture instead of broadcasting `leaf.variants` wholesale,
+    so one architecture's result can never leak into another's. The same
+    reasoning rules out folding in the run-level conclusion once several
+    architectures share the run: that conclusion is a whole-run aggregate,
+    so a failure anywhere -- including in an unrelated architecture's own
+    job -- would otherwise get broadcast onto every architecture, right back
+    into the leakage this function exists to prevent.
     """
     cls = workflow_run.classification
     axis_key = _VARIANT_AXIS_KEY.get(cls.pipeline_type)
@@ -529,6 +602,7 @@ def _refresh_same_run_fanout_tests(
     ):
         return False
 
+    single_arch = len(_job_archs(workflow_run)) <= 1
     pipeline = getattr(doc.pipelines, cls.pipeline_type)
     wrote = False
     for phase_map in (pipeline.test, pipeline.test_full):
@@ -538,16 +612,15 @@ def _refresh_same_run_fanout_tests(
                     continue
                 if (existing.run_attempt or 0) != (leaf.run_attempt or 0):
                     continue
-                # One build cell can nest test jobs for several architectures
-                # (see `_variants_from_jobs`); re-derive this arch's own
-                # variants instead of broadcasting `leaf.variants`, which may
-                # have rolled every architecture's outcome together.
                 arch_variants = _variants_from_jobs(workflow_run, axis_key, arch=arch)
                 if not arch_variants:
                     continue
+                statuses = [v.status for v in arch_variants]
+                if single_arch:
+                    statuses.append(leaf.status)
                 candidate = leaf.model_copy(
                     update={
-                        "status": Variant.rollup_status(arch_variants, leaf.status),
+                        "status": rollup_statuses(statuses, leaf.status),
                         "variants": arch_variants,
                     }
                 )
@@ -699,10 +772,19 @@ def _reset_finalization_for_rerun(doc: StatusDocument) -> None:
     rebuild_summary(doc)
 
 
-def _release_version_matches_document(
+def _is_ownerless_pytorch_leaf_for_release(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
-    """True when a leaf with no derivable owner still pins to this exact release."""
+    """True for a pytorch leaf with no derivable owner that pins to this release.
+
+    pytorch test runs carry only the rocm version (inside the torch version), no
+    artifact_run_id or parent to derive an owner from. asan does not run pytorch,
+    so a pytorch leaf whose release version matches the document can only be a
+    legit normal/prerelease run. Restricting to `pipeline_type == "pytorch"`
+    keeps this the sole ownerless-acceptance path.
+    """
+    if workflow_run.classification.pipeline_type != "pytorch":
+        return False
     release_version = workflow_run.classification.release_version
     return bool(release_version) and release_version == doc.rocm_version
 
@@ -710,23 +792,34 @@ def _release_version_matches_document(
 def _gate_to_document_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
-    """Allow only updates that belong to the document's top-level orchestrator run."""
+    """Allow only leaf updates that belong to the document's owning run.
+
+    Strict by design: a leaf never establishes, supersedes, or takes over
+    ownership. Ownership is established only on the owner-writer path
+    (`_record_orchestrator_owner`, driven by the setup run and the top-level
+    orchestrator). This keeps a second, later release run (notably an asan run,
+    whose run id is higher) from hijacking the normal release document.
+    """
     owner = doc.trigger_workflow_run_id
     parent = workflow_run.trigger_workflow_run_id
 
+    if owner in (None, 0):
+        log.info(
+            "skipping workflow_run_id=%s: status.json has no owner yet; only a "
+            "setup or top-level orchestrator run may establish ownership",
+            workflow_run.workflow_run_id,
+        )
+        return False
+
+    # `workflow_call` children share the owner's run id but carry no derived
+    # parent; accept them when their own run id is the owner.
     if parent in (None, 0):
-        if owner in (None, 0) or workflow_run.workflow_run_id == owner:
+        if workflow_run.workflow_run_id == owner:
             return True
-        if _release_version_matches_document(doc, workflow_run):
-            log.info(
-                "workflow_run_id=%s has no derived owner run, but its "
-                "release_version=%r matches status.json's rocm_version=%r; "
-                "accepting into trigger_workflow_run_id=%s",
-                workflow_run.workflow_run_id,
-                workflow_run.classification.release_version,
-                doc.rocm_version,
-                owner,
-            )
+        # A pytorch leaf carries only the rocm version and cannot prove ownership
+        # by run id; admit it when its version pins to this release. A mismatched
+        # version, or any non-pytorch ownerless leaf, is still refused.
+        if _is_ownerless_pytorch_leaf_for_release(doc, workflow_run):
             return True
         log.info(
             "skipping workflow_run_id=%s with no derived owner run; status.json "
@@ -736,22 +829,15 @@ def _gate_to_document_owner(
         )
         return False
 
-    if owner in (None, 0):
-        return True
-
-    if parent < owner:
+    if parent != owner:
         log.info(
-            "skipping workflow_run_id=%s from superseded trigger_workflow_run_id=%s; "
-            "status.json is owned by newer trigger_workflow_run_id=%s",
+            "skipping workflow_run_id=%s from trigger_workflow_run_id=%s; "
+            "status.json is owned by trigger_workflow_run_id=%s",
             workflow_run.workflow_run_id,
             parent,
             owner,
         )
         return False
-
-    if parent > owner:
-        _reset_document_for_new_owner(doc)
-        doc.trigger_workflow_run_id = parent
 
     return True
 
@@ -1317,19 +1403,43 @@ def update_status_json(
         )
         return None
 
-    finalize = _is_release_completion(payload, workflow_run)
+    finalize = None
     record_owner_only = False
     update_platform_urls_only = False
-    if finalize is None:
-        if _is_release_cdn_url_update(payload, workflow_run):
-            update_platform_urls_only = True
-        elif (
-            payload.event_type == "workflow_run_in_progress"
-            and is_top_level_orchestrator(workflow_run)
-        ):
-            record_owner_only = True
-        else:
+
+    c = workflow_run.classification
+    if c.pipeline_type == "setup":
+        # The setup run executes via `workflow_call`, so it shares the top-level
+        # orchestrator's run id and can anchor document ownership before any leaf
+        # arrives (owner writer: `_record_orchestrator_owner`). Only the normal
+        # `release` setup may own the normal release document. The top-level
+        # orchestrators pass build_variant verbatim to setup_multi_arch.yml
+        # (multi_arch_release.yml -> "release", multi_arch_release_asan.yml ->
+        # "asan"), and sanitizer variants (asan, host-asan, tsan) get their own
+        # status.json file later. Gate positively on "release" so anything that
+        # is not provably the normal release is refused rather than fail-open.
+        if c.build_variant != "release":
+            log.info(
+                "setup run build_variant=%r is not the normal release; must not "
+                "own the normal release document (workflow_run_id=%s); skipping "
+                "status.json update",
+                c.build_variant,
+                workflow_run.workflow_run_id,
+            )
             return None
+        record_owner_only = True
+    else:
+        finalize = _is_release_completion(payload, workflow_run)
+        if finalize is None:
+            if _is_release_cdn_url_update(payload, workflow_run):
+                update_platform_urls_only = True
+            elif (
+                payload.event_type == "workflow_run_in_progress"
+                and is_top_level_orchestrator(workflow_run)
+            ):
+                record_owner_only = True
+            else:
+                return None
 
     if finalize or record_owner_only or update_platform_urls_only:
         if not workflow_run.classification.release_version:
@@ -1341,13 +1451,23 @@ def update_status_json(
             )
             return None
     else:
-        c = workflow_run.classification
         # Native package install tests are async sanity checks with no per-arch
         # payload; status.json has no native_packages test slot, so skip them.
         if c.pipeline_type == "native_packages" and c.pipeline_phase == "test":
             log.info(
                 "native package install test is an async sanity check not tracked "
                 "in status.json (workflow_run_id=%s); skipping",
+                workflow_run.workflow_run_id,
+            )
+            return None
+
+        # See `_SKIP_WORKFLOW_NAMES` for why these workflows are disregarded.
+        workflow_name = PurePosixPath(workflow_run.path).name
+        if workflow_name in _SKIP_WORKFLOW_NAMES:
+            log.info(
+                "workflow=%r completion is disregarded (in _SKIP_WORKFLOW_NAMES; "
+                "workflow_run_id=%s); skipping",
+                workflow_name,
                 workflow_run.workflow_run_id,
             )
             return None

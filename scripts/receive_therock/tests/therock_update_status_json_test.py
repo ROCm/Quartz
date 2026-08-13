@@ -1652,6 +1652,52 @@ def test_fanout_projection_uses_variant_rollup_not_raw_run_conclusion() -> None:
     assert leaf.variants[0].status is Status.failure
 
 
+def test_fanout_projection_folds_raw_run_conclusion_into_rollup() -> None:
+    # The inverse of the case above: every reported cell looks clean, but the
+    # run itself was cancelled (e.g. a cell whose job never even started, so
+    # it never shows up in `variants` at all). The projected test leaf must
+    # still surface that cancellation rather than reporting the variants'
+    # all-success rollup verbatim.
+    doc = StatusDocument()
+    stale_test = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx110X-all"],
+        run_id=903,
+        conclusion=None,
+        jobs=[
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx110X-all",
+                conclusion=None,
+                completed=None,
+            ),
+        ],
+    )
+    doc.upsert_leaf(
+        "linux", "gfx110X-all", "pytorch", "test", tusj._create_leaf(stale_test)
+    )
+
+    cancelled_build = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=903,
+        conclusion="cancelled",
+        jobs=[
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx110X-all",
+                conclusion="success",
+            ),
+        ],
+    )
+    cancelled_build.classification.platform = "windows"
+    tusj._merge_run_into_document(
+        doc, cancelled_build, tusj._create_leaf(cancelled_build)
+    )
+
+    leaf = doc.pipelines.pytorch.test["linux"]["gfx110X-all"]
+    assert leaf.status is Status.cancelled
+
+
 def test_variant_job_name_matches_uppercase_ancestor_segment() -> None:
     # A calling orchestrator (e.g. rockrel) can wrap TheRock's own build job
     # in a differently-cased ancestor segment, e.g.

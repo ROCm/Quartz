@@ -486,19 +486,30 @@ def _refresh_same_run_fanout_tests(
 ) -> bool:
     """Refresh same-run test leaves from a completed fan-out workflow snapshot.
 
-    Delegated PyTorch/JAX release workflows report the shared entry run id.
-    Early notifications can project the run's job list into per-arch test
-    leaves while some matrix cells are still in progress; the final top-level
-    completion is classified as the build phase, so it would otherwise leave
-    those same-run test leaves stale.
+    PyTorch/JAX test coverage (`test_pytorch_wheels.yml` / `test_linux_jax_wheels.yml`)
+    is invoked as a reusable `workflow_call` nested inside the delegated release
+    workflow -- not dispatched as its own top-level run -- so its jobs land in
+    the *same* run id, job list, and webhook notifications as the entry build.
+    There is no job-name-level split between "build" and "test" jobs: the
+    registry classifies the whole run as `pipeline_type`/`pipeline_phase="build"`
+    (see `WORKFLOW_SPECS`), and `_variants_from_jobs` already groups every job
+    sharing a (py, ref) cell -- build and nested test alike -- into one
+    `Variant` per cell (see `test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell`).
+    Early notifications can project that job-list snapshot into per-arch test
+    leaves (keyed by the same run id) while some cells are still in progress;
+    the final notification is still classified as the build phase, so without
+    this function those same-run test leaves would go stale once the build
+    itself is done.
 
-    `leaf.status` is the *build* run's own top-level GitHub conclusion, which
-    is not necessarily the worst-of its `variants` (e.g. a matrix cell whose
-    nested test job failed/cancelled does not always flip the run's own
-    conclusion). Projected test leaves must not inherit that raw status
-    verbatim -- they re-derive their status from the same variants they are
-    given, exactly like `_merge_variant_leaf` does for every other
-    variant-carrying leaf.
+    `leaf.status` is this run's own top-level GitHub conclusion. It is not
+    necessarily the worst-of its `variants` (e.g. a matrix cell whose nested
+    test job failed/cancelled does not always flip the run's own conclusion,
+    or a cell can be entirely missing from `variants` if its job never
+    started). Fold it into the rollup rather than only using it as an
+    empty-variants fallback, so a terminal failure/cancellation at the run
+    level cannot be masked by whatever the individual cells happened to report
+    -- mirroring what `_merge_matrix_build_leaf` does for the build leaf
+    itself.
     """
     cls = workflow_run.classification
     if (
@@ -510,7 +521,9 @@ def _refresh_same_run_fanout_tests(
     ):
         return False
 
-    projected_status = Variant.rollup_status(leaf.variants, leaf.status)
+    projected_status = rollup_statuses(
+        (*(v.status for v in leaf.variants), leaf.status), leaf.status
+    )
     pipeline = getattr(doc.pipelines, cls.pipeline_type)
     wrote = False
     for phase_map in (pipeline.test, pipeline.test_full):

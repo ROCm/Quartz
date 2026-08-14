@@ -127,7 +127,13 @@ def _platform_from_test_runs_on(wr: WorkflowRunRecord) -> str:
     return "windows" if "windows" in runs_on else "linux"
 
 
-_GPU_FAMILY_RE: Final = re.compile(r"\b(gfx[0-9A-Za-z]+(?:-[0-9A-Za-z]+)?)\b")
+# Shape of one GPU family token, e.g. "gfx942" or "gfx94X-dcgpu". Exposed
+# (unlike the compiled regexes below) so other modules that need the same
+# token shape in a different context -- e.g. therock_update_status_json's
+# `_TEST_ARCH_JOB_RE`, which anchors it to a job's own "Test | <arch>"
+# segment -- stay in sync with this one instead of drifting independently.
+GPU_FAMILY_TOKEN: Final = r"gfx[0-9A-Za-z]+(?:-[0-9A-Za-z]+)?"
+_GPU_FAMILY_RE: Final = re.compile(rf"\b({GPU_FAMILY_TOKEN})\b")
 
 
 def _split_families(val: object) -> list[str]:

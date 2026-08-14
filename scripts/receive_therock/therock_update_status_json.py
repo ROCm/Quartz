@@ -47,6 +47,7 @@ import ntplib
 
 from therock_classify import (
     FINALIZING_PHASES,
+    GPU_FAMILY_TOKEN,
     RELEASE_CDN_PHASES,
     is_top_level_orchestrator,
 )
@@ -336,13 +337,17 @@ _MATRIX_JOB_RE = re.compile(
 )
 
 # One (py, ref) build cell can nest per-arch test jobs, e.g.
-#   "Build | py 3.12 | torch release/2.10 / Test | gfx942"
+#   "Build | py 3.12 | torch release/2.10 / Test | gfx942 | linux-gfx942-1gpu..."
 # Extracts the arch a job's own "Test | <arch>" segment names, if any, so
 # jobs from different architectures nested under the same cell are never
-# grouped together as if they were one architecture's result.
-_TEST_ARCH_JOB_RE = re.compile(
-    r"Test\s*\|\s*(?P<arch>gfx[0-9A-Za-z]+(?:-[0-9A-Za-z]+)?)"
-)
+# grouped together as if they were one architecture's result. Deliberately
+# anchored to the "Test | " segment rather than reusing therock_classify's
+# bare `_GPU_FAMILY_RE` (though it shares the same GPU_FAMILY_TOKEN shape):
+# an unanchored scan would also match the runner-label segment that often
+# follows in the same job name (e.g. "linux-gfx942-1gpu-..." above, which
+# names a *different* family string than the job's own "Test | gfx94X-dcgpu"
+# segment) and reintroduce the cross-arch conflation this exists to prevent.
+_TEST_ARCH_JOB_RE = re.compile(rf"Test\s*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})")
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").

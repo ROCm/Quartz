@@ -629,7 +629,12 @@ def _refresh_same_run_fanout_tests(
                     statuses.append(leaf.status)
                 candidate = leaf.model_copy(
                     update={
-                        "status": rollup_statuses(statuses, leaf.status),
+                        # `statuses` is never empty here (guarded by the
+                        # `if not arch_variants: continue` above), so this
+                        # fallback can never fire; `leaf.status` only ever
+                        # affects the result via the `single_arch` vote above,
+                        # never as an unconditional broadcast to every arch.
+                        "status": rollup_statuses(statuses, Status.in_progress),
                         "variants": arch_variants,
                     }
                 )

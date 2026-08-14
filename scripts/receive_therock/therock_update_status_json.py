@@ -22,7 +22,12 @@ does not qualify (see `update_status_json` for the gate conditions).
 
 When `commit_and_push` is True (production): each attempt fetches and
 hard-resets onto the upstream head, then applies the run, commits, and pushes,
-up to `MAX_RETRIES` times. Resetting to `@{u}` before every attempt drops a
+retrying until a wall-clock deadline (`QUARTZ_STATUS_PUSH_MAX_WAIT_SEC`,
+default 15 minutes) elapses -- not a fixed attempt count. A large release
+fan-out can have dozens of runs pushing to the same ref within a minute or
+two; a fixed retry budget can exhaust mid-burst and permanently drop an
+update, whereas a losing run backed by a deadline always outlasts a bounded
+burst of sibling contention. Resetting to `@{u}` before every attempt drops a
 commit that lost the push race and rebuilds against whatever already landed, so
 each attempt starts from fresh upstream state (back off randomly between
 retries).
@@ -75,33 +80,39 @@ log = logging.getLogger(__name__)
 # the same branch ref within a minute or two, so a losing run must be able to
 # wait out that whole contention window. Each attempt rebuilds against fresh
 # upstream (see the loop in `update_status_json`), so retrying is idempotent and
-# safe -- the only reason to cap attempts is to bound wasted CI time. The cap is
-# the only tuning lever for contention, so it is overridable via the
-# `QUARTZ_STATUS_PUSH_MAX_RETRIES` env var for unusually large fan-outs.
-def _max_retries() -> int:
-    raw = os.environ.get("QUARTZ_STATUS_PUSH_MAX_RETRIES")
+# safe. Retrying is bounded by wall-clock time, not attempt count: a fixed
+# attempt budget can exhaust mid-burst (permanently dropping the update --
+# there is no redelivery), whereas a deadline lets a losing run simply outlast
+# whatever bounded contention window it is caught in. The deadline is the only
+# tuning lever for contention, so it is overridable via the
+# `QUARTZ_STATUS_PUSH_MAX_WAIT_SEC` env var for unusually large fan-outs.
+def _max_wait_seconds() -> float:
+    raw = os.environ.get("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC")
     if raw:
         try:
-            parsed = int(raw)
+            parsed = float(raw)
             if parsed > 0:
                 return parsed
             log.warning(
-                "QUARTZ_STATUS_PUSH_MAX_RETRIES=%r is not a positive int; "
-                "falling back to default %s",
+                "QUARTZ_STATUS_PUSH_MAX_WAIT_SEC=%r is not a positive number; "
+                "falling back to default %ss",
                 raw,
-                _DEFAULT_MAX_RETRIES,
+                _DEFAULT_MAX_WAIT_SEC,
             )
         except ValueError:
             log.warning(
-                "QUARTZ_STATUS_PUSH_MAX_RETRIES=%r is not an int; "
-                "falling back to default %s",
+                "QUARTZ_STATUS_PUSH_MAX_WAIT_SEC=%r is not a number; "
+                "falling back to default %ss",
                 raw,
-                _DEFAULT_MAX_RETRIES,
+                _DEFAULT_MAX_WAIT_SEC,
             )
-    return _DEFAULT_MAX_RETRIES
+    return _DEFAULT_MAX_WAIT_SEC
 
 
-_DEFAULT_MAX_RETRIES = 12
+# 15 minutes: comfortably longer than any observed release fan-out burst, so a
+# losing run always gets to retry against fresh upstream until the burst
+# drains rather than exhausting a fixed attempt count mid-contention.
+_DEFAULT_MAX_WAIT_SEC = 900.0
 # Exponential backoff with full jitter (AWS-style): attempt N (1-indexed) waits a
 # random duration in [0, min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * 2**(N-1))]. Full
 # jitter de-synchronizes runs that started together so they stop colliding.
@@ -1430,23 +1441,28 @@ def update_status_json(
         return status_path
 
     doc: StatusDocument | None = None
-    max_retries = _max_retries()
+    max_wait_seconds = _max_wait_seconds()
+    start = time.monotonic()
+    deadline = start + max_wait_seconds
     # Spread simultaneously-started runs so they do not all contend the ref at
     # once on the first attempt.
     time.sleep(random.uniform(0, INITIAL_JITTER_SEC))
-    for attempt in range(max_retries):
-        if attempt > 0:
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        if attempt > 1:
             # Exponential backoff with full jitter, capped at BACKOFF_CAP_SEC.
-            ceiling = min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * (2 ** (attempt - 1)))
+            ceiling = min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * (2 ** (attempt - 2)))
             backoff = random.uniform(0, ceiling)
             log.warning(
-                "Update attempt %s/%s failed (lost race or transient git "
+                "Update attempt %s failed (lost race or transient git "
                 "error), retrying in %.1fs...",
                 attempt,
-                max_retries - 1,
                 backoff,
             )
             time.sleep(backoff)
+            if time.monotonic() >= deadline:
+                break
 
         # Clear any stale `.git/*.lock` left by a killed prior git before
         # touching the index/refs, so a wedged lock does not fail every attempt
@@ -1476,10 +1492,10 @@ def update_status_json(
         outcome = _commit_and_push(repo_dir, files_to_commit, commit_message)
         if outcome is _PushOutcome.DONE:
             log.info(
-                "status.json updated: %s (attempt %s/%s)",
+                "status.json updated: %s (attempt %s, %.1fs elapsed)",
                 status_path.relative_to(repo_dir),
-                attempt + 1,
-                max_retries,
+                attempt,
+                time.monotonic() - start,
             )
             log.debug("%s", doc.to_json())
             return status_path
@@ -1496,7 +1512,10 @@ def update_status_json(
         # _PushOutcome.RETRY: lost the race; loop and rebuild against upstream.
 
     log.error(
-        "Failed to push after %s attempts. Final status.json content:", max_retries
+        "Failed to push after %s attempts over %.0fs (deadline exceeded). "
+        "Final status.json content:",
+        attempt,
+        max_wait_seconds,
     )
     if doc:
         log.error("%s", doc.to_json())
@@ -1504,7 +1523,8 @@ def update_status_json(
         log.error("No status.json content generated.")
     cls = workflow_run.classification
     raise RuntimeError(
-        f"Failed to push status.json after {max_retries} attempts "
+        f"Failed to push status.json after {attempt} attempts over "
+        f"{max_wait_seconds:.0f}s (deadline exceeded) "
         f"(workflow_run_id={workflow_run.workflow_run_id}, "
         f"{cls.platform}/{cls.pipeline_type}."
         f"{cls.pipeline_phase})."

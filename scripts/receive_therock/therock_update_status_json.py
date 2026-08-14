@@ -526,6 +526,14 @@ def _create_leaf(
 
     `arch`, when given, scopes matrix-cell variants (and the leaf's own
     rolled-up status) to that architecture -- see `_variants_from_jobs`.
+    `arch` is only ever set when this run reports *multiple* architectures
+    (see `_merge_run_into_document`), so `workflow_run`'s own conclusion is a
+    whole-run aggregate across all of them, not this one arch's outcome.
+    Unlike `_refresh_same_run_fanout_tests`'s single-arch case, it must not be
+    folded into the rollup as a vote here: doing so would broadcast one
+    shared status onto every architecture -- exactly the leakage `arch`
+    scoping exists to prevent. It is used only as the fallback when this
+    arch has no variants of its own to roll up.
     """
     ts_start = workflow_run.run_started_at or workflow_run.created_at
     started_at = _datetime_to_z(ts_start) if ts_start is not None else None
@@ -535,9 +543,10 @@ def _create_leaf(
         completed_at = _datetime_to_z(workflow_run.updated_at)
 
     variants = _derive_variants(workflow_run, arch=arch)
-    status = _run_status(workflow_run)
     if arch is not None and variants:
-        status = Variant.rollup_status(variants, status)
+        status = Variant.rollup_status(variants, Status.in_progress)
+    else:
+        status = _run_status(workflow_run)
 
     return RunLeaf(
         run_id=workflow_run.workflow_run_id,

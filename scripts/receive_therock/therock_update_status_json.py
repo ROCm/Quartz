@@ -47,6 +47,7 @@ import ntplib
 
 from therock_classify import (
     FINALIZING_PHASES,
+    GPU_FAMILY_TOKEN,
     RELEASE_CDN_PHASES,
     is_top_level_orchestrator,
 )
@@ -335,6 +336,19 @@ _MATRIX_JOB_RE = re.compile(
     r"py\s+(?P<py>\S+)\s*\|\s*(?:torch|jax)\s+(?P<ref>\S+)", re.IGNORECASE
 )
 
+# One (py, ref) build cell can nest per-arch test jobs, e.g.
+#   "Build | py 3.12 | torch release/2.10 / Test | gfx942 | linux-gfx942-1gpu..."
+# Extracts the arch a job's own "Test | <arch>" segment names, if any, so
+# jobs from different architectures nested under the same cell are never
+# grouped together as if they were one architecture's result. Deliberately
+# anchored to the "Test | " segment rather than reusing therock_classify's
+# bare `_GPU_FAMILY_RE` (though it shares the same GPU_FAMILY_TOKEN shape):
+# an unanchored scan would also match the runner-label segment that often
+# follows in the same job name (e.g. "linux-gfx942-1gpu-..." above, which
+# names a *different* family string than the job's own "Test | gfx94X-dcgpu"
+# segment) and reintroduce the cross-arch conflation this exists to prevent.
+_TEST_ARCH_JOB_RE = re.compile(rf"Test\s*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})")
+
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
 _VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_ref"}
@@ -376,15 +390,40 @@ def _run_status(workflow_run: WorkflowRunRecord) -> Status:
     return Status.in_progress
 
 
-def _variants_from_jobs(
-    workflow_run: WorkflowRunRecord, axis_key: str
-) -> list[Variant]:
-    """One variant per (py, ref) matrix cell parsed from job names."""
+def _job_matches_arch(job_name: str, arch: str) -> bool:
+    """True if `job_name` is arch-agnostic (no "Test | <arch>" segment of its
+    own, e.g. the cell's shared build step) or explicitly names `arch`."""
+    named = _TEST_ARCH_JOB_RE.findall(job_name)
+    return not named or arch in named
+
+
+def _job_archs(workflow_run: WorkflowRunRecord) -> frozenset[str]:
+    """Distinct architectures named in any job's own "Test | <arch>" segment."""
     jobs = (
         workflow_run.api_jobs
         if workflow_run.api_jobs is not None
         else workflow_run.jobs
     )
+    return frozenset(m for j in jobs for m in _TEST_ARCH_JOB_RE.findall(j.name))
+
+
+def _variants_from_jobs(
+    workflow_run: WorkflowRunRecord, axis_key: str, *, arch: str | None = None
+) -> list[Variant]:
+    """One variant per (py, ref) matrix cell parsed from job names.
+
+    A single (py, ref) build cell can nest test jobs for several
+    architectures (see `_TEST_ARCH_JOB_RE`). Passing `arch` scopes the cell
+    to that architecture's own jobs plus any arch-agnostic job, so one
+    architecture's result can never roll up into another's variant.
+    """
+    jobs = (
+        workflow_run.api_jobs
+        if workflow_run.api_jobs is not None
+        else workflow_run.jobs
+    )
+    if arch is not None:
+        jobs = [j for j in jobs if _job_matches_arch(j.name, arch)]
     cells: dict[tuple[str, str], list[WorkflowJobRecord]] = {}
     order: list[tuple[str, str]] = []
     for j in jobs:
@@ -467,23 +506,40 @@ def _variants_from_inputs(
     ]
 
 
-def _derive_variants(workflow_run: WorkflowRunRecord) -> list[Variant] | None:
+def _derive_variants(
+    workflow_run: WorkflowRunRecord, *, arch: str | None = None
+) -> list[Variant] | None:
     """Matrix-cell variants for fan-out pipelines (pytorch/jax py x ref).
 
-    Workflows in `_SKIP_WORKFLOW_NAMES` never reach here: `update_status_json`
-    returns before deriving a leaf for them at all.
+    See `_variants_from_jobs` for what `arch` scopes. Workflows in
+    `_SKIP_WORKFLOW_NAMES` never reach here: `update_status_json` returns
+    before deriving a leaf for them at all.
     """
     axis_key = _VARIANT_AXIS_KEY.get(workflow_run.classification.pipeline_type)
     if axis_key is None:
         return None
-    variants = _variants_from_jobs(workflow_run, axis_key)
+    variants = _variants_from_jobs(workflow_run, axis_key, arch=arch)
     if not variants:
         variants = _variants_from_inputs(workflow_run, axis_key)
     return variants or None
 
 
-def _create_leaf(workflow_run: WorkflowRunRecord) -> RunLeaf:
-    """Map the enriched WorkflowRunRecord to a v2 RunLeaf."""
+def _create_leaf(
+    workflow_run: WorkflowRunRecord, *, arch: str | None = None
+) -> RunLeaf:
+    """Map the enriched WorkflowRunRecord to a v2 RunLeaf.
+
+    `arch`, when given, scopes matrix-cell variants (and the leaf's own
+    rolled-up status) to that architecture -- see `_variants_from_jobs`.
+    `arch` is only ever set when this run reports *multiple* architectures
+    (see `_merge_run_into_document`), so `workflow_run`'s own conclusion is a
+    whole-run aggregate across all of them, not this one arch's outcome.
+    Unlike `_refresh_same_run_fanout_tests`'s single-arch case, it must not be
+    folded into the rollup as a vote here: doing so would broadcast one
+    shared status onto every architecture -- exactly the leakage `arch`
+    scoping exists to prevent. It is used only as the fallback when this
+    arch has no variants of its own to roll up.
+    """
     ts_start = workflow_run.run_started_at or workflow_run.created_at
     started_at = _datetime_to_z(ts_start) if ts_start is not None else None
 
@@ -491,13 +547,19 @@ def _create_leaf(workflow_run: WorkflowRunRecord) -> RunLeaf:
     if workflow_run.conclusion and workflow_run.updated_at is not None:
         completed_at = _datetime_to_z(workflow_run.updated_at)
 
+    variants = _derive_variants(workflow_run, arch=arch)
+    if arch is not None and variants:
+        status = Variant.rollup_status(variants, Status.in_progress)
+    else:
+        status = _run_status(workflow_run)
+
     return RunLeaf(
         run_id=workflow_run.workflow_run_id,
         run_attempt=workflow_run.run_attempt,
-        status=_run_status(workflow_run),
+        status=status,
         started_at=started_at,
         completed_at=completed_at,
-        variants=_derive_variants(workflow_run),
+        variants=variants,
     )
 
 
@@ -525,39 +587,67 @@ def _refresh_same_run_fanout_tests(
     necessarily the worst-of its `variants` (e.g. a matrix cell whose nested
     test job failed/cancelled does not always flip the run's own conclusion,
     or a cell can be entirely missing from `variants` if its job never
-    started). Fold it into the rollup rather than only using it as an
+    started). When the run only ever reports one architecture, fold it into
+    that architecture's rollup rather than only using it as an
     empty-variants fallback, so a terminal failure/cancellation at the run
-    level cannot be masked by whatever the individual cells happened to report
-    -- mirroring what `_merge_matrix_build_leaf` does for the build leaf
-    itself.
+    level cannot be masked by whatever the individual cells happened to
+    report -- mirroring what `_merge_matrix_build_leaf` does for the build
+    leaf itself.
+
+    One build cell can also nest test jobs for several architectures (see
+    `_variants_from_jobs`), so `leaf.variants` may roll every architecture's
+    outcome together. Re-derive each existing test leaf's variants scoped to
+    its *own* architecture instead of broadcasting `leaf.variants` wholesale,
+    so one architecture's result can never leak into another's. The same
+    reasoning rules out folding in the run-level conclusion once several
+    architectures share the run: that conclusion is a whole-run aggregate,
+    so a failure anywhere -- including in an unrelated architecture's own
+    job -- would otherwise get broadcast onto every architecture, right back
+    into the leakage this function exists to prevent.
     """
     cls = workflow_run.classification
+    axis_key = _VARIANT_AXIS_KEY.get(cls.pipeline_type)
     if (
         cls.pipeline_phase != "build"
-        or cls.pipeline_type not in _VARIANT_AXIS_KEY
+        or axis_key is None
         or not workflow_run.conclusion
         or not leaf.variants
         or leaf.run_id is None
     ):
         return False
 
-    projected_status = rollup_statuses(
-        (*(v.status for v in leaf.variants), leaf.status), leaf.status
-    )
+    single_arch = len(_job_archs(workflow_run)) <= 1
     pipeline = getattr(doc.pipelines, cls.pipeline_type)
     wrote = False
     for phase_map in (pipeline.test, pipeline.test_full):
         for arch_map in phase_map.values():
-            for existing in arch_map.values():
+            for arch, existing in arch_map.items():
                 if existing.run_id != leaf.run_id:
                     continue
                 if (existing.run_attempt or 0) != (leaf.run_attempt or 0):
                     continue
-                if not existing.should_replace(leaf):
+                arch_variants = _variants_from_jobs(workflow_run, axis_key, arch=arch)
+                if not arch_variants:
                     continue
-                existing.status = projected_status
-                existing.completed_at = leaf.completed_at
-                existing.variants = leaf.variants
+                statuses = [v.status for v in arch_variants]
+                if single_arch:
+                    statuses.append(leaf.status)
+                candidate = leaf.model_copy(
+                    update={
+                        # `statuses` is never empty here (guarded by the
+                        # `if not arch_variants: continue` above), so this
+                        # fallback can never fire; `leaf.status` only ever
+                        # affects the result via the `single_arch` vote above,
+                        # never as an unconditional broadcast to every arch.
+                        "status": rollup_statuses(statuses, Status.in_progress),
+                        "variants": arch_variants,
+                    }
+                )
+                if not existing.should_replace(candidate):
+                    continue
+                existing.status = candidate.status
+                existing.completed_at = candidate.completed_at
+                existing.variants = candidate.variants
                 wrote = True
     return wrote
 
@@ -804,14 +894,22 @@ def _merge_run_into_document(
         list(cls.architectures) if cls.pipeline_phase in ("test", "test-full") else [""]
     )
 
+    # A single event reporting more than one architecture (multi-arch test
+    # dispatch) would otherwise upsert the *same* leaf object -- variants
+    # derived from the run's full, arch-blind job list -- into every target
+    # arch's slot. Re-derive a leaf scoped to each arch so one architecture's
+    # result can never be attributed to another's.
+    multi_arch = len(targets) > 1 and cls.pipeline_type in _VARIANT_AXIS_KEY
+
     leaf_accepted = False
     for arch in targets:
+        arch_leaf = _create_leaf(workflow_run, arch=arch) if multi_arch else leaf
         wrote = doc.upsert_leaf(
             platform=cls.platform,
             arch=arch,
             pipeline_type=cls.pipeline_type,
             pipeline_phase=cls.pipeline_phase,
-            leaf=leaf,
+            leaf=arch_leaf,
         )
         leaf_accepted = leaf_accepted or wrote
         if not wrote:
@@ -824,7 +922,7 @@ def _merge_run_into_document(
                 cls.pipeline_phase,
                 workflow_run.workflow_run_id,
                 workflow_run.run_attempt,
-                leaf.status,
+                arch_leaf.status,
             )
 
     # URLs are updated only after the leaf upsert, gated on acceptance: a stale

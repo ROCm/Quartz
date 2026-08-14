@@ -1790,6 +1790,87 @@ def test_completed_fanout_build_refreshes_same_run_test_leaves() -> None:
     assert leaf.variants[0].status is Status.success
 
 
+def test_completed_fanout_build_does_not_leak_status_across_architectures() -> None:
+    # Two GPUs are tested under the *same* (py, torch) build cell. The
+    # matrix-cell key parsed from job names carries no arch, so refreshing
+    # same-run test leaves must not broadcast one architecture's outcome onto
+    # another's: gfx1101 failing must not drag down gfx942's passing leaf.
+    doc = StatusDocument()
+    for arch in ("gfx942", "gfx1101"):
+        stale_test = _variant_run(
+            pipeline_type="pytorch",
+            pipeline_phase="test",
+            architectures=[arch],
+            run_id=901,
+            conclusion=None,
+            jobs=[
+                _job("Build | py 3.12 | torch release/2.10 / Build"),
+                _job(
+                    f"Build | py 3.12 | torch release/2.10 / Test | {arch}",
+                    conclusion=None,
+                    completed=None,
+                ),
+            ],
+        )
+        doc.upsert_leaf("linux", arch, "pytorch", "test", tusj._create_leaf(stale_test))
+
+    completed_build = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=901,
+        conclusion="failure",
+        jobs=[
+            _job("Build | py 3.12 | torch release/2.10 / Build"),
+            _job("Build | py 3.12 | torch release/2.10 / Test | gfx942"),
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx1101",
+                conclusion="failure",
+            ),
+        ],
+    )
+    tusj._merge_run_into_document(
+        doc, completed_build, tusj._create_leaf(completed_build)
+    )
+
+    assert doc.pipelines.pytorch.test["linux"]["gfx942"].status is Status.success
+    assert doc.pipelines.pytorch.test["linux"]["gfx1101"].status is Status.failure
+
+
+def test_multi_arch_test_event_does_not_leak_or_alias_across_architectures() -> None:
+    # Distinct from the fanout-build case above (a *build* run whose nested
+    # test jobs get refreshed into already-existing per-arch test leaves):
+    # this pins _merge_run_into_document's own multi_arch branch, for a
+    # single *test*-phase event that itself reports more than one
+    # architecture in cls.architectures. No dispatcher today fans a single
+    # test-phase run across several different GPUs (each test run reports
+    # exactly one arch), but nothing prevents one from doing so in the
+    # future -- if it did, the two architectures' leaves must be genuinely
+    # independent objects, not aliases sharing one leaf/variants list.
+    run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx942", "gfx1101"],
+        run_id=904,
+        conclusion="failure",
+        jobs=[
+            _job("py 3.12 | torch release/2.10 / Test | gfx942"),
+            _job(
+                "py 3.12 | torch release/2.10 / Test | gfx1101",
+                conclusion="failure",
+            ),
+        ],
+    )
+    doc = StatusDocument()
+    tusj._merge_run_into_document(doc, run, tusj._create_leaf(run))
+
+    gfx942 = doc.pipelines.pytorch.test["linux"]["gfx942"]
+    gfx1101 = doc.pipelines.pytorch.test["linux"]["gfx1101"]
+    assert gfx942.status is Status.success
+    assert gfx1101.status is Status.failure
+    assert gfx942 is not gfx1101
+    assert gfx942.variants is not gfx1101.variants
+
+
 def test_fanout_projection_uses_variant_rollup_not_raw_run_conclusion() -> None:
     # The build run's own top-level GitHub conclusion is not necessarily the
     # worst-of its matrix cells (e.g. a cell whose nested test job failed does

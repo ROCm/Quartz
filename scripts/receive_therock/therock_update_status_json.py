@@ -56,6 +56,7 @@ from therock_status_document import (
     Status,
     StatusDocument,
     Variant,
+    merge_matrix_test_leaf,
     rollup_statuses,
 )
 from therock_summary import freeze_requested_architectures, rebuild_summary
@@ -528,8 +529,13 @@ def _refresh_same_run_fanout_tests(
     started). Fold it into the rollup rather than only using it as an
     empty-variants fallback, so a terminal failure/cancellation at the run
     level cannot be masked by whatever the individual cells happened to report
-    -- mirroring what `_merge_matrix_build_leaf` does for the build leaf
-    itself.
+    -- mirroring what `_merge_variant_leaf` does for the build leaf itself.
+
+    Merges cell-by-cell (via `merge_matrix_test_leaf`) rather than replacing
+    the leaf's `variants` wholesale: this snapshot's own variants are derived
+    from the build run's job names, so a blind overwrite could clobber
+    genuinely newer/more-complete per-cell results that already landed from
+    the test leaf's own dedicated completion events.
     """
     cls = workflow_run.classification
     if (
@@ -548,16 +554,17 @@ def _refresh_same_run_fanout_tests(
     wrote = False
     for phase_map in (pipeline.test, pipeline.test_full):
         for arch_map in phase_map.values():
-            for existing in arch_map.values():
+            for arch, existing in list(arch_map.items()):
                 if existing.run_id != leaf.run_id:
                     continue
                 if (existing.run_attempt or 0) != (leaf.run_attempt or 0):
                     continue
                 if not existing.should_replace(leaf):
                     continue
-                existing.status = projected_status
-                existing.completed_at = leaf.completed_at
-                existing.variants = leaf.variants
+                merged = merge_matrix_test_leaf(existing, leaf)
+                merged.status = projected_status
+                merged.completed_at = leaf.completed_at
+                arch_map[arch] = merged
                 wrote = True
     return wrote
 

@@ -27,6 +27,7 @@ from therock_status_document import (  # noqa: E402
     StatusDocument,
     Variant,
     _merge_variant_leaf,
+    merge_matrix_test_leaf,
 )
 
 
@@ -592,14 +593,14 @@ def test_upsert_test_guard_is_per_arch() -> None:
 
 def test_upsert_test_replaces_whole_leaf_with_variants_atomically() -> None:
     # A pytorch.test arch leaf is ONE workflow run; its matrix cells are jobs in
-    # that run, carried on the leaf's `variants`. Unlike the build phase, test
-    # leaves are NOT merged cell-by-cell: a higher run_attempt replaces the
-    # entire leaf (and its full variant list) atomically. This is the
-    # rerun-of-failed-jobs case -- GitHub re-stamps every job with the new
-    # attempt, so the producer hands us a complete attempt-2 snapshot and the
-    # old attempt-1 variants are dropped wholesale, not preserved per-cell.
-    # Re-running failed jobs keeps the SAME run_id and only bumps run_attempt;
-    # the variants repeat the leaf's run_id.
+    # that run, carried on the leaf's `variants`. Like the build phase, test
+    # leaves with variants are merged cell-by-cell (see `merge_matrix_test_leaf`)
+    # rather than replaced wholesale. This is the rerun-of-failed-jobs case --
+    # GitHub re-stamps every job with the new attempt, so every cell's higher
+    # run_attempt wins the per-cell guard and the net effect looks atomic: all
+    # attempt-1 values end up superseded. Re-running failed jobs keeps the
+    # SAME run_id and only bumps run_attempt; the variants repeat the leaf's
+    # run_id.
     run_id = 12345900
     doc = StatusDocument()
     doc.upsert_leaf(
@@ -662,9 +663,10 @@ def test_upsert_test_replaces_whole_leaf_with_variants_atomically() -> None:
     assert all(v.status is Status.success for v in leaf.variants)
 
 
-def test_upsert_test_with_variants_rejects_lower_attempt_wholesale() -> None:
-    # The leaf-level guard protects the whole test leaf, variants included: a
-    # stale lower-attempt snapshot cannot clobber a newer one even cell-by-cell.
+def test_upsert_test_with_variants_rejects_lower_attempt_per_cell() -> None:
+    # The variant path merges per-cell (like build) and always reports the
+    # write as accepted, but the per-cell guard still protects the actual
+    # data: a stale lower-attempt snapshot cannot clobber a newer cell.
     doc = StatusDocument()
     doc.upsert_leaf(
         "linux",
@@ -677,7 +679,7 @@ def test_upsert_test_with_variants_rejects_lower_attempt_wholesale() -> None:
             variants=[_variant(matrix={"py": "3.11"}, run_attempt=2)],
         ),
     )
-    assert not doc.upsert_leaf(
+    assert doc.upsert_leaf(
         "linux",
         "gfx942",
         "pytorch",
@@ -689,9 +691,97 @@ def test_upsert_test_with_variants_rejects_lower_attempt_wholesale() -> None:
         ),
     )
     leaf = doc.pipelines.pytorch.test["linux"]["gfx942"]
-    assert leaf.run_attempt == 2
     assert leaf.variants is not None
+    assert leaf.variants[0].run_attempt == 2
     assert leaf.variants[0].status is Status.success
+
+
+def test_upsert_test_with_variants_always_returns_true() -> None:
+    # Mirrors test_upsert_build_with_variants_always_returns_true: the variant
+    # path merges per-cell and bypasses the leaf-level guard.
+    doc = StatusDocument()
+    assert doc.upsert_leaf(
+        "linux",
+        "gfx942",
+        "pytorch",
+        "test",
+        _leaf(variants=[_variant(matrix={"py": "3"})]),
+    )
+
+
+def test_upsert_test_merge_does_not_regress_completed_cell() -> None:
+    # This is the push-race scenario the fix targets: two concurrent
+    # `receive_therock_data.yml` runs fetch fresh job-list snapshots of the
+    # SAME shared entry run at different wall-clock times. Snapshot A sees
+    # py3.11 done but py3.12 still running; snapshot B (fetched slightly
+    # earlier, but whose git push lands second) sees py3.11 still running but
+    # py3.12 done. Regardless of push order, merging cell-by-cell must end up
+    # with BOTH cells advanced -- never one snapshot regressing the other's
+    # progress.
+    doc = StatusDocument()
+    run_id = 555
+    doc.upsert_leaf(
+        "linux",
+        "gfx942",
+        "jax",
+        "test",
+        _leaf(
+            run_id=run_id,
+            run_attempt=1,
+            status=Status.in_progress,
+            completed_at=None,
+            variants=[
+                _variant(
+                    matrix={"py": "3.11"},
+                    run_id=run_id,
+                    status=Status.success,
+                    completed_at="2026-04-08T01:10:00Z",
+                ),
+                _variant(
+                    matrix={"py": "3.12"},
+                    run_id=run_id,
+                    status=Status.in_progress,
+                    completed_at=None,
+                ),
+            ],
+        ),
+    )
+    # A stale snapshot lands next: py3.11 looks in_progress again (fetched
+    # before it finished) but py3.12 has since completed.
+    doc.upsert_leaf(
+        "linux",
+        "gfx942",
+        "jax",
+        "test",
+        _leaf(
+            run_id=run_id,
+            run_attempt=1,
+            status=Status.in_progress,
+            completed_at=None,
+            variants=[
+                _variant(
+                    matrix={"py": "3.11"},
+                    run_id=run_id,
+                    status=Status.in_progress,
+                    completed_at=None,
+                ),
+                _variant(
+                    matrix={"py": "3.12"},
+                    run_id=run_id,
+                    status=Status.success,
+                    completed_at="2026-04-08T01:20:00Z",
+                ),
+            ],
+        ),
+    )
+    leaf = doc.pipelines.jax.test["linux"]["gfx942"]
+    assert leaf.variants is not None
+    by_key = {v.key(): v for v in leaf.variants}
+    assert by_key[(("py", "3.11"),)].status is Status.success
+    assert by_key[(("py", "3.12"),)].status is Status.success
+    # Both cells terminal -> the leaf-level rollup is terminal too.
+    assert leaf.status is Status.success
+    assert leaf.completed_at == "2026-04-08T01:20:00Z"
 
 
 def test_upsert_test_newer_run_id_supersedes_via_upsert() -> None:

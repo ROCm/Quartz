@@ -9,7 +9,7 @@
   "completed_at": "2026-08-15T08:12:52Z",
   "orchestrator_conclusion": "failure",
   "status_json_created": "2026-08-15T00:04:48Z",
-  "status_json_last_updated": "2026-08-15T08:14:49Z",
+  "status_json_last_updated": "2026-08-15T08:15:22Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -69,8 +69,8 @@
         },
         "test": {
           "success": 15,
-          "failure": 2,
-          "in_progress": 13,
+          "failure": 4,
+          "in_progress": 11,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3183,7 +3183,7 @@
             "run_id": 31870849929,
             "run_attempt": 1,
             "started_at": "2026-08-15T07:00:24Z",
-            "completed_at": "2026-08-15T08:13:44Z",
+            "completed_at": "2026-08-15T08:14:28Z",
             "variants": [
               {
                 "py": "3.14",
@@ -3232,7 +3232,7 @@
               {
                 "py": "3.11",
                 "jax_ref": "0.10.2",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31870849929,
                 "run_attempt": 1,
                 "started_at": "2026-08-15T07:01:52Z"
@@ -3265,10 +3265,11 @@
               {
                 "py": "3.12",
                 "jax_ref": "0.11.0",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31870849929,
                 "run_attempt": 1,
-                "started_at": "2026-08-15T07:01:52Z"
+                "started_at": "2026-08-15T07:01:52Z",
+                "completed_at": "2026-08-15T08:14:32Z"
               },
               {
                 "py": "3.12",
@@ -3360,11 +3361,10 @@
               {
                 "py": "3.13",
                 "jax_ref": "0.10.2",
-                "status": "success",
+                "status": "in_progress",
                 "run_id": 31870849929,
                 "run_attempt": 1,
-                "started_at": "2026-08-15T07:01:52Z",
-                "completed_at": "2026-08-15T07:01:58Z"
+                "started_at": "2026-08-15T07:01:52Z"
               },
               {
                 "py": "3.14",
@@ -3429,10 +3429,11 @@
               {
                 "py": "3.13",
                 "jax_ref": "rocm-jaxlib-v0.10.2",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 31870849929,
                 "run_attempt": 1,
-                "started_at": "2026-08-15T07:10:50Z"
+                "started_at": "2026-08-15T07:10:50Z",
+                "completed_at": "2026-08-15T08:14:31Z"
               },
               {
                 "py": "3.11",

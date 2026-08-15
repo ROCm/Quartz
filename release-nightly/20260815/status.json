@@ -9,7 +9,7 @@
   "completed_at": "2026-08-15T08:12:52Z",
   "orchestrator_conclusion": "failure",
   "status_json_created": "2026-08-15T00:04:48Z",
-  "status_json_last_updated": "2026-08-15T09:29:59Z",
+  "status_json_last_updated": "2026-08-15T09:30:43Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -57,8 +57,8 @@
         },
         "test": {
           "success": 153,
-          "failure": 64,
-          "in_progress": 103,
+          "failure": 67,
+          "in_progress": 100,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3294,10 +3294,11 @@
               {
                 "py": "3.13",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31870850269,
                 "run_attempt": 1,
-                "started_at": "2026-08-15T07:01:51Z"
+                "started_at": "2026-08-15T07:01:51Z",
+                "completed_at": "2026-08-15T09:29:58Z"
               },
               {
                 "py": "3.14",
@@ -3363,10 +3364,11 @@
               {
                 "py": "3.10",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31870850269,
                 "run_attempt": 1,
-                "started_at": "2026-08-15T07:01:52Z"
+                "started_at": "2026-08-15T07:01:52Z",
+                "completed_at": "2026-08-15T09:30:10Z"
               },
               {
                 "py": "3.10",
@@ -5371,10 +5373,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31870850269,
                 "run_attempt": 1,
-                "started_at": "2026-08-15T07:01:53Z"
+                "started_at": "2026-08-15T07:01:53Z",
+                "completed_at": "2026-08-15T09:30:08Z"
               },
               {
                 "py": "3.10",

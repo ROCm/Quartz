@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-16T00:01:55Z",
   "status_json_created": "2026-08-16T00:03:09Z",
-  "status_json_last_updated": "2026-08-16T02:53:35Z",
+  "status_json_last_updated": "2026-08-16T02:53:37Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -67,8 +67,8 @@
         },
         "test": {
           "success": 15,
-          "failure": 8,
-          "in_progress": 7,
+          "failure": 9,
+          "in_progress": 6,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3405,7 +3405,8 @@
               "status": "failure",
               "run_id": 31920011805,
               "run_attempt": 1,
-              "started_at": "2026-08-16T01:39:28Z"
+              "started_at": "2026-08-16T01:39:28Z",
+              "completed_at": "2026-08-16T02:52:06Z"
             },
             {
               "py": "3.11",
@@ -3419,11 +3420,10 @@
             {
               "py": "3.13",
               "jax_ref": "0.10.0",
-              "status": "success",
+              "status": "failure",
               "run_id": 31920011805,
               "run_attempt": 1,
-              "started_at": "2026-08-16T01:39:28Z",
-              "completed_at": "2026-08-16T01:39:34Z"
+              "started_at": "2026-08-16T01:39:28Z"
             },
             {
               "py": "3.14",
@@ -3455,11 +3455,10 @@
             {
               "py": "3.13",
               "jax_ref": "0.11.0",
-              "status": "success",
+              "status": "failure",
               "run_id": 31920011805,
               "run_attempt": 1,
-              "started_at": "2026-08-16T01:39:28Z",
-              "completed_at": "2026-08-16T01:39:33Z"
+              "started_at": "2026-08-16T01:39:28Z"
             }
           ]
         }
@@ -3471,7 +3470,7 @@
             "run_id": 31920011805,
             "run_attempt": 1,
             "started_at": "2026-08-16T01:38:00Z",
-            "completed_at": "2026-08-16T02:52:04Z",
+            "completed_at": "2026-08-16T02:52:46Z",
             "variants": [
               {
                 "py": "3.11",
@@ -3730,7 +3729,7 @@
               {
                 "py": "3.13",
                 "jax_ref": "0.11.0",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31920011805,
                 "run_attempt": 1,
                 "started_at": "2026-08-16T01:39:28Z"

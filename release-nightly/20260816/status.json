@@ -9,7 +9,7 @@
   "completed_at": "2026-08-16T05:25:44Z",
   "orchestrator_conclusion": "failure",
   "status_json_created": "2026-08-16T00:03:09Z",
-  "status_json_last_updated": "2026-08-16T07:57:52Z",
+  "status_json_last_updated": "2026-08-16T07:59:28Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -112,8 +112,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 3,
-          "in_progress": 1,
+          "failure": 4,
+          "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
         }
@@ -202,10 +202,11 @@
         },
         "windows": {
           "gfx120X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 31927240944,
             "run_attempt": 1,
-            "started_at": "2026-08-16T04:42:00Z"
+            "started_at": "2026-08-16T04:42:00Z",
+            "completed_at": "2026-08-16T07:58:42Z"
           },
           "gfx110X-all": {
             "status": "failure",

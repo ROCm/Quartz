@@ -408,18 +408,14 @@ def merge_matrix_test_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLe
         completed_at = max(ends) if ends else new.completed_at
 
     starts = [v.started_at for v in variants if v.started_at]
-    started_at = starts and min(starts)
+    started_at = min(starts) if starts else None
     if not started_at:
         started_at = (existing.started_at if existing else None) or new.started_at
 
-    run_id = (
-        new.run_id if new.run_id is not None else (existing.run_id if existing else None)
-    )
-    run_attempt = (
-        new.run_attempt
-        if new.run_attempt is not None
-        else (existing.run_attempt if existing else None)
-    )
+    if existing is None or existing.should_replace(new):
+        run_id, run_attempt = new.run_id, new.run_attempt
+    else:
+        run_id, run_attempt = existing.run_id, existing.run_attempt
 
     return RunLeaf(
         status=status,

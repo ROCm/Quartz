@@ -449,6 +449,63 @@ def test_merge_status_rolls_up_failure() -> None:
     assert merged.status is Status.failure
 
 
+# --- merge_matrix_test_leaf: leaf-header identity ---------------------------
+
+
+def test_matrix_merge_leaf_header_keeps_newer_run_over_stale_loser() -> None:
+    # A stale older-run snapshot loses the push race but still reaches the
+    # merge (the variant path bypasses RunLeaf.should_replace). Cells are held
+    # by Variant.should_replace; the leaf header must not regress with them.
+    existing = _leaf(
+        run_id=200,
+        run_attempt=1,
+        variants=[_variant(matrix={"py": "3.11"}, run_id=200, run_attempt=1)],
+    )
+    new = _leaf(
+        run_id=100,
+        run_attempt=5,
+        variants=[_variant(matrix={"py": "3.11"}, run_id=100, run_attempt=5)],
+    )
+    merged = merge_matrix_test_leaf(existing, new)
+    assert merged.run_id == 200
+    assert merged.run_attempt == 1
+    assert merged.variants is not None
+    assert merged.variants[0].run_id == 200
+
+
+def test_matrix_merge_leaf_header_advances_to_newer_run() -> None:
+    existing = _leaf(
+        run_id=100,
+        run_attempt=2,
+        variants=[_variant(matrix={"py": "3.11"}, run_id=100, run_attempt=2)],
+    )
+    new = _leaf(
+        run_id=200,
+        run_attempt=1,
+        variants=[_variant(matrix={"py": "3.11"}, run_id=200, run_attempt=1)],
+    )
+    merged = merge_matrix_test_leaf(existing, new)
+    # newer run_id wins outright -- its (lower) attempt comes with it.
+    assert merged.run_id == 200
+    assert merged.run_attempt == 1
+
+
+def test_matrix_merge_leaf_header_takes_higher_attempt_within_run() -> None:
+    existing = _leaf(
+        run_id=100,
+        run_attempt=2,
+        variants=[_variant(matrix={"py": "3.11"}, run_id=100, run_attempt=2)],
+    )
+    new = _leaf(
+        run_id=100,
+        run_attempt=1,
+        variants=[_variant(matrix={"py": "3.11"}, run_id=100, run_attempt=1)],
+    )
+    merged = merge_matrix_test_leaf(existing, new)
+    assert merged.run_id == 100
+    assert merged.run_attempt == 2
+
+
 # --- upsert_leaf: build phase -----------------------------------------------
 
 

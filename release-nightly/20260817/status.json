@@ -9,7 +9,7 @@
   "completed_at": "2026-08-17T02:48:35Z",
   "orchestrator_conclusion": "failure",
   "status_json_created": "2026-08-17T00:02:57Z",
-  "status_json_last_updated": "2026-08-17T03:17:50Z",
+  "status_json_last_updated": "2026-08-17T03:19:41Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -57,8 +57,8 @@
         },
         "test": {
           "success": 70,
-          "failure": 47,
-          "in_progress": 203,
+          "failure": 48,
+          "in_progress": 202,
           "cancelled": 0,
           "skipped": 0
         }
@@ -2348,10 +2348,11 @@
               {
                 "py": "3.12",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31985448307,
                 "run_attempt": 1,
-                "started_at": "2026-08-17T01:37:28Z"
+                "started_at": "2026-08-17T01:37:28Z",
+                "completed_at": "2026-08-17T03:15:23Z"
               },
               {
                 "py": "3.10",

@@ -9,7 +9,7 @@
   "completed_at": "2026-08-17T08:09:26Z",
   "orchestrator_conclusion": "failure",
   "status_json_created": "2026-08-17T00:02:57Z",
-  "status_json_last_updated": "2026-08-17T10:19:42Z",
+  "status_json_last_updated": "2026-08-17T10:22:44Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -124,8 +124,8 @@
         },
         "test": {
           "success": 9,
-          "failure": 0,
-          "in_progress": 251,
+          "failure": 1,
+          "in_progress": 250,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3899,7 +3899,7 @@
             ]
           },
           "gfx120X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 32006981712,
             "run_attempt": 1,
             "started_at": "2026-08-17T07:42:18Z",
@@ -3916,10 +3916,11 @@
               {
                 "py": "3.10",
                 "torch": "release/2.11",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32006981712,
                 "run_attempt": 1,
-                "started_at": "2026-08-17T07:43:24Z"
+                "started_at": "2026-08-17T07:43:24Z",
+                "completed_at": "2026-08-17T10:19:29Z"
               },
               {
                 "py": "3.12",

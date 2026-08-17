@@ -202,6 +202,8 @@ class Variant(BaseModel):
             return new_attempt > existing_attempt
         if self.is_terminal() and not new.is_terminal():
             return False
+        if self.completed_at is not None and new.completed_at is None:
+            return False
         return True
 
     @staticmethod
@@ -255,6 +257,8 @@ class RunLeaf(BaseModel):
         if new_attempt != existing_attempt:
             return new_attempt > existing_attempt
         if self.is_terminal() and not new.is_terminal():
+            return False
+        if self.completed_at is not None and new.completed_at is None:
             return False
         return True
 

@@ -337,6 +337,35 @@ def test_same_attempt_terminal_replaced_by_terminal() -> None:
     assert existing.should_replace(new)
 
 
+# --- should_replace: terminal-by-status but missing completed_at -----------
+#
+# `is_terminal()` treats a terminal `status` (failure/success/...) as
+# sufficient on its own, independent of `completed_at` -- a job's own
+# conclusion is known the instant it finishes, before every sibling job in
+# its cell/run has necessarily finished too. Two same-run/attempt snapshots
+# can therefore both be "terminal" while differing in how much they actually
+# know: a same-run re-derivation missing `completed_at` must not overwrite
+# one that already had it.
+
+
+def test_same_attempt_terminal_with_completed_at_beats_terminal_without() -> None:
+    existing = _leaf(run_attempt=1, status=Status.failure, completed_at="2026Z")
+    new = _leaf(run_attempt=1, status=Status.failure, completed_at=None)
+    assert not existing.should_replace(new)
+
+
+def test_same_attempt_terminal_without_completed_at_replaced_by_one_with() -> None:
+    existing = _leaf(run_attempt=1, status=Status.failure, completed_at=None)
+    new = _leaf(run_attempt=1, status=Status.failure, completed_at="2026Z")
+    assert existing.should_replace(new)
+
+
+def test_variant_same_attempt_terminal_with_completed_at_not_downgraded() -> None:
+    existing = _variant(run_attempt=1, status=Status.failure, completed_at="2026Z")
+    new = _variant(run_attempt=1, status=Status.failure, completed_at=None)
+    assert not existing.should_replace(new)
+
+
 # --- _merge_variant_leaf -----------------------------------------------
 
 
@@ -434,6 +463,43 @@ def test_merge_preserves_existing_cell_order_with_mixed_update() -> None:
     assert merged.variants[0].run_attempt == 2
     assert merged.variants[1].run_attempt == 1
     assert merged.variants[2].run_attempt == 1
+
+
+def test_merge_does_not_lose_completed_at_from_later_incomplete_snapshot() -> None:
+    # Reproduces a real production race: multiple notify events for the SAME
+    # shared-entry run each re-fetch and re-derive the *entire* job list. A
+    # cell's own notify step necessarily observes its own job as still
+    # running, so its own snapshot lacks a `completed_at` for itself; only a
+    # *later* sibling cell's snapshot (fetched after this cell's job has
+    # actually finished) captures it. If that later, complete snapshot's
+    # merge is followed by processing an earlier, incomplete one for the SAME
+    # cell (same run_id/attempt), the incomplete one must not erase the
+    # `completed_at` already recorded.
+    existing = _leaf(
+        variants=[
+            _variant(
+                matrix={"py": "3.11"},
+                run_id=901,
+                run_attempt=1,
+                status=Status.failure,
+                completed_at="2026-04-08T01:10:00Z",
+            )
+        ]
+    )
+    stale_incomplete = _leaf(
+        variants=[
+            _variant(
+                matrix={"py": "3.11"},
+                run_id=901,
+                run_attempt=1,
+                status=Status.failure,
+                completed_at=None,
+            )
+        ]
+    )
+    merged = _merge_variant_leaf(existing, stale_incomplete)
+    assert merged.variants is not None
+    assert merged.variants[0].completed_at == "2026-04-08T01:10:00Z"
 
 
 def test_merge_status_rolls_up_failure() -> None:

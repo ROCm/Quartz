@@ -368,6 +368,65 @@ def _merge_variant_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLeaf"
     )
 
 
+def merge_matrix_test_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLeaf":
+    """Merge fan-out test variants by matrix cell instead of replacing the
+    whole leaf (mirrors `_merge_variant_leaf`, but also carries forward
+    `run_id`/`run_attempt`/timestamps so later comparisons -- e.g.
+    `_refresh_same_run_fanout_tests` in therock_update_status_json.py, its
+    other caller -- can still identify the owning run).
+
+    Every completion notification for a shared-entry-run matrix (pytorch/jax
+    py x ref fan-out sharing one `GITHUB_RUN_ID`) re-derives *all* cells from
+    a freshly re-fetched job-list snapshot, and those snapshots race each
+    other under heavy concurrency with no correlation between "wins the push"
+    and "is the freshest/most complete". Wholesale replacement
+    (`arch_map[arch] = new`) lets an earlier, less-complete snapshot silently
+    regress a later, more-complete one whenever it happens to win the race.
+    Merging cell-by-cell through `Variant.should_replace` makes every cell
+    advance monotonically regardless of push-race ordering.
+    """
+    variants: list[Variant] = []
+    positions: dict[tuple[tuple[str, str], ...], int] = {}
+
+    for variant in existing.variants if existing and existing.variants else []:
+        positions[variant.key()] = len(variants)
+        variants.append(variant)
+
+    for variant in new.variants or []:
+        key = variant.key()
+        pos = positions.get(key)
+        if pos is None:
+            positions[key] = len(variants)
+            variants.append(variant)
+        elif variants[pos].should_replace(variant):
+            variants[pos] = variant
+
+    status = Variant.rollup_status(variants, new.status)
+    completed_at: str | None = None
+    if status.is_terminal:
+        ends = [v.completed_at for v in variants if v.completed_at]
+        completed_at = max(ends) if ends else new.completed_at
+
+    starts = [v.started_at for v in variants if v.started_at]
+    started_at = min(starts) if starts else None
+    if not started_at:
+        started_at = (existing.started_at if existing else None) or new.started_at
+
+    if existing is None or existing.should_replace(new):
+        run_id, run_attempt = new.run_id, new.run_attempt
+    else:
+        run_id, run_attempt = existing.run_id, existing.run_attempt
+
+    return RunLeaf(
+        status=status,
+        run_id=run_id,
+        run_attempt=run_attempt,
+        started_at=started_at or None,
+        completed_at=completed_at,
+        variants=variants,
+    )
+
+
 # --- Summary rollup ----------------------------------------------------------
 # `therock_summary.rebuild_summary` derives these from the pipeline detail tree
 # on every update; they are the read-optimized projection consumers render.
@@ -581,6 +640,9 @@ class StatusDocument(BaseModel):
         )
         arch_map = phase_map.setdefault(platform, {})
         existing = arch_map.get(arch)
+        if leaf.variants:
+            arch_map[arch] = merge_matrix_test_leaf(existing, leaf)
+            return True
         if existing is not None and not existing.should_replace(leaf):
             return False
         arch_map[arch] = leaf

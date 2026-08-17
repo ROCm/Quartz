@@ -57,6 +57,7 @@ from therock_status_document import (
     Status,
     StatusDocument,
     Variant,
+    merge_matrix_test_leaf,
     rollup_statuses,
 )
 from therock_summary import freeze_requested_architectures, rebuild_summary
@@ -583,27 +584,32 @@ def _refresh_same_run_fanout_tests(
     this function those same-run test leaves would go stale once the build
     itself is done.
 
-    `leaf.status` is this run's own top-level GitHub conclusion. It is not
-    necessarily the worst-of its `variants` (e.g. a matrix cell whose nested
-    test job failed/cancelled does not always flip the run's own conclusion,
-    or a cell can be entirely missing from `variants` if its job never
-    started). When the run only ever reports one architecture, fold it into
-    that architecture's rollup rather than only using it as an
-    empty-variants fallback, so a terminal failure/cancellation at the run
-    level cannot be masked by whatever the individual cells happened to
-    report -- mirroring what `_merge_matrix_build_leaf` does for the build
-    leaf itself.
+    Each matching test leaf is refreshed under three constraints, all guarding
+    against this coarse build-run snapshot corrupting finer-grained state:
 
-    One build cell can also nest test jobs for several architectures (see
-    `_variants_from_jobs`), so `leaf.variants` may roll every architecture's
-    outcome together. Re-derive each existing test leaf's variants scoped to
-    its *own* architecture instead of broadcasting `leaf.variants` wholesale,
-    so one architecture's result can never leak into another's. The same
-    reasoning rules out folding in the run-level conclusion once several
-    architectures share the run: that conclusion is a whole-run aggregate,
-    so a failure anywhere -- including in an unrelated architecture's own
-    job -- would otherwise get broadcast onto every architecture, right back
-    into the leakage this function exists to prevent.
+    - Per-architecture scope. One build run can nest test jobs for several
+      architectures, so `leaf.variants` may roll every architecture's outcome
+      together. Each existing test leaf's variants are re-derived scoped to its
+      *own* architecture (`_variants_from_jobs(..., arch=arch)`) rather than
+      broadcasting `leaf.variants` wholesale, so one architecture's result can
+      never leak into another's.
+
+    - Per-cell merge. Those re-derived variants come from the build run's job
+      names, so a blind overwrite could clobber genuinely newer/more-complete
+      per-cell results that already landed from the test leaf's own dedicated
+      completion events. `merge_matrix_test_leaf` merges cell-by-cell, keeping
+      the winning `Variant` per cell, instead of replacing `variants` wholesale.
+
+    - Run-level status only when unambiguous. `leaf.status` is this run's own
+      top-level GitHub conclusion, which is not necessarily the worst-of its
+      variants (a nested test cell that failed/cancelled does not always flip
+      the run's conclusion, and a cell can be missing entirely if its job never
+      started). It is folded into the rollup only when the run reports a single
+      architecture -- mirroring what `_merge_variant_leaf` does for the build
+      leaf itself. Once several architectures share the run that conclusion is a
+      whole-run aggregate, so folding it in would broadcast a failure anywhere
+      -- even in an unrelated architecture -- onto every architecture, the very
+      leakage this scoping exists to prevent.
     """
     cls = workflow_run.classification
     axis_key = _VARIANT_AXIS_KEY.get(cls.pipeline_type)
@@ -645,9 +651,10 @@ def _refresh_same_run_fanout_tests(
                 )
                 if not existing.should_replace(candidate):
                     continue
-                existing.status = candidate.status
-                existing.completed_at = candidate.completed_at
-                existing.variants = candidate.variants
+                merged = merge_matrix_test_leaf(existing, candidate)
+                merged.status = candidate.status
+                merged.completed_at = candidate.completed_at
+                arch_map[arch] = merged
                 wrote = True
     return wrote
 

@@ -9,7 +9,7 @@
   "completed_at": "2026-08-17T02:48:35Z",
   "orchestrator_conclusion": "failure",
   "status_json_created": "2026-08-17T00:02:57Z",
-  "status_json_last_updated": "2026-08-17T03:06:01Z",
+  "status_json_last_updated": "2026-08-17T03:06:28Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -69,8 +69,8 @@
         },
         "test": {
           "success": 15,
-          "failure": 4,
-          "in_progress": 11,
+          "failure": 8,
+          "in_progress": 7,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3474,7 +3474,7 @@
             "run_id": 31985449770,
             "run_attempt": 1,
             "started_at": "2026-08-17T01:36:17Z",
-            "completed_at": "2026-08-17T03:05:04Z",
+            "completed_at": "2026-08-17T03:05:11Z",
             "variants": [
               {
                 "py": "3.12",
@@ -3567,7 +3567,7 @@
               {
                 "py": "3.11",
                 "jax_ref": "0.10.2",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31985449770,
                 "run_attempt": 1,
                 "started_at": "2026-08-17T01:37:28Z"
@@ -3575,7 +3575,7 @@
               {
                 "py": "3.14",
                 "jax_ref": "0.10.0",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31985449770,
                 "run_attempt": 1,
                 "started_at": "2026-08-17T01:37:26Z"
@@ -3668,7 +3668,7 @@
               {
                 "py": "3.14",
                 "jax_ref": "0.10.2",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31985449770,
                 "run_attempt": 1,
                 "started_at": "2026-08-17T01:37:26Z"
@@ -3712,7 +3712,7 @@
               {
                 "py": "3.13",
                 "jax_ref": "0.10.1",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 31985449770,
                 "run_attempt": 1,
                 "started_at": "2026-08-17T01:37:28Z"
@@ -3732,7 +3732,8 @@
                 "status": "failure",
                 "run_id": 31985449770,
                 "run_attempt": 1,
-                "started_at": "2026-08-17T01:37:28Z"
+                "started_at": "2026-08-17T01:37:28Z",
+                "completed_at": "2026-08-17T03:05:19Z"
               }
             ]
           }

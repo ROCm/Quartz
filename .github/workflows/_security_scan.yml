@@ -1,0 +1,178 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+#
+# Shared engine for the security scanners (gitleaks / bandit / zizmor).
+#
+# The scanner scripts live in external tool repos (ROCm/TheRock,
+# ROCm/rocm-tests). Each script imports `github_actions_api` from its own
+# repo's build_tools/ and resolves a config file (gitleaks.toml /
+# bandit.yaml / zizmor.yml) against the current working directory. None of
+# that exists in this repo, so a plain `uses:` call to the upstream
+# reusable workflow -- whose `run:` steps and `./.github/actions/...` refs
+# resolve against THIS checkout -- fails on the missing files.
+#
+# Instead we check the tool repo out ourselves (into _tool), copy its
+# config into the scan root, and run its script with the working directory
+# set to the scan target. This workflow is fully self-contained (no
+# caller-relative refs), so it can be lifted into a common ROCm security
+# repo unchanged and called via `uses: ROCm/<repo>/...@main`.
+name: _security_scan
+
+on:
+  workflow_call:
+    inputs:
+      tool:
+        description: "Scanner name; drives the SARIF category and artifact name."
+        required: true
+        type: string
+      tool_repo:
+        description: "owner/repo holding the scanner script (checked out to _tool)."
+        required: true
+        type: string
+      tool_ref:
+        description: "Ref of tool_repo to check out."
+        required: false
+        type: string
+        default: main
+      script_path:
+        description: "Path to the scanner script inside the tool checkout."
+        required: true
+        type: string
+      config_path:
+        description: >-
+          Config file inside the tool checkout, copied to the scan root so
+          the scanner script can resolve it relative to its working
+          directory.
+        required: true
+        type: string
+      scan_mode:
+        description: "'changed' (default) or 'all'. See the scanner scripts."
+        required: false
+        type: string
+        default: changed
+      report_formats:
+        description: "Comma-separated report formats. See the scanner scripts."
+        required: false
+        type: string
+        default: sarif
+      scan_path:
+        description: "Path (relative to the scan root) to scan."
+        required: false
+        type: string
+        default: "."
+      severity_threshold:
+        description: "Minimum severity that fails the job (bandit / zizmor only)."
+        required: false
+        type: string
+        default: high
+      persona:
+        description: "Zizmor audit persona (zizmor only)."
+        required: false
+        type: string
+        default: regular
+
+# No permissions block here on purpose. A reusable workflow inherits the
+# token its caller grants; declaring scopes here that a caller doesn't
+# grant makes that caller fail at startup. So each caller is the single
+# source of truth for its own scopes -- CSV-only callers grant just
+# `contents: read`, SARIF callers additionally grant `security-events:
+# write` (code-scanning API) and `actions: read` (private-repo
+# workflow-run lookup that upload-sarif performs).
+
+jobs:
+  scan:
+    name: ${{ inputs.tool }} scan
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      # PR-aware checkout depth: PR commits + merge base lets the scanner
+      # walk base..head; full history (0) for everything else. GHA
+      # expressions can't do arithmetic, so compute it in bash.
+      - name: Compute fetch-depth
+        id: depth
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_COMMITS: ${{ github.event.pull_request.commits }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            echo "value=$((PR_COMMITS + 1))" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=0" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Scan target = the calling repo. In a reusable workflow an
+      # `actions/checkout` with no `repository:` defaults to
+      # github.repository, which is the caller.
+      - name: Checkout scan target
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: ${{ steps.depth.outputs.value }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Checkout scanner tool
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          repository: ${{ inputs.tool_repo }}
+          ref: ${{ inputs.tool_ref }}
+          path: _tool
+          fetch-depth: 1
+          persist-credentials: false
+
+      # The scanner resolves its config against the working directory, so
+      # stage the tool repo's config at the scan root. It stays untracked;
+      # history-based scans key off commits, not the working tree.
+      - name: Stage scanner config
+        env:
+          CONFIG_PATH: ${{ inputs.config_path }}
+        run: cp "_tool/${CONFIG_PATH}" ./
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+
+      # Each scanner reads only its own PREFIX_* vars, so exporting all
+      # three prefixes from the same inputs is a harmless no-op for the
+      # ones that don't apply.
+      - name: Run ${{ inputs.tool }}
+        id: scan
+        env:
+          GITLEAKS_SCAN_MODE: ${{ inputs.scan_mode }}
+          GITLEAKS_REPORT_FORMATS: ${{ inputs.report_formats }}
+          GITLEAKS_SOURCE_DIR: ${{ inputs.scan_path }}
+          BANDIT_SCAN_MODE: ${{ inputs.scan_mode }}
+          BANDIT_REPORT_FORMATS: ${{ inputs.report_formats }}
+          BANDIT_SOURCE_DIR: ${{ inputs.scan_path }}
+          BANDIT_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
+          ZIZMOR_SCAN_MODE: ${{ inputs.scan_mode }}
+          ZIZMOR_REPORT_FORMATS: ${{ inputs.report_formats }}
+          ZIZMOR_SOURCE_DIR: ${{ inputs.scan_path }}
+          ZIZMOR_SEVERITY_THRESHOLD: ${{ inputs.severity_threshold }}
+          ZIZMOR_PERSONA: ${{ inputs.persona }}
+          GH_TOKEN: ${{ github.token }}
+          SCRIPT_PATH: ${{ inputs.script_path }}
+        run: python "_tool/${SCRIPT_PATH}"
+
+      # Fork PRs run with a read-only GITHUB_TOKEN regardless of the
+      # requested permissions, so the code-scanning upload would fail with
+      # "Resource not accessible by integration". Skip it for forks --
+      # findings still fail the job (bandit/zizmor) and appear in the log.
+      - name: Upload SARIF report to code scanning
+        if: >-
+          always()
+          && steps.scan.outputs.sarif_path != ''
+          && (github.event_name != 'pull_request'
+              || github.event.pull_request.head.repo.full_name == github.repository)
+        uses: github/codeql-action/upload-sarif@99df26d4f13ea111d4ec1a7dddef6063f76b97e9 # v4.37.0
+        with:
+          sarif_file: ${{ steps.scan.outputs.sarif_path }}
+          category: ${{ inputs.tool }}
+
+      - name: Upload non-SARIF reports
+        if: always() && steps.scan.outputs.non_sarif_paths != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ inputs.tool }}-report
+          path: ${{ steps.scan.outputs.non_sarif_paths }}
+          if-no-files-found: ignore

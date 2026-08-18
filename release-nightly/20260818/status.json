@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-18T00:02:41Z",
   "status_json_created": "2026-08-18T00:03:55Z",
-  "status_json_last_updated": "2026-08-18T03:44:58Z",
+  "status_json_last_updated": "2026-08-18T03:48:03Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -43,8 +43,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 2,
-          "in_progress": 5,
+          "failure": 3,
+          "in_progress": 4,
           "cancelled": 0,
           "skipped": 0
         }
@@ -157,10 +157,11 @@
             "started_at": "2026-08-18T02:03:58Z"
           },
           "gfx1151": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 32090476945,
             "run_attempt": 1,
-            "started_at": "2026-08-18T02:04:01Z"
+            "started_at": "2026-08-18T02:04:01Z",
+            "completed_at": "2026-08-18T03:47:00Z"
           },
           "gfx94X-dcgpu": {
             "status": "failure",

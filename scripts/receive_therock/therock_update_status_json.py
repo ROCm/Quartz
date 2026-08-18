@@ -348,7 +348,12 @@ _MATRIX_JOB_RE = re.compile(
 # follows in the same job name (e.g. "linux-gfx942-1gpu-..." above, which
 # names a *different* family string than the job's own "Test | gfx94X-dcgpu"
 # segment) and reintroduce the cross-arch conflation this exists to prevent.
-_TEST_ARCH_JOB_RE = re.compile(rf"Test\s*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})")
+# Case-insensitive (like `_MATRIX_JOB_RE`): this regex is also the build-vs-test
+# partition signal in `_is_test_subjob`, so a differently-cased "test |" segment
+# must not be misread as a build sub-job.
+_TEST_ARCH_JOB_RE = re.compile(
+    rf"Test\s*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})", re.IGNORECASE
+)
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
@@ -398,6 +403,14 @@ def _job_matches_arch(job_name: str, arch: str) -> bool:
     return not named or arch in named
 
 
+def _is_test_subjob(job_name: str) -> bool:
+    """True if the job is a nested test sub-job (carries a "Test | <arch>"
+    segment of its own). A build sub-job never does. Used to partition a
+    shared-run job list into its build half and its test half so a build leaf
+    never absorbs test cells and vice versa."""
+    return bool(_TEST_ARCH_JOB_RE.search(job_name))
+
+
 def _job_archs(workflow_run: WorkflowRunRecord) -> frozenset[str]:
     """Distinct architectures named in any job's own "Test | <arch>" segment."""
     jobs = (
@@ -409,7 +422,11 @@ def _job_archs(workflow_run: WorkflowRunRecord) -> frozenset[str]:
 
 
 def _variants_from_jobs(
-    workflow_run: WorkflowRunRecord, axis_key: str, *, arch: str | None = None
+    workflow_run: WorkflowRunRecord,
+    axis_key: str,
+    *,
+    arch: str | None = None,
+    phase: str | None = None,
 ) -> list[Variant]:
     """One variant per (py, ref) matrix cell parsed from job names.
 
@@ -417,12 +434,24 @@ def _variants_from_jobs(
     architectures (see `_TEST_ARCH_JOB_RE`). Passing `arch` scopes the cell
     to that architecture's own jobs plus any arch-agnostic job, so one
     architecture's result can never roll up into another's variant.
+
+    In a shared-run workflow (a build workflow that calls its test workflow via
+    `workflow_call`), the notify job list carries BOTH the build sub-jobs and
+    the nested test sub-jobs. `phase` (a classification `pipeline_phase`)
+    partitions that list: "build" keeps only the build sub-jobs (dropping nested
+    "Test | <arch>" jobs), "test"/"test-full" keep only the test sub-jobs.
+    Without it a build leaf would absorb the test cells, doubling cells and
+    letting a failed test flip the build status.
     """
     jobs = (
         workflow_run.api_jobs
         if workflow_run.api_jobs is not None
         else workflow_run.jobs
     )
+    if phase == "build":
+        jobs = [j for j in jobs if not _is_test_subjob(j.name)]
+    elif phase in ("test", "test-full"):
+        jobs = [j for j in jobs if _is_test_subjob(j.name)]
     if arch is not None:
         jobs = [j for j in jobs if _job_matches_arch(j.name, arch)]
     cells: dict[tuple[str, str], list[WorkflowJobRecord]] = {}
@@ -512,14 +541,17 @@ def _derive_variants(
 ) -> list[Variant] | None:
     """Matrix-cell variants for fan-out pipelines (pytorch/jax py x ref).
 
-    See `_variants_from_jobs` for what `arch` scopes. Workflows in
+    See `_variants_from_jobs` for what `arch` and `phase` scope. Workflows in
     `_SKIP_WORKFLOW_NAMES` never reach here: `update_status_json` returns
     before deriving a leaf for them at all.
     """
-    axis_key = _VARIANT_AXIS_KEY.get(workflow_run.classification.pipeline_type)
+    cls = workflow_run.classification
+    axis_key = _VARIANT_AXIS_KEY.get(cls.pipeline_type)
     if axis_key is None:
         return None
-    variants = _variants_from_jobs(workflow_run, axis_key, arch=arch)
+    variants = _variants_from_jobs(
+        workflow_run, axis_key, arch=arch, phase=cls.pipeline_phase
+    )
     if not variants:
         variants = _variants_from_inputs(workflow_run, axis_key)
     return variants or None
@@ -535,7 +567,7 @@ def _create_leaf(
     `arch` is only ever set when this run reports *multiple* architectures
     (see `_merge_run_into_document`), so `workflow_run`'s own conclusion is a
     whole-run aggregate across all of them, not this one arch's outcome.
-    Unlike `_refresh_same_run_fanout_tests`'s single-arch case, it must not be
+    Unlike `_refresh_same_run_tests_from_build`'s single-arch case, it must not be
     folded into the rollup as a vote here: doing so would broadcast one
     shared status onto every architecture -- exactly the leakage `arch`
     scoping exists to prevent. It is used only as the fallback when this
@@ -564,7 +596,7 @@ def _create_leaf(
     )
 
 
-def _refresh_same_run_fanout_tests(
+def _refresh_same_run_tests_from_build(
     doc: StatusDocument, workflow_run: WorkflowRunRecord, leaf: RunLeaf
 ) -> bool:
     """Refresh same-run test leaves from a completed fan-out workflow snapshot.
@@ -573,16 +605,15 @@ def _refresh_same_run_fanout_tests(
     is invoked as a reusable `workflow_call` nested inside the delegated release
     workflow -- not dispatched as its own top-level run -- so its jobs land in
     the *same* run id, job list, and webhook notifications as the entry build.
-    There is no job-name-level split between "build" and "test" jobs: the
-    registry classifies the whole run as `pipeline_type`/`pipeline_phase="build"`
-    (see `WORKFLOW_SPECS`), and `_variants_from_jobs` already groups every job
-    sharing a (py, ref) cell -- build and nested test alike -- into one
-    `Variant` per cell (see `test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell`).
-    Early notifications can project that job-list snapshot into per-arch test
-    leaves (keyed by the same run id) while some cells are still in progress;
-    the final notification is still classified as the build phase, so without
-    this function those same-run test leaves would go stale once the build
-    itself is done.
+    The registry classifies the whole run as
+    `pipeline_type`/`pipeline_phase="build"` (see `WORKFLOW_SPECS`), but its job
+    list carries both the build sub-jobs and the nested test sub-jobs;
+    `_variants_from_jobs(..., phase="test")` keeps only the latter (jobs with a
+    "Test | <arch>" segment of their own), so this projects the run's test half
+    into per-arch test leaves keyed by the same run id -- while some cells are
+    still in progress. The final notification is still classified as the build
+    phase, so without this function those same-run test leaves would go stale
+    once the build itself is done.
 
     Each matching test leaf is refreshed under three constraints, all guarding
     against this coarse build-run snapshot corrupting finer-grained state:
@@ -632,7 +663,9 @@ def _refresh_same_run_fanout_tests(
                     continue
                 if (existing.run_attempt or 0) != (leaf.run_attempt or 0):
                     continue
-                arch_variants = _variants_from_jobs(workflow_run, axis_key, arch=arch)
+                arch_variants = _variants_from_jobs(
+                    workflow_run, axis_key, arch=arch, phase="test"
+                )
                 if not arch_variants:
                     continue
                 statuses = [v.status for v in arch_variants]
@@ -657,6 +690,66 @@ def _refresh_same_run_fanout_tests(
                 arch_map[arch] = merged
                 wrote = True
     return wrote
+
+
+def _refresh_same_run_build_from_test(
+    doc: StatusDocument, workflow_run: WorkflowRunRecord
+) -> bool:
+    """Finalize a same-run build leaf from a nested test-phase snapshot (mirror
+    of `_refresh_same_run_tests_from_build`).
+
+    In the shared-run topology a pytorch/jax build workflow calls its test
+    workflow via `workflow_call`, so the reusable test's own notify_quartz
+    (reclassified to `pipeline_phase="test"` via `reporting_workflow`) carries a
+    job list spanning the *whole* parent run -- the finished build sub-jobs
+    included. The build-phase notify that finalizes the build leaf may not fire
+    until run completion, leaving that leaf stuck `in_progress` while a test
+    notify arrives mid-run with the build sub-jobs already terminal. This
+    projects the build half of that snapshot onto the same-run build leaf so it
+    finalizes early instead of waiting.
+
+    Guarded to the shared-run case only: the build leaf itself carries no run id
+    (its cells aggregate across per-cell runs, so `_merge_variant_leaf` drops
+    it), but each of its variants does. At least one existing build cell must
+    carry *this* run id, proving the test notify shares the run that produced
+    those build cells. A standalone test dispatch
+    (`test_pytorch_wheels_full.yml`) has its own run id, so no build cell
+    matches and the real build run's leaf is left untouched. Build status is
+    rolled up from the build sub-jobs alone (`phase="build"`), so a failed test
+    cell can never flip the build leaf.
+    """
+    cls = workflow_run.classification
+    axis_key = _VARIANT_AXIS_KEY.get(cls.pipeline_type)
+    if cls.pipeline_phase not in ("test", "test-full") or axis_key is None:
+        return False
+
+    pipeline = getattr(doc.pipelines, cls.pipeline_type)
+    existing = pipeline.build.get(cls.platform)
+    run_id = workflow_run.workflow_run_id
+    if existing is None or not existing.variants:
+        return False
+    if not any(v.run_id == run_id for v in existing.variants):
+        return False
+
+    build_variants = _variants_from_jobs(workflow_run, axis_key, phase="build")
+    if not build_variants:
+        return False
+
+    status = Variant.rollup_status(build_variants, Status.in_progress)
+    starts = [v.started_at for v in build_variants if v.started_at]
+    ends = [v.completed_at for v in build_variants if v.completed_at]
+    candidate = RunLeaf(
+        run_id=workflow_run.workflow_run_id,
+        run_attempt=workflow_run.run_attempt,
+        status=status,
+        started_at=min(starts) if starts else existing.started_at,
+        completed_at=(max(ends) if status.is_terminal and ends else None),
+        variants=build_variants,
+    )
+    if not existing.should_replace(candidate):
+        return False
+    pipeline.build[cls.platform] = merge_matrix_test_leaf(existing, candidate)
+    return True
 
 
 def _rocm_build_run_id(doc: StatusDocument, platform: str) -> int | None:
@@ -937,7 +1030,8 @@ def _merge_run_into_document(
     _update_platform_urls(
         doc, workflow_run, leaf_accepted=leaf_accepted, prev_owner=prev_url_owner
     )
-    refreshed_tests = _refresh_same_run_fanout_tests(doc, workflow_run, leaf)
+    refreshed_tests = _refresh_same_run_tests_from_build(doc, workflow_run, leaf)
+    refreshed_build = _refresh_same_run_build_from_test(doc, workflow_run)
 
     freeze_requested_architectures(
         doc,
@@ -949,6 +1043,12 @@ def _merge_run_into_document(
     if refreshed_tests:
         log.info(
             "refreshed same-run %s test leaves from completed fan-out run_id=%s",
+            cls.pipeline_type,
+            workflow_run.workflow_run_id,
+        )
+    if refreshed_build:
+        log.info(
+            "finalized same-run %s build leaf from nested test snapshot run_id=%s",
             cls.pipeline_type,
             workflow_run.workflow_run_id,
         )

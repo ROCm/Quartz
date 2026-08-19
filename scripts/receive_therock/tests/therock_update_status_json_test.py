@@ -1625,10 +1625,12 @@ def test_pytorch_build_variants_from_matrix_job_names() -> None:
     assert all(v.run_id == 555 and v.status is Status.success for v in variants)
 
 
-def test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell() -> None:
-    # A reusable-workflow matrix expands each cell into several nested jobs that
-    # all carry the cell's prefix; they roll up into one variant (worst-of
-    # status, not-terminal until every nested job finishes).
+def test_build_leaf_excludes_nested_test_subjobs() -> None:
+    # A reusable-workflow build run's job list carries both the cell's build
+    # sub-job and its nested per-arch test sub-jobs. The build leaf must reflect
+    # the build sub-job alone: an in-progress (or failed) nested test job belongs
+    # to the test leaf and must not drag the build cell's status or completion
+    # (the #82 regression, where the build leaf absorbed test cells).
     run = _variant_run(
         pipeline_type="pytorch",
         pipeline_phase="build",
@@ -1644,8 +1646,8 @@ def test_reusable_matrix_nested_jobs_collapse_to_one_variant_per_cell() -> None:
     variants = tusj._derive_variants(run)
     assert len(variants) == 1
     assert variants[0].matrix == {"py": "3.12", "torch": "release/2.10"}
-    assert variants[0].status is Status.in_progress
-    assert variants[0].completed_at is None
+    assert variants[0].status is Status.success
+    assert variants[0].completed_at is not None
 
 
 def test_jax_build_variants_use_jax_ref_axis() -> None:
@@ -1952,12 +1954,19 @@ def test_fanout_projection_folds_raw_run_conclusion_into_rollup() -> None:
     # matching (already covered by
     # test_completed_fanout_build_refreshes_same_run_test_leaves), so it
     # doesn't need a platform mismatch to make its point.
+    # The py 3.12 build sub-job succeeded (a test job for that cell only exists
+    # because its build did): the run-level "cancelled" comes from some *other*
+    # cell that never started, not from this cell's build.
     cancelled_build = _variant_run(
         pipeline_type="pytorch",
         pipeline_phase="build",
         run_id=903,
         conclusion="cancelled",
         jobs=[
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Build",
+                conclusion="success",
+            ),
             _job(
                 "Build | py 3.12 | torch release/2.10 / Test | gfx110X-all",
                 conclusion="success",
@@ -1971,14 +1980,26 @@ def test_fanout_projection_folds_raw_run_conclusion_into_rollup() -> None:
     leaf = doc.pipelines.pytorch.test["linux"]["gfx110X-all"]
     assert leaf.status is Status.cancelled
 
+    # The build leaf keeps its own success: the cancelled run conclusion folds
+    # into the test rollup (above), but must not drag down a build cell whose
+    # build sub-job succeeded (#82).
+    build_leaf = doc.pipelines.pytorch.build["linux"]
+    assert build_leaf.status is Status.success
+    assert build_leaf.variants is not None
+    assert {v.matrix.get("py") for v in build_leaf.variants} == {"3.12"}
+    assert build_leaf.variants[0].status is Status.success
 
-def test_variant_job_name_matches_uppercase_ancestor_segment() -> None:
-    # A calling orchestrator (e.g. rockrel) can wrap TheRock's own build job
-    # in a differently-cased ancestor segment, e.g.
+
+def test_build_leaf_own_tail_ref_wins_and_test_only_cell_excluded() -> None:
+    # A calling orchestrator (e.g. rockrel) wraps TheRock's own build job in a
+    # differently-cased ancestor segment carrying a looser ref:
     #   "Release | py 3.12 | JAX 0.11.0 / Build | py 3.12 | jax rocm-jaxlib-v0.11.0"
-    # The build job's own tail (lowercase, full ref) must still win over that
-    # ancestor. A nested test sub-job has no (py, ref) segment of its own and
-    # must fall back to the uppercase ancestor instead of being dropped.
+    # The build job's own tail (lowercase, full ref) must win over that ancestor.
+    # A py 3.13 cell that expands into a nested test sub-job ONLY (no build job of
+    # its own) is a test cell, not a build cell: it borrows the uppercase ancestor
+    # ref and must be excluded from the build leaf entirely -- the #82 regression,
+    # where that phantom cell doubled the build leaf and let its cancelled test
+    # flip the build status.
     run = _variant_run(
         pipeline_type="jax",
         pipeline_phase="build",
@@ -1997,10 +2018,144 @@ def test_variant_job_name_matches_uppercase_ancestor_segment() -> None:
     )
     variants = tusj._derive_variants(run)
     by_py = {v.matrix["py"]: v for v in variants}
+    assert set(by_py) == {"3.12"}
     assert by_py["3.12"].matrix["jax_ref"] == "rocm-jaxlib-v0.11.0"
     assert by_py["3.12"].status is Status.success
-    assert by_py["3.13"].matrix["jax_ref"] == "0.11.0"
-    assert by_py["3.13"].status is Status.cancelled
+
+
+def test_jax_rockrel_build_leaf_not_flipped_by_cancelled_test() -> None:
+    # The #82 shape end-to-end: a rockrel-orchestrated jax build run whose nested
+    # test sub-job was cancelled. The test job borrows the uppercase ancestor ref
+    # ("JAX 0.10.2" -> "0.10.2") while the build job's own tail carries the full
+    # ref ("rocm-jaxlib-v0.10.2"); before the fix those landed as two cells and
+    # the cancelled test flipped the build. The build leaf must now stay success
+    # and carry exactly one cell.
+    doc = StatusDocument()
+    run = _variant_run(
+        pipeline_type="jax",
+        pipeline_phase="build",
+        run_id=930,
+        conclusion="success",
+        jobs=[
+            _job(
+                "build_jax_wheels / Release | py 3.12 | JAX 0.10.2 / "
+                "Build | py 3.12 | jax rocm-jaxlib-v0.10.2"
+            ),
+            _job(
+                "build_jax_wheels / Release | py 3.12 | JAX 0.10.2 / "
+                "Test | gfx94X-dcgpu | linux-gfx942-1gpu / Test JAX | gfx94X-dcgpu",
+                conclusion="cancelled",
+            ),
+        ],
+    )
+    tusj._merge_run_into_document(doc, run, tusj._create_leaf(run))
+
+    build_leaf = doc.pipelines.jax.build["linux"]
+    assert build_leaf.status is Status.success
+    assert len(build_leaf.variants) == 1
+    assert build_leaf.variants[0].matrix == {
+        "py": "3.12",
+        "jax_ref": "rocm-jaxlib-v0.10.2",
+    }
+
+
+def test_test_snapshot_finalizes_same_run_build_leaf() -> None:
+    # Shared-run topology: a pytorch/jax build workflow calls its test workflow
+    # via workflow_call, so the reusable test's own notify carries the whole
+    # parent run's job list -- the finished build sub-jobs included. The build
+    # leaf can be stuck in_progress (its finalizing notify not yet fired) when a
+    # test-phase notify arrives mid-run with the build sub-job already terminal.
+    # That test snapshot must finalize the same-run build leaf early.
+    doc = StatusDocument()
+
+    building = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=910,
+        conclusion=None,
+        jobs=[
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Build",
+                conclusion=None,
+                completed=None,
+            ),
+        ],
+    )
+    tusj._merge_run_into_document(doc, building, tusj._create_leaf(building))
+    assert doc.pipelines.pytorch.build["linux"].status is Status.in_progress
+
+    # The nested test workflow (same run id) reports: the build sub-job has now
+    # finished, plus its own still-running test job.
+    test_run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx942"],
+        run_id=910,
+        conclusion=None,
+        jobs=[
+            _job("Build | py 3.12 | torch release/2.10 / Build"),
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx942",
+                conclusion=None,
+                completed=None,
+            ),
+        ],
+    )
+    tusj._merge_run_into_document(doc, test_run, tusj._create_leaf(test_run))
+
+    build_leaf = doc.pipelines.pytorch.build["linux"]
+    assert build_leaf.status is Status.success
+    assert build_leaf.completed_at is not None
+    assert len(build_leaf.variants) == 1
+    assert build_leaf.variants[0].matrix == {"py": "3.12", "torch": "release/2.10"}
+    # The test snapshot's still-running test job must not appear in the build
+    # leaf; the test leaf tracks it instead.
+    assert doc.pipelines.pytorch.test["linux"]["gfx942"].status is Status.in_progress
+
+    # Finalizing the build leaf early must not mark the pipeline done: the
+    # rollup still shows the build as success but pytorch -- and the run
+    # overall -- stays in_progress while the test cell runs.
+    assert doc.summary.linux.pytorch.build.status is Status.success
+    assert doc.summary.linux.pytorch.test.in_progress == 1
+    assert doc.summary.overall_status is Status.in_progress
+
+
+def test_standalone_test_run_does_not_touch_build_leaf() -> None:
+    # A standalone test dispatch (test_pytorch_wheels_full.yml) has its OWN run
+    # id, distinct from the build run's. Its snapshot must never rewrite the real
+    # build run's leaf -- the mirror is guarded to the shared-run id.
+    doc = StatusDocument()
+    build = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=920,
+        jobs=[_job("Build | py 3.12 | torch release/2.10 / Build")],
+    )
+    tusj._merge_run_into_document(doc, build, tusj._create_leaf(build))
+    assert doc.pipelines.pytorch.build["linux"].status is Status.success
+
+    standalone_test = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx942"],
+        run_id=921,
+        conclusion="failure",
+        jobs=[
+            _job(
+                "Build | py 3.12 | torch release/2.10 / Test | gfx942",
+                conclusion="failure",
+            ),
+        ],
+    )
+    tusj._merge_run_into_document(
+        doc, standalone_test, tusj._create_leaf(standalone_test)
+    )
+
+    after = doc.pipelines.pytorch.build["linux"]
+    assert after.status is Status.success
+    assert len(after.variants) == 1
+    assert after.variants[0].run_id == 920
+    assert after.variants[0].status is Status.success
 
 
 def test_skip_workflow_names_are_all_disregarded(tmp_path: Path) -> None:

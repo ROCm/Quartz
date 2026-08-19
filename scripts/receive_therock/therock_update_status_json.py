@@ -553,6 +553,10 @@ def _derive_variants(
         workflow_run, axis_key, arch=arch, phase=cls.pipeline_phase
     )
     if not variants:
+        # Phase-blind fallback for single-cell test runs lacking the py|ref
+        # axis. Safe for the build partition: it fires only before any build
+        # job exists, when no test job exists yet (tests need builds), so the
+        # whole-run status it reads cannot be test-influenced.
         variants = _variants_from_inputs(workflow_run, axis_key)
     return variants or None
 

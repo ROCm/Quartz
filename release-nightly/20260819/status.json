@@ -9,7 +9,7 @@
   "completed_at": "2026-08-19T03:14:24Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-19T00:03:20Z",
-  "status_json_last_updated": "2026-08-19T03:33:59Z",
+  "status_json_last_updated": "2026-08-19T03:35:04Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -45,8 +45,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 2,
-          "in_progress": 5,
+          "failure": 3,
+          "in_progress": 4,
           "cancelled": 0,
           "skipped": 0
         }
@@ -179,10 +179,11 @@
             "started_at": "2026-08-19T01:45:55Z"
           },
           "gfx94X-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 32206100593,
             "run_attempt": 1,
-            "started_at": "2026-08-19T01:45:55Z"
+            "started_at": "2026-08-19T01:45:55Z",
+            "completed_at": "2026-08-19T03:33:46Z"
           },
           "gfx120X-all": {
             "status": "in_progress",

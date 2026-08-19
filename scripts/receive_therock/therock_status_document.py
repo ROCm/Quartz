@@ -376,7 +376,7 @@ def merge_matrix_test_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLe
     """Merge fan-out test variants by matrix cell instead of replacing the
     whole leaf (mirrors `_merge_variant_leaf`, but also carries forward
     `run_id`/`run_attempt`/timestamps so later comparisons -- e.g.
-    `_refresh_same_run_fanout_tests` in therock_update_status_json.py, its
+    `_refresh_same_run_tests_from_build` in therock_update_status_json.py, its
     other caller -- can still identify the owning run).
 
     Every completion notification for a shared-entry-run matrix (pytorch/jax

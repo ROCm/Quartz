@@ -9,7 +9,7 @@
   "completed_at": "2026-08-21T23:19:01Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-21T00:05:25Z",
-  "status_json_last_updated": "2026-08-21T23:20:17Z",
+  "status_json_last_updated": "2026-08-21T23:25:37Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -44,7 +44,7 @@
         "test": {
           "success": 0,
           "failure": 0,
-          "in_progress": 0,
+          "in_progress": 2,
           "cancelled": 0,
           "skipped": 0
         }
@@ -489,7 +489,42 @@
           ]
         }
       },
-      "test": {}
+      "test": {
+        "linux": {
+          "gfx94X-dcgpu": {
+            "status": "in_progress",
+            "run_id": 32535047895,
+            "run_attempt": 1,
+            "started_at": "2026-08-21T22:57:13Z",
+            "variants": [
+              {
+                "py": "3.12",
+                "torch": "release/2.11",
+                "status": "in_progress",
+                "run_id": 32535047895,
+                "run_attempt": 1,
+                "started_at": "2026-08-21T22:57:13Z"
+              }
+            ]
+          },
+          "gfx120X-all": {
+            "status": "in_progress",
+            "run_id": 32535047895,
+            "run_attempt": 1,
+            "started_at": "2026-08-21T22:57:13Z",
+            "variants": [
+              {
+                "py": "3.12",
+                "torch": "release/2.11",
+                "status": "in_progress",
+                "run_id": 32535047895,
+                "run_attempt": 1,
+                "started_at": "2026-08-21T22:57:13Z"
+              }
+            ]
+          }
+        }
+      }
     },
     "jax": {
       "build": {

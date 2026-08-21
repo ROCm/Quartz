@@ -359,6 +359,30 @@ _TEST_ARCH_JOB_RE = re.compile(
 # pytorch cells key the ref as "torch", jax cells as "jax_ref").
 _VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_ref"}
 
+# TheRock's jax build matrix names each cell by its git ref
+# ("rocm-jaxlib-v0.11.0"), while the release orchestrator's own name segment and
+# the test dispatch inputs name the same cell by bare version ("0.11.0"). Both
+# spellings identify one (py, version) cell, so left un-normalized they key two
+# distinct variants that never merge -- doubling every jax build and test count.
+# Canonicalize to the bare version (strip the prefix) at every point a jax ref
+# enters a variant key, so the two spellings collapse. Stripping is idempotent
+# on already-bare refs and, unlike adding the prefix, never mangles a non-version
+# ref (e.g. a branch name).
+_JAX_REF_PREFIX = "rocm-jaxlib-v"
+
+
+def _normalize_ref(axis_key: str, ref: str) -> str:
+    """Canonicalize one matrix-cell ref before it becomes a variant key.
+
+    Called uniformly for every fan-out axis (torch and jax_ref), so it takes the
+    axis and dispatches internally. Today only jax needs it -- the torch axis is a
+    pure passthrough -- so a torch ref is always returned verbatim; add an axis
+    branch here if pytorch ever grows the same two-spellings problem.
+    """
+    if axis_key == "jax_ref" and ref.startswith(_JAX_REF_PREFIX):
+        return ref[len(_JAX_REF_PREFIX) :]
+    return ref
+
 # Workflow filenames (`wr.path`'s basename) that are registered in
 # WORKFLOW_SPECS solely so classification doesn't raise, but whose
 # completions `update_status_json` disregards entirely -- nothing is written
@@ -468,7 +492,7 @@ def _variants_from_jobs(
         if not matches:
             continue
         match = matches[-1]
-        key = (match.group("py"), match.group("ref"))
+        key = (match.group("py"), _normalize_ref(axis_key, match.group("ref")))
         if key not in cells:
             cells[key] = []
             order.append(key)
@@ -514,7 +538,7 @@ def _variants_from_inputs(
     if py:
         matrix["py"] = str(py)
     if ref:
-        matrix[axis_key] = str(ref)
+        matrix[axis_key] = _normalize_ref(axis_key, str(ref))
     if not matrix:
         return []
 

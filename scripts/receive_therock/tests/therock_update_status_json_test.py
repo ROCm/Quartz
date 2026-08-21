@@ -1657,7 +1657,7 @@ def test_jax_build_variants_use_jax_ref_axis() -> None:
         jobs=[_job("Build | py 3.12 | jax rocm-jaxlib-v0.9.1")],
     )
     variants = tusj._derive_variants(run)
-    assert variants[0].matrix == {"py": "3.12", "jax_ref": "rocm-jaxlib-v0.9.1"}
+    assert variants[0].matrix == {"py": "3.12", "jax_ref": "0.9.1"}
 
 
 def test_pytorch_test_variant_read_from_inputs_when_jobs_lack_axis() -> None:
@@ -1683,7 +1683,39 @@ def test_jax_test_variant_prefers_jax_ref_input() -> None:
         jobs=[_job("Test JAX | gfx942")],
     )
     variants = tusj._derive_variants(run)
-    assert variants[0].matrix == {"py": "3.11", "jax_ref": "rocm-jaxlib-v0.9.1"}
+    assert variants[0].matrix == {"py": "3.11", "jax_ref": "0.9.1"}
+
+
+def test_jax_ref_prefixed_and_bare_spellings_collapse_to_one_cell() -> None:
+    # The two spellings of one jax cell -- the build job's git-ref tail
+    # ("jax rocm-jaxlib-v0.11.0") and the bare-version form the release
+    # orchestrator / test dispatch inputs use ("0.11.0") -- must land on a single
+    # (py, version) key. Before normalization each spelling keyed its own variant,
+    # doubling every jax build and test count.
+    from_job = tusj._derive_variants(
+        _variant_run(
+            pipeline_type="jax",
+            pipeline_phase="build",
+            jobs=[_job("Build | py 3.12 | jax rocm-jaxlib-v0.11.0")],
+        )
+    )
+    from_input = tusj._derive_variants(
+        _variant_run(
+            pipeline_type="jax",
+            pipeline_phase="test",
+            inputs={"python_version": "3.12", "jax_ref": "0.11.0"},
+            jobs=[_job("Test JAX | gfx942")],
+        )
+    )
+    assert from_job[0].matrix == {"py": "3.12", "jax_ref": "0.11.0"}
+    assert from_input[0].matrix == {"py": "3.12", "jax_ref": "0.11.0"}
+    assert from_job[0].key() == from_input[0].key()
+
+    merged = tusj.merge_matrix_test_leaf(
+        tusj.RunLeaf(status=Status.in_progress, variants=from_job),
+        tusj.RunLeaf(status=Status.success, variants=from_input),
+    )
+    assert len(merged.variants) == 1
 
 
 def test_rocm_run_has_no_variants() -> None:
@@ -2019,7 +2051,7 @@ def test_build_leaf_own_tail_ref_wins_and_test_only_cell_excluded() -> None:
     variants = tusj._derive_variants(run)
     by_py = {v.matrix["py"]: v for v in variants}
     assert set(by_py) == {"3.12"}
-    assert by_py["3.12"].matrix["jax_ref"] == "rocm-jaxlib-v0.11.0"
+    assert by_py["3.12"].matrix["jax_ref"] == "0.11.0"
     assert by_py["3.12"].status is Status.success
 
 
@@ -2055,7 +2087,7 @@ def test_jax_rockrel_build_leaf_not_flipped_by_cancelled_test() -> None:
     assert len(build_leaf.variants) == 1
     assert build_leaf.variants[0].matrix == {
         "py": "3.12",
-        "jax_ref": "rocm-jaxlib-v0.10.2",
+        "jax_ref": "0.10.2",
     }
 
 

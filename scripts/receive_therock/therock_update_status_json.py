@@ -383,6 +383,7 @@ def _normalize_ref(axis_key: str, ref: str) -> str:
         return ref[len(_JAX_REF_PREFIX) :]
     return ref
 
+
 # Workflow filenames (`wr.path`'s basename) that are registered in
 # WORKFLOW_SPECS solely so classification doesn't raise, but whose
 # completions `update_status_json` disregards entirely -- nothing is written

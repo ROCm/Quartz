@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-22T00:02:40Z",
   "status_json_created": "2026-08-22T00:03:54Z",
-  "status_json_last_updated": "2026-08-22T02:48:39Z",
+  "status_json_last_updated": "2026-08-22T02:49:28Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -446,9 +446,16 @@
         },
         "windows": {
           "status": "in_progress",
-          "run_id": 32547167119,
-          "run_attempt": 1,
-          "started_at": "2026-08-22T02:46:30Z"
+          "variants": [
+            {
+              "py": "3.13",
+              "torch": "nightly",
+              "status": "in_progress",
+              "run_id": 32547167119,
+              "run_attempt": 1,
+              "started_at": "2026-08-22T02:46:30Z"
+            }
+          ]
         }
       },
       "test": {

@@ -9,7 +9,7 @@
   "completed_at": "2026-08-21T23:19:01Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-21T00:05:25Z",
-  "status_json_last_updated": "2026-08-22T06:42:10Z",
+  "status_json_last_updated": "2026-08-22T06:43:07Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -43,8 +43,8 @@
         },
         "test": {
           "success": 8,
-          "failure": 13,
-          "in_progress": 19,
+          "failure": 14,
+          "in_progress": 18,
           "cancelled": 0,
           "skipped": 0
         }
@@ -348,10 +348,6 @@
         },
         "linux": {
           "status": "success",
-          "run_id": 32535047895,
-          "run_attempt": 1,
-          "started_at": "2026-08-21T22:59:24Z",
-          "completed_at": "2026-08-22T06:41:10Z",
           "variants": [
             {
               "py": "3.11",
@@ -543,7 +539,7 @@
             "run_id": 32535047895,
             "run_attempt": 1,
             "started_at": "2026-08-21T23:24:25Z",
-            "completed_at": "2026-08-22T00:23:15Z",
+            "completed_at": "2026-08-21T23:16:35Z",
             "variants": [
               {
                 "py": "3.12",
@@ -728,10 +724,11 @@
             ]
           },
           "gfx120X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 32535047895,
             "run_attempt": 1,
             "started_at": "2026-08-21T23:26:41Z",
+            "completed_at": "2026-08-21T23:16:35Z",
             "variants": [
               {
                 "py": "3.12",
@@ -761,10 +758,11 @@
               {
                 "py": "3.13",
                 "torch": "release/2.11",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32535047895,
                 "run_attempt": 1,
-                "started_at": "2026-08-22T06:39:37Z"
+                "started_at": "2026-08-22T06:39:37Z",
+                "completed_at": "2026-08-22T06:41:43Z"
               },
               {
                 "py": "3.14",

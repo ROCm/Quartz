@@ -9,7 +9,7 @@
   "completed_at": "2026-08-23T03:07:58Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-23T00:03:10Z",
-  "status_json_last_updated": "2026-08-23T12:46:28Z",
+  "status_json_last_updated": "2026-08-23T12:48:24Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -57,8 +57,8 @@
         },
         "test": {
           "success": 48,
-          "failure": 260,
-          "in_progress": 12,
+          "failure": 261,
+          "in_progress": 11,
           "cancelled": 0,
           "skipped": 0
         }
@@ -235,6 +235,10 @@
       "build": {
         "linux": {
           "status": "success",
+          "run_id": 32610569825,
+          "run_attempt": 1,
+          "started_at": "2026-08-23T01:33:01Z",
+          "completed_at": "2026-08-23T12:44:03Z",
           "variants": [
             {
               "py": "3.11",
@@ -1177,8 +1181,8 @@
             "status": "failure",
             "run_id": 32610569825,
             "run_attempt": 1,
-            "started_at": "2026-08-23T01:31:39Z",
-            "completed_at": "2026-08-23T12:43:16Z",
+            "started_at": "2026-08-23T02:49:57Z",
+            "completed_at": "2026-08-23T12:47:54Z",
             "variants": [
               {
                 "py": "3.10",
@@ -1300,10 +1304,11 @@
               {
                 "py": "3.14",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32610569825,
                 "run_attempt": 1,
-                "started_at": "2026-08-23T12:32:14Z"
+                "started_at": "2026-08-23T12:32:14Z",
+                "completed_at": "2026-08-23T12:47:54Z"
               },
               {
                 "py": "3.14",
@@ -1319,7 +1324,7 @@
                 "status": "in_progress",
                 "run_id": 32610569825,
                 "run_attempt": 1,
-                "started_at": "2026-08-23T01:31:39Z"
+                "started_at": "2026-08-23T03:31:07Z"
               },
               {
                 "py": "3.13",
@@ -2871,7 +2876,7 @@
             "status": "failure",
             "run_id": 32610569825,
             "run_attempt": 1,
-            "started_at": "2026-08-23T01:31:39Z",
+            "started_at": "2026-08-23T03:31:16Z",
             "completed_at": "2026-08-23T12:10:55Z",
             "variants": [
               {
@@ -3015,7 +3020,7 @@
                 "status": "in_progress",
                 "run_id": 32610569825,
                 "run_attempt": 1,
-                "started_at": "2026-08-23T01:31:39Z"
+                "started_at": "2026-08-23T12:45:26Z"
               },
               {
                 "py": "3.13",

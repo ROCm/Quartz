@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-23T00:01:47Z",
   "status_json_created": "2026-08-23T00:03:10Z",
-  "status_json_last_updated": "2026-08-23T02:32:59Z",
+  "status_json_last_updated": "2026-08-23T02:33:46Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -68,7 +68,7 @@
         "test": {
           "success": 0,
           "failure": 0,
-          "in_progress": 14,
+          "in_progress": 15,
           "cancelled": 0,
           "skipped": 0
         }
@@ -1339,10 +1339,11 @@
             {
               "py": "3.14",
               "jax_ref": "rocm-jaxlib-v0.10.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 32610570279,
               "run_attempt": 1,
-              "started_at": "2026-08-23T01:35:59Z"
+              "started_at": "2026-08-23T01:35:59Z",
+              "completed_at": "2026-08-23T02:32:57Z"
             },
             {
               "py": "3.13",
@@ -1609,6 +1610,14 @@
                 "run_id": 32610570279,
                 "run_attempt": 1,
                 "started_at": "2026-08-23T02:25:21Z"
+              },
+              {
+                "py": "3.14",
+                "jax_ref": "0.10.1",
+                "status": "in_progress",
+                "run_id": 32610570279,
+                "run_attempt": 1,
+                "started_at": "2026-08-23T02:32:58Z"
               }
             ]
           }

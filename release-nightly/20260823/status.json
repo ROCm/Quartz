@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-23T00:01:47Z",
   "status_json_created": "2026-08-23T00:03:10Z",
-  "status_json_last_updated": "2026-08-23T02:41:49Z",
+  "status_json_last_updated": "2026-08-23T02:41:53Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -68,7 +68,7 @@
         "test": {
           "success": 0,
           "failure": 1,
-          "in_progress": 21,
+          "in_progress": 25,
           "cancelled": 0,
           "skipped": 0
         }
@@ -1269,18 +1269,20 @@
             {
               "py": "3.14",
               "jax_ref": "rocm-jaxlib-v0.11.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 32610570279,
               "run_attempt": 1,
-              "started_at": "2026-08-23T01:33:12Z"
+              "started_at": "2026-08-23T01:33:12Z",
+              "completed_at": "2026-08-23T02:37:46Z"
             },
             {
               "py": "3.14",
               "jax_ref": "rocm-jaxlib-v0.11.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 32610570279,
               "run_attempt": 1,
-              "started_at": "2026-08-23T01:33:12Z"
+              "started_at": "2026-08-23T01:33:12Z",
+              "completed_at": "2026-08-23T02:39:53Z"
             },
             {
               "py": "3.13",
@@ -1311,10 +1313,11 @@
             {
               "py": "3.13",
               "jax_ref": "rocm-jaxlib-v0.11.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 32610570279,
               "run_attempt": 1,
-              "started_at": "2026-08-23T01:33:12Z"
+              "started_at": "2026-08-23T01:33:12Z",
+              "completed_at": "2026-08-23T02:40:15Z"
             },
             {
               "py": "3.12",
@@ -1355,10 +1358,11 @@
             {
               "py": "3.12",
               "jax_ref": "rocm-jaxlib-v0.10.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 32610570279,
               "run_attempt": 1,
-              "started_at": "2026-08-23T01:35:32Z"
+              "started_at": "2026-08-23T01:35:32Z",
+              "completed_at": "2026-08-23T02:34:12Z"
             },
             {
               "py": "3.14",
@@ -1381,10 +1385,11 @@
             {
               "py": "3.12",
               "jax_ref": "rocm-jaxlib-v0.11.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 32610570279,
               "run_attempt": 1,
-              "started_at": "2026-08-23T01:35:33Z"
+              "started_at": "2026-08-23T01:35:33Z",
+              "completed_at": "2026-08-23T02:36:15Z"
             },
             {
               "py": "3.14",
@@ -1522,6 +1527,7 @@
             "run_id": 32610570279,
             "run_attempt": 1,
             "started_at": "2026-08-23T01:31:40Z",
+            "completed_at": "2026-08-23T02:40:52Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1657,7 +1663,7 @@
                 "status": "in_progress",
                 "run_id": 32610570279,
                 "run_attempt": 1,
-                "started_at": "2026-08-23T02:34:12Z"
+                "started_at": "2026-08-23T02:34:27Z"
               },
               {
                 "py": "3.12",
@@ -1698,6 +1704,38 @@
                 "run_id": 32610570279,
                 "run_attempt": 1,
                 "started_at": "2026-08-23T01:31:40Z"
+              },
+              {
+                "py": "3.12",
+                "jax_ref": "0.11.1",
+                "status": "in_progress",
+                "run_id": 32610570279,
+                "run_attempt": 1,
+                "started_at": "2026-08-23T02:36:54Z"
+              },
+              {
+                "py": "3.14",
+                "jax_ref": "0.11.1",
+                "status": "in_progress",
+                "run_id": 32610570279,
+                "run_attempt": 1,
+                "started_at": "2026-08-23T02:38:31Z"
+              },
+              {
+                "py": "3.14",
+                "jax_ref": "0.11.0",
+                "status": "in_progress",
+                "run_id": 32610570279,
+                "run_attempt": 1,
+                "started_at": "2026-08-23T02:40:04Z"
+              },
+              {
+                "py": "3.13",
+                "jax_ref": "0.11.1",
+                "status": "in_progress",
+                "run_id": 32610570279,
+                "run_attempt": 1,
+                "started_at": "2026-08-23T02:40:51Z"
               }
             ]
           }

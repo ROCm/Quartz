@@ -9,7 +9,7 @@
   "completed_at": "2026-08-22T03:15:19Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-22T00:03:54Z",
-  "status_json_last_updated": "2026-08-24T05:57:49Z",
+  "status_json_last_updated": "2026-08-24T05:58:23Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -57,8 +57,8 @@
         },
         "test": {
           "success": 97,
-          "failure": 219,
-          "in_progress": 84,
+          "failure": 222,
+          "in_progress": 81,
           "cancelled": 0,
           "skipped": 0
         }
@@ -708,7 +708,7 @@
             "run_id": 32543853727,
             "run_attempt": 2,
             "started_at": "2026-08-22T03:29:58Z",
-            "completed_at": "2026-08-24T05:57:15Z",
+            "completed_at": "2026-08-24T05:58:14Z",
             "variants": [
               {
                 "py": "3.10",
@@ -878,10 +878,11 @@
               {
                 "py": "3.13",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32543853727,
                 "run_attempt": 2,
-                "started_at": "2026-08-24T05:25:07Z"
+                "started_at": "2026-08-24T05:25:07Z",
+                "completed_at": "2026-08-24T05:58:14Z"
               },
               {
                 "py": "3.10",
@@ -933,7 +934,7 @@
             "run_id": 32543853727,
             "run_attempt": 2,
             "started_at": "2026-08-22T03:30:45Z",
-            "completed_at": "2026-08-24T05:57:07Z",
+            "completed_at": "2026-08-24T05:58:11Z",
             "variants": [
               {
                 "py": "3.10",
@@ -1099,10 +1100,11 @@
               {
                 "py": "3.10",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32543853727,
                 "run_attempt": 2,
-                "started_at": "2026-08-24T05:25:34Z"
+                "started_at": "2026-08-24T05:25:34Z",
+                "completed_at": "2026-08-24T05:58:11Z"
               },
               {
                 "py": "3.13",
@@ -1123,10 +1125,11 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32543853727,
                 "run_attempt": 2,
-                "started_at": "2026-08-24T05:25:21Z"
+                "started_at": "2026-08-24T05:25:21Z",
+                "completed_at": "2026-08-24T05:57:38Z"
               },
               {
                 "py": "3.12",

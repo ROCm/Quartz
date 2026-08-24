@@ -206,9 +206,7 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
             source_run_id="27797822902",
         )
         urls = derive_release_cdn_urls(rec)
-        self.assertEqual(
-            urls.wheels_url, "https://nightly.repo.amd.com/rocm/whl-next/"
-        )
+        self.assertEqual(urls.wheels_url, "https://nightly.repo.amd.com/rocm/whl-next/")
         self.assertEqual(urls.rpm_urls, {})
         self.assertEqual(urls.deb_urls, {})
 

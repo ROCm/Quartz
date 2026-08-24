@@ -9,7 +9,7 @@
   "completed_at": "2026-08-23T03:07:58Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-23T00:03:10Z",
-  "status_json_last_updated": "2026-08-24T04:24:32Z",
+  "status_json_last_updated": "2026-08-24T04:25:46Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -69,8 +69,8 @@
         },
         "test": {
           "success": 11,
-          "failure": 0,
-          "in_progress": 17,
+          "failure": 1,
+          "in_progress": 16,
           "cancelled": 0,
           "skipped": 0
         }
@@ -5397,10 +5397,6 @@
       "build": {
         "linux": {
           "status": "success",
-          "run_id": 32610570279,
-          "run_attempt": 2,
-          "started_at": "2026-08-23T01:33:03Z",
-          "completed_at": "2026-08-23T03:56:33Z",
           "variants": [
             {
               "py": "3.14",
@@ -5660,10 +5656,11 @@
       "test": {
         "linux": {
           "gfx94X-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 32610570279,
             "run_attempt": 2,
             "started_at": "2026-08-23T01:31:40Z",
+            "completed_at": "2026-08-24T04:24:57Z",
             "variants": [
               {
                 "py": "3.11",
@@ -5733,10 +5730,11 @@
               {
                 "py": "3.13",
                 "jax_ref": "0.10.2",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32610570279,
                 "run_attempt": 2,
-                "started_at": "2026-08-23T02:24:25Z"
+                "started_at": "2026-08-23T02:24:25Z",
+                "completed_at": "2026-08-24T04:24:19Z"
               },
               {
                 "py": "3.14",

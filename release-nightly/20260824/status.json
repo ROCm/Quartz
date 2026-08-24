@@ -9,7 +9,7 @@
   "completed_at": "2026-08-24T02:54:13Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-24T00:02:56Z",
-  "status_json_last_updated": "2026-08-24T03:53:04Z",
+  "status_json_last_updated": "2026-08-24T03:53:19Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -56,9 +56,9 @@
           "status": "success"
         },
         "test": {
-          "success": 0,
-          "failure": 225,
-          "in_progress": 95,
+          "success": 8,
+          "failure": 219,
+          "in_progress": 93,
           "cancelled": 0,
           "skipped": 0
         }
@@ -592,7 +592,7 @@
             "run_id": 32679942783,
             "run_attempt": 1,
             "started_at": "2026-08-24T02:03:32Z",
-            "completed_at": "2026-08-24T03:29:53Z",
+            "completed_at": "2026-08-24T03:53:09Z",
             "variants": [
               {
                 "py": "3.11",
@@ -666,18 +666,20 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32679942783,
                 "run_attempt": 1,
-                "started_at": "2026-08-24T03:23:17Z"
+                "started_at": "2026-08-24T03:23:17Z",
+                "completed_at": "2026-08-24T03:53:09Z"
               },
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
-                "started_at": "2026-08-24T03:23:18Z"
+                "started_at": "2026-08-24T03:23:18Z",
+                "completed_at": "2026-08-24T03:52:54Z"
               },
               {
                 "py": "3.13",
@@ -1756,7 +1758,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",
@@ -1945,7 +1947,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",
@@ -2134,7 +2136,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",
@@ -2323,7 +2325,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",
@@ -2512,7 +2514,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",
@@ -3058,7 +3060,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",
@@ -3415,7 +3417,7 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "failure",
+                "status": "success",
                 "run_id": 32679942783,
                 "run_attempt": 1,
                 "started_at": "2026-08-24T01:29:33Z",

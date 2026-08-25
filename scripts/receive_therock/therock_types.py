@@ -50,6 +50,28 @@ def _parse_int(value: Any) -> int | None:
         return None
 
 
+def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | None]:
+    """Split the propagated `quartz_tracking_id` into (owner_run_id, release_type).
+
+    The top-level `multi_arch_release.yml` orchestrator stamps every workflow it
+    triggers with `quartz_tracking_id: "<github.run_id>;<release_type>"` (empty
+    when tracking is disabled). `github.run_id` is the orchestrator's own run, the
+    top-level owner of the whole release lineage, and `release_type` is the
+    channel it published to. Both are authoritative for every descendant run, so
+    they are read straight from here rather than reconstructed from artifact ids,
+    URLs, or the immediate GitHub parent.
+
+    Returns `(None, None)` when the input is absent or empty (CI runs, manual
+    TheRock dispatches, and the orchestrator's own record, which generates the id
+    but does not carry it on its own inputs).
+    """
+    raw = inputs.get("quartz_tracking_id")
+    if not isinstance(raw, str) or not raw.strip():
+        return None, None
+    run_id_part, _, release_type_part = raw.partition(";")
+    return _parse_int(run_id_part.strip()), release_type_part.strip() or None
+
+
 # Allow-list of `event_type` values the ingest pipeline accepts on a
 # dispatch envelope, so producers and consumers agree on the wire
 # vocabulary in one place.
@@ -68,6 +90,22 @@ KNOWN_EVENT_TYPES = WORKFLOW_RUN_EVENT_TYPES | frozenset(
     {
         "pull_request_event",
         "push_event",
+    }
+)
+
+
+# The release channels this pipeline recognizes, mirroring the orchestrator's
+# own `release_type` enum in multi_arch_release.yml. Anything outside this set
+# (a producer typo or a channel we do not model yet) is coerced to None. This is
+# broader than `_TRACKED_RELEASE_TYPES` in therock_update_status_json.py, which
+# is the narrower subset that actually gets a status.json document.
+KNOWN_RELEASE_TYPES = frozenset(
+    {
+        "dev",
+        "dev-bkc",
+        "nightly",
+        "nightly-bkc",
+        "prerelease",
     }
 )
 
@@ -661,7 +699,7 @@ class WorkflowRunRecord:
     # non-PR events.
     pr_title: str | None
 
-    # Release tier: `"dev"` | `"nightly"` | `"prerelease"` | `None`.
+    # Release tier: one of `KNOWN_RELEASE_TYPES`, or `None`.
     release_type: str | None
 
     # Package-flavored ROCm version (wheel/deb/rpm differ, e.g.
@@ -749,17 +787,16 @@ class WorkflowRunRecord:
             parent_wf.get("id") if isinstance(parent_wf, dict) else None
         )
         captured_outputs = raw.get("captured_outputs")
-        # "" (CI) / absent both normalize to None; "" is classifier-only.
-        explicit_rt = (
-            raw.get("release_type")
-            or inputs.get("release_type")
-            or env.get("RELEASE_TYPE")
-            or None
-        )
-        if explicit_rt and explicit_rt not in ("dev", "nightly", "prerelease"):
+        # release_type comes from the propagated `quartz_tracking_id` (the
+        # authoritative channel the top-level orchestrator published to);
+        # `inputs.release_type` is the direct declared input that feeds that id
+        # and is the only source on the orchestrator's own record and manual
+        # dispatches. "" (CI) / absent both normalize to None.
+        _, quartz_release_type = parse_quartz_tracking_id(inputs)
+        explicit_rt = quartz_release_type or inputs.get("release_type") or None
+        if explicit_rt and explicit_rt not in KNOWN_RELEASE_TYPES:
             log.warning(
-                "workflow_run %s has unrecognized release_type=%r; "
-                "coercing to None (tier-2 inference will run)",
+                "workflow_run %s has unrecognized release_type=%r; coercing to None",
                 raw.get("id"),
                 explicit_rt,
             )

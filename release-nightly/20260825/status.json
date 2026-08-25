@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-25T00:02:47Z",
   "status_json_created": "2026-08-25T00:04:04Z",
-  "status_json_last_updated": "2026-08-25T02:04:14Z",
+  "status_json_last_updated": "2026-08-25T02:04:16Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -33,7 +33,8 @@
       "urls": {
         "tarballs": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/tarballs/",
         "wheels": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/python/",
-        "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/index.html"
+        "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/index.html",
+        "rpm": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/packages/rpm/x86_64/"
       },
       "rocm": {
         "build": {
@@ -147,6 +148,14 @@
         }
       },
       "test": {}
+    },
+    "native_packages": {
+      "rpm": {
+        "status": "in_progress",
+        "run_id": 32791995050,
+        "run_attempt": 1,
+        "started_at": "2026-08-25T00:02:47Z"
+      }
     }
   }
 }

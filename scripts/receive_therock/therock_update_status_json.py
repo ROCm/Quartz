@@ -356,14 +356,18 @@ _TEST_ARCH_JOB_RE = re.compile(
 )
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:
-# pytorch cells key the ref as "torch", jax cells as "jax_ref").
-_VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_ref"}
+# pytorch cells key the ref as "torch", jax cells as "jax_version"). The jax axis
+# is named for what it holds -- a bare version ("0.11.0"), not a git ref -- since
+# the test side of a jax cell never exposes the full ref (see `_normalize_ref`).
+_VARIANT_AXIS_KEY: dict[str, str] = {"pytorch": "torch", "jax": "jax_version"}
 
 # TheRock's jax build matrix names each cell by its git ref
 # ("rocm-jaxlib-v0.11.0"), while the release orchestrator's own name segment and
 # the test dispatch inputs name the same cell by bare version ("0.11.0"). Both
 # spellings identify one (py, version) cell, so left un-normalized they key two
 # distinct variants that never merge -- doubling every jax build and test count.
+# The full ref lives only on the build side; a test job's name carries only the
+# bare-version ancestor, so bare is the sole spelling common to both sides.
 # Canonicalize to the bare version (strip the prefix) at every point a jax ref
 # enters a variant key, so the two spellings collapse. Stripping is idempotent
 # on already-bare refs and, unlike adding the prefix, never mangles a non-version
@@ -374,12 +378,12 @@ _JAX_REF_PREFIX = "rocm-jaxlib-v"
 def _normalize_ref(axis_key: str, ref: str) -> str:
     """Canonicalize one matrix-cell ref before it becomes a variant key.
 
-    Called uniformly for every fan-out axis (torch and jax_ref), so it takes the
-    axis and dispatches internally. Today only jax needs it -- the torch axis is a
-    pure passthrough -- so a torch ref is always returned verbatim; add an axis
-    branch here if pytorch ever grows the same two-spellings problem.
+    Called uniformly for every fan-out axis (torch and jax_version), so it takes
+    the axis and dispatches internally. Today only jax needs it -- the torch axis
+    is a pure passthrough -- so a torch ref is always returned verbatim; add an
+    axis branch here if pytorch ever grows the same two-spellings problem.
     """
-    if axis_key == "jax_ref" and ref.startswith(_JAX_REF_PREFIX):
+    if axis_key == "jax_version" and ref.startswith(_JAX_REF_PREFIX):
         return ref[len(_JAX_REF_PREFIX) :]
     return ref
 
@@ -403,9 +407,13 @@ _SKIP_WORKFLOW_NAMES: frozenset[str] = frozenset({"test_component.yml"})
 # Run inputs that carry the (py, ref) cell for single-cell runs (tests), tried
 # in order. Tests report one arch per run and never fan the axis out into job
 # names, so the cell lives in the dispatch inputs instead.
+# Values are TheRock's own input field names (external contract), tried in
+# order. jax's explicit bare `jax_version` input is preferred over `jax_ref`
+# (full) so the axis reads its canonical spelling directly; `_normalize_ref`
+# still strips `jax_ref` when only that is present.
 _VARIANT_INPUT_KEYS: dict[str, tuple[str, ...]] = {
     "torch": ("pytorch_git_ref", "torch_version"),
-    "jax_ref": ("jax_ref", "jax_git_ref"),
+    "jax_version": ("jax_version", "jax_ref", "jax_git_ref"),
 }
 
 

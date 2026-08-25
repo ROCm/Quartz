@@ -7,13 +7,34 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-25T00:02:47Z",
   "status_json_created": "2026-08-25T00:04:04Z",
-  "status_json_last_updated": "2026-08-25T00:04:04Z",
+  "status_json_last_updated": "2026-08-25T00:05:17Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
       "status": "in_progress",
-      "architectures": [],
-      "urls": {},
+      "architectures": [
+        "gfx94X-dcgpu",
+        "gfx110X-all",
+        "gfx1151",
+        "gfx120X-all",
+        "gfx90a",
+        "gfx950-dcgpu",
+        "gfx900",
+        "gfx90c",
+        "gfx906",
+        "gfx908",
+        "gfx101X-dgpu",
+        "gfx103X-all",
+        "gfx1150",
+        "gfx1152",
+        "gfx1153",
+        "gfx125X-dcgpu"
+      ],
+      "urls": {
+        "tarballs": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/tarballs/",
+        "wheels": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/python/",
+        "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/32791995050-linux/index.html"
+      },
       "rocm": {
         "build": {
           "status": "in_progress"
@@ -60,12 +81,12 @@
       }
     },
     "windows": {
-      "status": "in_progress",
+      "status": "skipped",
       "architectures": [],
       "urls": {},
       "rocm": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -77,7 +98,7 @@
       },
       "pytorch": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -89,5 +110,17 @@
       }
     }
   },
-  "pipelines": {}
+  "pipelines": {
+    "rocm": {
+      "build": {
+        "linux": {
+          "status": "in_progress",
+          "run_id": 32791995050,
+          "run_attempt": 1,
+          "started_at": "2026-08-25T00:02:47Z"
+        }
+      },
+      "test": {}
+    }
+  }
 }

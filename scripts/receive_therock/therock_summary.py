@@ -16,6 +16,7 @@ from therock_status_document import (
     StatusDocument,
     Summary,
     TestRollup,
+    rollup_sibling_statuses,
     rollup_statuses,
 )
 from therock_types import EXPECTED_PIPELINE_TYPES
@@ -111,20 +112,31 @@ def _build_platform_summary(
         cancelled      cancelled                     cancelled
         failure        failure                       skipped
 
-    A cancelled/failed rocm *test* gates nothing downstream, so the children stay
-    `in_progress` and the platform stays `in_progress` (in_progress outranks
-    cancelled in the worst-of).
+    Each pipeline (rocm, pytorch, jax, native_packages) first rolls its own
+    build/test/test_full leaves up to a single status with `rollup_statuses`
+    (failure beats a still-running cell of the *same* pipeline -- that cell
+    cannot undo a real failure). The platform status then combines those
+    per-pipeline statuses -- plus a placeholder for any pipeline that has not
+    reported at all -- with `rollup_sibling_statuses`, which lets in_progress
+    outrank a sibling pipeline's failure: independent pipelines are separate
+    units of work, so one having already failed does not mean another,
+    still-running one is done. This makes a failed rocm *test* behave like a
+    cancelled one (see below) instead of prematurely deciding the platform's
+    verdict while pytorch/jax/native_packages are still pending.
     """
     architectures = (
         doc.linux_architectures if platform == "linux" else doc.windows_architectures
     )
     urls = doc.linux_urls if platform == "linux" else doc.windows_urls
 
-    seen_statuses: list[Status] = []
-    rocm = _pipeline_rollup(doc.pipelines.rocm, platform, seen_statuses)
-    pytorch = _pipeline_rollup(doc.pipelines.pytorch, platform, seen_statuses)
-    jax = _pipeline_rollup(doc.pipelines.jax, platform, seen_statuses)
-    native_packages = _native_rollup(doc, platform, seen_statuses)
+    rocm_seen: list[Status] = []
+    pytorch_seen: list[Status] = []
+    jax_seen: list[Status] = []
+    native_seen: list[Status] = []
+    rocm = _pipeline_rollup(doc.pipelines.rocm, platform, rocm_seen)
+    pytorch = _pipeline_rollup(doc.pipelines.pytorch, platform, pytorch_seen)
+    jax = _pipeline_rollup(doc.pipelines.jax, platform, jax_seen)
+    native_packages = _native_rollup(doc, platform, native_seen)
 
     empty_platform_status = Status.in_progress if architectures else Status.skipped
 
@@ -136,20 +148,30 @@ def _build_platform_summary(
     )
 
     rollups = {
-        "rocm": rocm,
-        "pytorch": pytorch,
-        "jax": jax,
-        "native_packages": native_packages,
+        "rocm": (rocm, rocm_seen),
+        "pytorch": (pytorch, pytorch_seen),
+        "jax": (jax, jax_seen),
+        "native_packages": (native_packages, native_seen),
     }
-    status_inputs = list(seen_statuses)
-    if doc.completed_at is None and any(
-        rollups[pipeline_type] is None
-        for pipeline_type in EXPECTED_PIPELINE_TYPES[platform]
-    ):
-        status_inputs.append(unstarted_status)
+
+    sibling_statuses: list[Status] = []
+    has_data = bool(architectures)
+    for pipeline_type in EXPECTED_PIPELINE_TYPES[platform]:
+        rollup_obj, seen = rollups[pipeline_type]
+        if rollup_obj is None:
+            # A pipeline that never reported feeds the sibling worst-of as
+            # its eventual (gate-derived) status while the release is live,
+            # so it keeps holding the platform at in_progress until it does.
+            # Once finalized it is dropped instead: it did not run this
+            # release, so it must not drag a finished platform.
+            if doc.completed_at is None:
+                sibling_statuses.append(unstarted_status)
+            continue
+        has_data = True
+        sibling_statuses.append(rollup_statuses(seen, empty_platform_status))
 
     fields: dict[str, object] = {
-        "status": rollup_statuses(status_inputs, empty_platform_status),
+        "status": rollup_sibling_statuses(sibling_statuses, empty_platform_status),
         "architectures": list(architectures),
         "urls": dict(urls),
         "rocm": rocm or placeholder,
@@ -161,7 +183,6 @@ def _build_platform_summary(
             native_packages if native_packages is not None else native_placeholder
         )
 
-    has_data = bool(architectures) or bool(seen_statuses)
     return PlatformSummary.for_platform(platform, **fields), has_data
 
 

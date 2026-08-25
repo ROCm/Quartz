@@ -571,8 +571,12 @@ def derive_release_cdn_urls(wr: WorkflowRunRecord) -> ReleaseCdnUrls | None:
     if wr.release_type == "nightly":
         segment = _nightly_package_segment(wr)
         if segment:
-            urls.rpm_urls = {"rpm": f"{packages}rpm/{segment}/"}
-            urls.deb_urls = {"deb": f"{packages}deb/{segment}/"}
+            # Packages are served under an `<os-profile>` directory (e.g.
+            # ubuntu-2404, el9), a placeholder resolved by the consumer; the
+            # index no longer splits by package format, so rpm and deb share it.
+            os_profile_url = f"{packages}<os-profile>/{segment}/"
+            urls.rpm_urls = {"rpm": os_profile_url}
+            urls.deb_urls = {"deb": os_profile_url}
             return urls
     urls.rpm_urls = {"rpm": packages}
     urls.deb_urls = {"deb": packages}

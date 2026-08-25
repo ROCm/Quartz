@@ -182,9 +182,9 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
         base = "https://nightly.repo.amd.com/rocm/"
         self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
         self.assertEqual(urls.wheels_url, f"{base}whl-next/")
-        seg = f"{base}core/packages"
-        self.assertEqual(urls.rpm_urls, {"rpm": f"{seg}/rpm/20260619-27797822902/"})
-        self.assertEqual(urls.deb_urls, {"deb": f"{seg}/deb/20260619-27797822902/"})
+        seg = f"{base}core/packages/<os-profile>"
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{seg}/20260619-27797822902/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{seg}/20260619-27797822902/"})
 
     def test_prerelease_linux_has_no_dated_segment(self):
         rec = _release_record(

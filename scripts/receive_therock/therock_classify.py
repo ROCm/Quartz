@@ -464,12 +464,13 @@ def _native_package_urls(
     return {pipeline_phase: f"{repo}/"}
 
 
-# CDN (CloudFront) base per release channel. `dev` is intentionally absent:
-# normal dev builds stay in the S3 artifact bucket, and release-triggered
-# devreleases are out of scope for now.
+# CDN base per release stream, following the repo.amd.com layout from RFC0012:
+# each stream is served at its own `<stream>.repo.amd.com/rocm/` subdomain.
+# `dev` is intentionally absent: normal dev builds stay in the S3 artifact
+# bucket, and release-triggered devreleases are out of scope for now.
 _RELEASE_CDN_BASE: Final[dict[str, str]] = {
-    "nightly": "https://rocm.nightlies.amd.com/",
-    "prerelease": "https://rocm.prereleases.amd.com/",
+    "nightly": "https://nightly.repo.amd.com/rocm/",
+    "prerelease": "https://rc.repo.amd.com/rocm/",
 }
 
 
@@ -501,7 +502,7 @@ def derive_release_cdn_urls(wr: WorkflowRunRecord) -> ReleaseCdnUrls | None:
 
     nightly URLs carry a `<date>-<run_id>` segment for the native packages;
     prerelease packages split by OS downstream, so only the channel base
-    `packages-multi-arch/` is exposed.
+    `core/packages/` is exposed.
     """
     wf_file = PurePosixPath(wr.path).name if wr.path else ""
     # Only the per-platform release orchestrators publish CDN release URLs;
@@ -518,19 +519,23 @@ def derive_release_cdn_urls(wr: WorkflowRunRecord) -> ReleaseCdnUrls | None:
         return None
 
     urls = ReleaseCdnUrls(
-        tarball_url=f"{base}tarball-multi-arch/",
-        wheels_url=f"{base}whl-multi-arch/",
+        tarball_url=f"{base}core/tarball/",
+        wheels_url=f"{base}whl-next/",
     )
     if platform != "linux":
         return urls
 
     # native deb/rpm are linux-only
-    packages = f"{base}packages-multi-arch/"
+    packages = f"{base}core/packages/"
     if wr.release_type == "nightly":
         segment = _nightly_package_segment(wr)
         if segment:
-            urls.rpm_urls = {"rpm": f"{packages}rpm/{segment}/"}
-            urls.deb_urls = {"deb": f"{packages}deb/{segment}/"}
+            # Packages are served under an `<os-profile>` directory (e.g.
+            # ubuntu-2404, el9), a placeholder resolved by the consumer; the
+            # index no longer splits by package format, so rpm and deb share it.
+            os_profile_url = f"{packages}<os-profile>/{segment}/"
+            urls.rpm_urls = {"rpm": os_profile_url}
+            urls.deb_urls = {"deb": os_profile_url}
             return urls
     urls.rpm_urls = {"rpm": packages}
     urls.deb_urls = {"deb": packages}

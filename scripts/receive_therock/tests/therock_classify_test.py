@@ -179,12 +179,12 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
             source_run_id="27797822902",
         )
         urls = derive_release_cdn_urls(rec)
-        base = "https://rocm.nightlies.amd.com/"
-        self.assertEqual(urls.tarball_url, f"{base}tarball-multi-arch/")
-        self.assertEqual(urls.wheels_url, f"{base}whl-multi-arch/")
-        seg = f"{base}packages-multi-arch"
-        self.assertEqual(urls.rpm_urls, {"rpm": f"{seg}/rpm/20260619-27797822902/"})
-        self.assertEqual(urls.deb_urls, {"deb": f"{seg}/deb/20260619-27797822902/"})
+        base = "https://nightly.repo.amd.com/rocm/"
+        self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
+        self.assertEqual(urls.wheels_url, f"{base}whl-next/")
+        seg = f"{base}core/packages/<os-profile>"
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{seg}/20260619-27797822902/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{seg}/20260619-27797822902/"})
 
     def test_prerelease_linux_has_no_dated_segment(self):
         rec = _release_record(
@@ -194,9 +194,9 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
             source_run_id="27797822902",
         )
         urls = derive_release_cdn_urls(rec)
-        base = "https://rocm.prereleases.amd.com/"
-        self.assertEqual(urls.rpm_urls, {"rpm": f"{base}packages-multi-arch/"})
-        self.assertEqual(urls.deb_urls, {"deb": f"{base}packages-multi-arch/"})
+        base = "https://rc.repo.amd.com/rocm/"
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
 
     def test_windows_has_no_native_package_urls(self):
         rec = _release_record(
@@ -206,9 +206,7 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
             source_run_id="27797822902",
         )
         urls = derive_release_cdn_urls(rec)
-        self.assertEqual(
-            urls.wheels_url, "https://rocm.nightlies.amd.com/whl-multi-arch/"
-        )
+        self.assertEqual(urls.wheels_url, "https://nightly.repo.amd.com/rocm/whl-next/")
         self.assertEqual(urls.rpm_urls, {})
         self.assertEqual(urls.deb_urls, {})
 
@@ -258,7 +256,7 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
             source_run_id=None,
         )
         urls = derive_release_cdn_urls(rec)
-        base = "https://rocm.nightlies.amd.com/packages-multi-arch/"
+        base = "https://nightly.repo.amd.com/rocm/core/packages/"
         self.assertEqual(urls.rpm_urls, {"rpm": base})
         self.assertEqual(urls.deb_urls, {"deb": base})
 

@@ -1045,8 +1045,8 @@ def test_from_wire_lifts_arch_and_urls_out_of_summary() -> None:
                 "linux": {
                     "architectures": ["gfx942", "gfx1100"],
                     "urls": {
-                        "tarballs": "https://rocm.nightlies.amd.com/tarball-multi-arch/",
-                        "wheels": "https://rocm.nightlies.amd.com/whl-multi-arch/",
+                        "tarballs": "https://nightly.repo.amd.com/rocm/core/tarball/",
+                        "wheels": "https://nightly.repo.amd.com/rocm/whl-next/",
                     },
                 },
                 "windows": {"architectures": ["gfx1201"]},
@@ -1055,8 +1055,8 @@ def test_from_wire_lifts_arch_and_urls_out_of_summary() -> None:
     )
     assert doc.linux_architectures == ["gfx942", "gfx1100"]
     assert doc.linux_urls == {
-        "tarballs": "https://rocm.nightlies.amd.com/tarball-multi-arch/",
-        "wheels": "https://rocm.nightlies.amd.com/whl-multi-arch/",
+        "tarballs": "https://nightly.repo.amd.com/rocm/core/tarball/",
+        "wheels": "https://nightly.repo.amd.com/rocm/whl-next/",
     }
     assert doc.windows_architectures == ["gfx1201"]
 

@@ -561,10 +561,10 @@ def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
     release.release_type = "prerelease"
     release.rocm_version = _PRERELEASE_VERSION
     release.classification.release_version = _PRERELEASE_VERSION
-    release.tarball_url = "https://rocm.prereleases.amd.com/tarball-multi-arch/"
-    release.wheels_url = "https://rocm.prereleases.amd.com/whl-multi-arch/"
-    release.rpm_urls = {"rpm": "https://rocm.prereleases.amd.com/packages-multi-arch/"}
-    release.deb_urls = {"deb": "https://rocm.prereleases.amd.com/packages-multi-arch/"}
+    release.tarball_url = "https://rc.repo.amd.com/rocm/core/tarball/"
+    release.wheels_url = "https://rc.repo.amd.com/rocm/whl-next/"
+    release.rpm_urls = {"rpm": "https://rc.repo.amd.com/rocm/core/packages/"}
+    release.deb_urls = {"deb": "https://rc.repo.amd.com/rocm/core/packages/"}
 
     out = tusj.update_status_json(
         _event(release), repo_dir=tmp_path, commit_and_push=False
@@ -575,10 +575,10 @@ def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
     assert doc.completed_at is None
     assert doc.summary.overall_status is Status.in_progress
     assert doc.summary.linux.urls == {
-        "tarballs": "https://rocm.prereleases.amd.com/tarball-multi-arch/",
-        "wheels": "https://rocm.prereleases.amd.com/whl-multi-arch/",
-        "rpm": "https://rocm.prereleases.amd.com/packages-multi-arch/",
-        "deb": "https://rocm.prereleases.amd.com/packages-multi-arch/",
+        "tarballs": "https://rc.repo.amd.com/rocm/core/tarball/",
+        "wheels": "https://rc.repo.amd.com/rocm/whl-next/",
+        "rpm": "https://rc.repo.amd.com/rocm/core/packages/",
+        "deb": "https://rc.repo.amd.com/rocm/core/packages/",
     }
 
 

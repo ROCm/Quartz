@@ -9,7 +9,7 @@
   "completed_at": "2026-08-26T05:02:10Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-26T00:05:33Z",
-  "status_json_last_updated": "2026-08-26T05:07:43Z",
+  "status_json_last_updated": "2026-08-26T05:09:52Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -70,7 +70,7 @@
         "test": {
           "success": 0,
           "failure": 0,
-          "in_progress": 7,
+          "in_progress": 8,
           "cancelled": 0,
           "skipped": 0
         }
@@ -742,6 +742,14 @@
               {
                 "py": "3.14",
                 "jax_ref": "rocm-jaxlib-v0.11.0",
+                "status": "in_progress",
+                "run_id": 32927022639,
+                "run_attempt": 1,
+                "started_at": "2026-08-26T03:35:32Z"
+              },
+              {
+                "py": "3.12",
+                "jax_ref": "rocm-jaxlib-v0.10.2",
                 "status": "in_progress",
                 "run_id": 32927022639,
                 "run_attempt": 1,

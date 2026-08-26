@@ -132,23 +132,6 @@ def rollup_statuses(statuses: Iterable[Status], fallback: Status) -> Status:
 def rollup_sibling_statuses(statuses: Iterable[Status], fallback: Status) -> Status:
     """Collapse the statuses of independent sibling pipelines (rocm / pytorch /
     jax / native_packages) on the same platform into one platform status.
-
-    This is deliberately a different precedence than `rollup_statuses`, which
-    combines matrix cells / build+test *within* one pipeline: there, a
-    terminal failure in one cell is irreversible and must not be masked by a
-    still-running sibling *cell* of the same phase. Sibling *pipelines* are
-    separate, independently-dispatched units of work, so one of them failing
-    says nothing about whether another, still-running one is done -- it may
-    yet also fail, or may still succeed. Crystallizing the platform to
-    `failure` while a sibling pipeline has not reported a terminal status
-    would report a verdict the platform has not actually reached yet.
-
-    Precedence: in_progress > failure > cancelled > success > skipped. This
-    also makes `failure` behave consistently with `cancelled` here (which
-    already lost to `in_progress` even under the old precedence): both are
-    terminal-negative, but neither can override still-pending sibling work.
-    Once every sibling has reported a terminal status, the worst one applies.
-    Returns `fallback` when there is nothing to roll up.
     """
     seen = set(statuses)
     if not seen:
@@ -595,6 +578,17 @@ class StatusDocument(BaseModel):
     # `summary.overall_status` so an aborted or failed release is never reported
     # as `success` just because the leaves that happened to report all passed.
     orchestrator_conclusion: Status | None = None
+    # Whether this release's own dispatch enabled the pytorch / jax pipeline
+    # (the orchestrator's `build_pytorch` / `build_jax` inputs), captured by
+    # `therock_update_status_json._apply_pipeline_enable_flags` off the
+    # owning run's inputs. rocm and native_packages have no such flag -- both
+    # are unconditional `workflow_call` builds the orchestrator always
+    # dispatches and waits on -- so they carry no field here. Defaults to
+    # `True` (expected) until an explicit `false` is observed: this is a
+    # disable-only signal, never a way to expect *more* than the static
+    # default (see `therock_summary._pipeline_enabled`).
+    pytorch_enabled: bool = True
+    jax_enabled: bool = True
     status_json_created: str = ""
     status_json_last_updated: str = ""
 

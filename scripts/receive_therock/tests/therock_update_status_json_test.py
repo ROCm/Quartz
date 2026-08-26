@@ -422,6 +422,96 @@ def test_leaf_does_not_stamp_orchestrator_owner(tmp_path: Path) -> None:
     assert "linux" not in doc.pipelines.rocm.build
 
 
+def test_orchestrator_start_captures_pytorch_jax_enable_flags(tmp_path: Path) -> None:
+    # The top-level orchestrator's own dispatch inputs (build_pytorch /
+    # build_jax) are the source of truth for issue #57's expected-pipeline
+    # tracking; its `workflow_run_in_progress` (start) event is enough to
+    # anchor them, before any leaf or the setup run reports.
+    orch = _orchestrator_run()
+    orch.workflow_run_id = 29079513704
+    orch.conclusion = None
+    orch.status = "in_progress"
+    orch.inputs = {"build_pytorch": False, "build_jax": True}
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is False
+    assert doc.jax_enabled is True
+
+
+def test_setup_run_captures_pytorch_jax_enable_flags(tmp_path: Path) -> None:
+    # setup_multi_arch.yml executes via workflow_call and can anchor ownership
+    # before the top-level orchestrator's own start event; its inputs carry
+    # the same build_pytorch/build_jax flags and must be captured too.
+    setup = _setup_run(27797822902)
+    setup.inputs = {"build_pytorch": True, "build_jax": False}
+    tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is True
+    assert doc.jax_enabled is False
+
+
+def test_missing_enable_flag_inputs_leave_default_enabled(tmp_path: Path) -> None:
+    # An orchestrator run that carries no build_pytorch/build_jax inputs (e.g.
+    # an older workflow version) must not clobber the default-enabled state.
+    _establish_owner(tmp_path)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is True
+    assert doc.jax_enabled is True
+
+
+def test_string_enable_flag_inputs_are_parsed(tmp_path: Path) -> None:
+    # Tolerate build_pytorch/build_jax arriving as the string "false"/"true"
+    # rather than a native JSON bool.
+    orch = _orchestrator_run()
+    orch.workflow_run_id = 29079513704
+    orch.conclusion = None
+    orch.status = "in_progress"
+    orch.inputs = {"build_pytorch": "false", "build_jax": "true"}
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is False
+    assert doc.jax_enabled is True
+
+
+def test_newer_orchestrator_owner_resets_enable_flags_to_default(
+    tmp_path: Path,
+) -> None:
+    # A newer owner (re-dispatched release) must not inherit the previous
+    # run's disabled pytorch/jax -- it gets its own fresh default until its
+    # own inputs (absent here) say otherwise.
+    older = _orchestrator_run()
+    older.workflow_run_id = 100
+    older.inputs = {"build_pytorch": False, "build_jax": False}
+    tusj.update_status_json(
+        _event(older, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is False
+    assert doc.jax_enabled is False
+
+    newer = _orchestrator_run()
+    newer.workflow_run_id = 200
+    tusj.update_status_json(
+        _event(newer, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 200
+    assert doc.pytorch_enabled is True
+    assert doc.jax_enabled is True
+
+
 def test_older_orchestrator_start_does_not_override_newer_owner(
     tmp_path: Path,
 ) -> None:

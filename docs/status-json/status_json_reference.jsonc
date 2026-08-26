@@ -111,7 +111,7 @@
   //   - native_packages.{rpm,deb} run once on linux  -> entry at .<rpm|deb>
   // Entry shape: { run_id, run_attempt, status, started_at, completed_at }
   // Pipelines with a matrix on extra dimensions (pytorch py x torch,
-  // jax py x jax_ref) carry an additional "variants" array on the entry.
+  // jax py x jax_version) carry an additional "variants" array on the entry.
   // ---------------------------------------------------------------------
   "pipelines": {
 
@@ -260,8 +260,8 @@
     //       "started_at":   "2026-04-08T10:00:00Z",
     //       "completed_at": null,
     //       "variants": [
-    //         { "py": "3.11", "jax_ref": "rocm-jaxlib-v0.9.1", "status": "in_progress" },
-    //         { "py": "3.12", "jax_ref": "rocm-jaxlib-v0.9.1", "status": "in_progress" }
+    //         { "py": "3.11", "jax_version": "0.9.1", "status": "in_progress" },
+    //         { "py": "3.12", "jax_version": "0.9.1", "status": "in_progress" }
     //       ]
     //     }
     //   }

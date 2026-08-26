@@ -9,7 +9,7 @@
   "completed_at": "2026-08-26T05:02:10Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-26T00:05:33Z",
-  "status_json_last_updated": "2026-08-26T08:23:38Z",
+  "status_json_last_updated": "2026-08-26T08:24:46Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -124,8 +124,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 12,
-          "in_progress": 1,
+          "failure": 13,
+          "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
         }
@@ -425,10 +425,6 @@
         },
         "windows": {
           "status": "failure",
-          "run_id": 32932338510,
-          "run_attempt": 1,
-          "started_at": "2026-08-26T05:02:09Z",
-          "completed_at": "2026-08-26T07:47:57Z",
           "variants": [
             {
               "py": "3.10",
@@ -3586,7 +3582,7 @@
             "run_id": 32932338510,
             "run_attempt": 1,
             "started_at": "2026-08-26T07:53:18Z",
-            "completed_at": "2026-08-26T07:58:49Z",
+            "completed_at": "2026-08-26T08:23:32Z",
             "variants": [
               {
                 "py": "3.12",
@@ -3604,7 +3600,7 @@
             "run_id": 32932338510,
             "run_attempt": 1,
             "started_at": "2026-08-26T07:48:19Z",
-            "completed_at": "2026-08-26T07:53:15Z",
+            "completed_at": "2026-08-26T08:23:32Z",
             "variants": [
               {
                 "py": "3.12",
@@ -3622,7 +3618,7 @@
             "run_id": 32932338510,
             "run_attempt": 1,
             "started_at": "2026-08-26T07:48:18Z",
-            "completed_at": "2026-08-26T07:52:17Z",
+            "completed_at": "2026-08-26T08:23:32Z",
             "variants": [
               {
                 "py": "3.12",
@@ -3744,18 +3740,20 @@
             ]
           },
           "gfx103X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 32932338510,
             "run_attempt": 1,
             "started_at": "2026-08-26T07:49:42Z",
+            "completed_at": "2026-08-26T08:23:32Z",
             "variants": [
               {
                 "py": "3.12",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 32932338510,
                 "run_attempt": 1,
-                "started_at": "2026-08-26T07:49:42Z"
+                "started_at": "2026-08-26T07:49:42Z",
+                "completed_at": "2026-08-26T08:22:54Z"
               }
             ]
           },

@@ -24,6 +24,7 @@ from therock_types import (  # noqa: E402
     WorkflowJobRecord,
     WorkflowRunRecord,
     parse_gh_datetime,
+    parse_quartz_tracking_id,
     _normalize_labels,
 )
 
@@ -221,15 +222,48 @@ def test_run_from_dict_first_pr_wins_and_warns(
 @pytest.mark.parametrize(
     "raw,expected",
     [
-        ({"release_type": "nightly"}, "nightly"),
+        # Preferred source: the channel embedded in the propagated tracking id.
+        ({"inputs": {"quartz_tracking_id": "123;nightly"}}, "nightly"),
+        # quartz_tracking_id wins over a per-run release_type input.
+        (
+            {"inputs": {"quartz_tracking_id": "123;prerelease", "release_type": "dev"}},
+            "prerelease",
+        ),
+        # Fallback: the direct release_type input (orchestrator / manual dispatch).
         ({"inputs": {"release_type": "prerelease"}}, "prerelease"),
-        ({"env": {"RELEASE_TYPE": "dev"}}, "dev"),
+        # bkc channels are recognized and pass through unchanged.
+        ({"inputs": {"quartz_tracking_id": "123;nightly-bkc"}}, "nightly-bkc"),
+        ({"inputs": {"release_type": "dev-bkc"}}, "dev-bkc"),
+        # Top-level release_type and env RELEASE_TYPE are no longer derived.
+        ({"release_type": "nightly"}, None),
+        ({"env": {"RELEASE_TYPE": "dev"}}, None),
         ({}, None),
-        ({"release_type": "bogus"}, None),  # unrecognized -> coerced to None
+        # Unrecognized value -> coerced to None.
+        ({"inputs": {"release_type": "bogus"}}, None),
     ],
 )
 def test_run_from_dict_release_type_resolution(raw: dict, expected: str | None) -> None:
     assert WorkflowRunRecord.from_dict(raw).release_type == expected
+
+
+@pytest.mark.parametrize(
+    "value,expected",
+    [
+        ({}, (None, None)),
+        ({"quartz_tracking_id": ""}, (None, None)),
+        ({"quartz_tracking_id": "123;nightly"}, (123, "nightly")),
+        ({"quartz_tracking_id": "123"}, (123, None)),
+        ({"quartz_tracking_id": "123;"}, (123, None)),
+    ],
+)
+def test_parse_quartz_tracking_id(value: dict, expected: tuple) -> None:
+    assert parse_quartz_tracking_id(value) == expected
+
+
+@pytest.mark.parametrize("value", ["123abc;nightly", ";nightly"])
+def test_parse_quartz_tracking_id_malformed_run_id_raises(value: str) -> None:
+    with pytest.raises(ValueError):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
 
 
 def test_run_from_dict_rocm_version_precedence() -> None:

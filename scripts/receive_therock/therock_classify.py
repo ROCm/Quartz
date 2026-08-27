@@ -28,6 +28,7 @@ from therock_types import (
     RELEASE_VERSION_NIGHTLY_RE,
     WORKFLOW_SPECS,
     WorkflowRunRecord,
+    parse_quartz_tracking_id,
 )
 
 # Per-platform orchestrator phases that publish a release to the CDN (and thus
@@ -307,33 +308,6 @@ def is_top_level_orchestrator(wr: WorkflowRunRecord) -> bool:
     )
 
 
-def _input_int(inputs: dict[str, object], key: str) -> int | None:
-    value = inputs.get(key)
-    if value in (None, ""):
-        return None
-    try:
-        return int(str(value))
-    except ValueError:
-        return None
-
-
-# Artifact bucket URLs are keyed by `{run_id}-{platform}` (see
-# `_run_output_base` below), e.g.
-# https://therock-nightly-artifacts.s3.amazonaws.com/29460946697-linux/python/index.html
-# Async dispatches from upstream framework workflows we cannot modify carry one
-# of these URLs but no `artifact_run_id` input, so the run id is recovered
-# from the path instead.
-_ARTIFACT_URL_RUN_ID_RE: Final = re.compile(r"/(\d+)-(?:linux|windows)(?:/|$)")
-
-
-def _input_url_run_id(inputs: dict[str, object], key: str) -> int | None:
-    value = inputs.get(key)
-    if not isinstance(value, str):
-        return None
-    match = _ARTIFACT_URL_RUN_ID_RE.search(value)
-    return int(match.group(1)) if match else None
-
-
 def derive_effective_owner_run_id(wr: WorkflowRunRecord) -> int | None:
     """Derive the top-level run that owns this run's release lineage.
 
@@ -341,32 +315,17 @@ def derive_effective_owner_run_id(wr: WorkflowRunRecord) -> int | None:
     place, so every downstream consumer (status.json today, the database
     later) sees the same resolved owner rather than each recomputing it.
 
-    Orchestrators are the root of ownership and therefore own themselves.
-    Asynchronously dispatched framework workflows we cannot add plumbing to
-    (e.g. upstream benc-uk dispatches) carry an `artifact_run_id` input or an
-    artifact bucket URL that bakes in the top-level run id; prefer either over
-    the immediate GitHub parent so nested reusable children stay tied to the
-    top-level release owner.
+    The top-level `multi_arch_release.yml` orchestrator is the root of ownership
+    and therefore owns itself (it generates the id but does not carry it on its
+    own inputs). Every descendant run carries the owner directly in the
+    propagated `quartz_tracking_id`, so it is read from there rather than
+    reconstructed from artifact ids, URLs, or the immediate GitHub parent.
+    Returns None for runs outside a tracked release (CI, tracking disabled).
     """
     if is_top_level_orchestrator(wr):
         return wr.workflow_run_id
-
-    upstream_run_id = (
-        _input_int(wr.inputs, "artifact_run_id")
-        or _input_url_run_id(wr.inputs, "rocm_package_find_links_url")
-        or _input_url_run_id(wr.inputs, "rocm_package_index_url")
-        or _input_url_run_id(wr.inputs, "package_install_url")
-    )
-    if upstream_run_id is not None:
-        return upstream_run_id
-
-    parent = wr.parent_workflow
-    if isinstance(parent, dict):
-        parent_id = _input_int(parent, "id")
-        if parent_id is not None:
-            return parent_id
-
-    return wr.trigger_workflow_run_id
+    run_id, _ = parse_quartz_tracking_id(wr.inputs)
+    return run_id
 
 
 def _run_output_base(wr: WorkflowRunRecord) -> str | None:

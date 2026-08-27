@@ -700,81 +700,47 @@ def _orchestrator_run(
 
 class DeriveEffectiveOwnerRunIdTest(unittest.TestCase):
     def test_top_level_orchestrator_is_self(self):
+        # The orchestrator generates `quartz_tracking_id` from its own
+        # `github.run_id` but does not carry it on its own inputs, so it owns
+        # itself via the base case.
         run = _orchestrator_run()
         run.workflow_run_id = 29079513704
         self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
 
-    def test_reusable_child_uses_github_parent(self):
+    def test_descendant_uses_quartz_tracking_id(self):
+        # Every triggered workflow carries the top-level owner in the propagated
+        # id, regardless of its immediate GitHub parent.
         run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "29079513704;nightly"}
         run.parent_workflow = {
-            "id": 29079513704,
+            "id": 29080000000,
             "name": "multi_arch_release_linux.yml",
         }
         self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
 
-    def test_artifact_run_id_overrides_immediate_parent(self):
-        run = _leaf_run()
-        run.inputs = {"artifact_run_id": "29079513704"}
-        run.parent_workflow = {
-            "id": 29080000000,
-            "name": "multi_arch_release_linux_pytorch_wheels.yml",
-        }
-        self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
+    def test_run_id_parsed_without_release_type_suffix(self):
+        # The `;<release_type>` half must not leak into the run id, and a bare
+        # id with no separator still parses.
+        semi = _leaf_run()
+        semi.inputs = {"quartz_tracking_id": "29079513704;"}
+        self.assertEqual(derive_effective_owner_run_id(semi), 29079513704)
 
-    def test_falls_back_to_artifact_run_id_input(self):
-        run = _leaf_run()
-        run.inputs = {"artifact_run_id": "29079513704"}
-        self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
+        bare = _leaf_run()
+        bare.inputs = {"quartz_tracking_id": "29079513704"}
+        self.assertEqual(derive_effective_owner_run_id(bare), 29079513704)
 
-    def test_falls_back_to_find_links_url_run_id(self):
-        # Upstream benc-uk dispatches that don't carry an `artifact_run_id`
-        # input (e.g. the real PyTorch/JAX release triggers) still carry the
-        # top-level run id baked into the artifact bucket path.
-        run = _leaf_run()
-        run.inputs = {
-            "rocm_package_find_links_url": (
-                "https://therock-nightly-artifacts.s3.amazonaws.com/"
-                "29079513704-linux/python/index.html"
-            )
-        }
-        self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
-
-    def test_falls_back_to_package_install_url_run_id(self):
-        run = _leaf_run()
-        run.inputs = {
-            "package_install_url": (
-                "https://therock-nightly-artifacts.s3.amazonaws.com/"
-                "29079513704-linux/packages/deb"
-            )
-        }
-        self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
-
-    def test_prefers_explicit_artifact_run_id_over_url(self):
-        run = _leaf_run()
-        run.inputs = {
-            "artifact_run_id": "29079513704",
-            "rocm_package_find_links_url": (
-                "https://therock-nightly-artifacts.s3.amazonaws.com/"
-                "11111111111-linux/python/index.html"
-            ),
-        }
-        self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
-
-    def test_ignores_url_without_platform_suffix(self):
-        run = _leaf_run()
-        run.inputs = {
-            "rocm_package_find_links_url": "https://example.invalid/stub/find-links/"
-        }
-        run.parent_workflow = {
-            "id": 29080000000,
-            "name": "multi_arch_release_linux_pytorch_wheels.yml",
-        }
-        self.assertEqual(derive_effective_owner_run_id(run), 29080000000)
-
-    def test_no_signal_falls_back_to_raw_trigger_workflow_run_id(self):
+    def test_no_quartz_tracking_id_returns_none(self):
+        # Untracked runs (CI, tracking disabled) carry no owner: the immediate
+        # GitHub parent is no longer used as a fallback.
         run = _leaf_run()
         run.trigger_workflow_run_id = 123456
-        self.assertEqual(derive_effective_owner_run_id(run), 123456)
+        run.parent_workflow = {"id": 123456, "name": "multi_arch_release_linux.yml"}
+        self.assertIsNone(derive_effective_owner_run_id(run))
+
+    def test_empty_quartz_tracking_id_returns_none(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": ""}
+        self.assertIsNone(derive_effective_owner_run_id(run))
 
 
 class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):
@@ -790,15 +756,10 @@ class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):
     def test_source_run_id_sees_immediate_parent_not_resolved_owner(self):
         run = _make_record(
             release_type="nightly",
-            # A URL input recovers the top-level owner (999) without an
+            # `quartz_tracking_id` carries the top-level owner (999) without an
             # `artifact_run_id`, which would otherwise short-circuit
             # derive_source_run_id and mask the ordering it depends on.
-            inputs={
-                "rocm_package_find_links_url": (
-                    "https://therock-nightly-artifacts.s3.amazonaws.com/"
-                    "999-linux/python/index.html"
-                )
-            },
+            inputs={"quartz_tracking_id": "999;nightly"},
         )
         run.path = ".github/workflows/multi_arch_build_portable_linux.yml"
         run.trigger_workflow_run_id = 111  # immediate GitHub parent

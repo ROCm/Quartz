@@ -63,13 +63,21 @@ def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | 
 
     Returns `(None, None)` when the input is absent or empty (CI runs, manual
     TheRock dispatches, and the orchestrator's own record, which generates the id
-    but does not carry it on its own inputs).
+    but does not carry it on its own inputs). A present but non-numeric run-id is
+    a producer-side format bug and raises rather than coercing to None.
     """
     raw = inputs.get("quartz_tracking_id")
     if not isinstance(raw, str) or not raw.strip():
         return None, None
     run_id_part, _, release_type_part = raw.partition(";")
-    return _parse_int(run_id_part.strip()), release_type_part.strip() or None
+    try:
+        run_id = int(run_id_part.strip())
+    except ValueError as exc:
+        raise ValueError(
+            f"parse_quartz_tracking_id: non-numeric run-id {run_id_part!r} "
+            f"in quartz_tracking_id={raw!r}"
+        ) from exc
+    return run_id, release_type_part.strip() or None
 
 
 # Allow-list of `event_type` values the ingest pipeline accepts on a

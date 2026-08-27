@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-27T01:05:32Z",
   "status_json_created": "2026-08-27T01:06:44Z",
-  "status_json_last_updated": "2026-08-27T04:05:57Z",
+  "status_json_last_updated": "2026-08-27T04:06:00Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -55,8 +55,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 60,
-          "in_progress": 20,
+          "failure": 62,
+          "in_progress": 18,
           "cancelled": 0,
           "skipped": 0
         }
@@ -509,7 +509,7 @@
             "run_id": 33035332718,
             "run_attempt": 1,
             "started_at": "2026-08-27T04:00:13Z",
-            "completed_at": "2026-08-27T04:04:01Z",
+            "completed_at": "2026-08-27T04:05:08Z",
             "variants": [
               {
                 "py": "3.11",
@@ -540,10 +540,11 @@
               {
                 "py": "3.13",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33035332718,
                 "run_attempt": 1,
-                "started_at": "2026-08-27T04:01:02Z"
+                "started_at": "2026-08-27T04:01:02Z",
+                "completed_at": "2026-08-27T04:05:08Z"
               },
               {
                 "py": "3.14",
@@ -1142,7 +1143,7 @@
             "run_id": 33035332718,
             "run_attempt": 1,
             "started_at": "2026-08-27T03:55:16Z",
-            "completed_at": "2026-08-27T04:02:23Z",
+            "completed_at": "2026-08-27T04:05:07Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1165,10 +1166,11 @@
               {
                 "py": "3.10",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33035332718,
                 "run_attempt": 1,
-                "started_at": "2026-08-27T04:01:02Z"
+                "started_at": "2026-08-27T04:01:02Z",
+                "completed_at": "2026-08-27T04:05:07Z"
               },
               {
                 "py": "3.13",

@@ -9,7 +9,7 @@
   "completed_at": "2026-08-27T04:30:14Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-27T01:06:44Z",
-  "status_json_last_updated": "2026-08-27T16:27:06Z",
+  "status_json_last_updated": "2026-08-27T16:35:29Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -45,8 +45,8 @@
         },
         "test": {
           "success": 1,
-          "failure": 5,
-          "in_progress": 1,
+          "failure": 6,
+          "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
         }
@@ -181,10 +181,11 @@
             "completed_at": "2026-08-27T02:29:59Z"
           },
           "gfx1150": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 33033264592,
             "run_attempt": 1,
-            "started_at": "2026-08-27T02:26:04Z"
+            "started_at": "2026-08-27T02:26:04Z",
+            "completed_at": "2026-08-27T16:34:33Z"
           },
           "gfx94X-dcgpu": {
             "status": "success",

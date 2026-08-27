@@ -9,7 +9,7 @@
   "completed_at": "2026-08-27T04:30:14Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-27T01:06:44Z",
-  "status_json_last_updated": "2026-08-27T05:32:26Z",
+  "status_json_last_updated": "2026-08-27T05:33:13Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -57,8 +57,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 266,
-          "in_progress": 54,
+          "failure": 268,
+          "in_progress": 52,
           "cancelled": 0,
           "skipped": 0
         }
@@ -1146,7 +1146,7 @@
             "run_id": 33035332718,
             "run_attempt": 1,
             "started_at": "2026-08-27T03:06:07Z",
-            "completed_at": "2026-08-27T05:30:39Z",
+            "completed_at": "2026-08-27T05:32:23Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1259,18 +1259,20 @@
               {
                 "py": "3.12",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33035332718,
                 "run_attempt": 1,
-                "started_at": "2026-08-27T05:28:46Z"
+                "started_at": "2026-08-27T05:28:46Z",
+                "completed_at": "2026-08-27T05:32:20Z"
               },
               {
                 "py": "3.14",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33035332718,
                 "run_attempt": 1,
-                "started_at": "2026-08-27T05:28:46Z"
+                "started_at": "2026-08-27T05:28:46Z",
+                "completed_at": "2026-08-27T05:32:23Z"
               },
               {
                 "py": "3.14",
@@ -1311,7 +1313,7 @@
                 "status": "in_progress",
                 "run_id": 33035332718,
                 "run_attempt": 1,
-                "started_at": "2026-08-27T05:06:25Z"
+                "started_at": "2026-08-27T05:32:52Z"
               },
               {
                 "py": "3.14",

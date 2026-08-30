@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-08-30T00:00:58Z",
   "status_json_created": "2026-08-30T00:02:03Z",
-  "status_json_last_updated": "2026-08-30T04:18:27Z",
+  "status_json_last_updated": "2026-08-30T04:19:08Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -67,8 +67,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 5,
-          "in_progress": 9,
+          "failure": 7,
+          "in_progress": 7,
           "cancelled": 0,
           "skipped": 0
         }
@@ -397,10 +397,6 @@
       "build": {
         "linux": {
           "status": "success",
-          "run_id": 33288133964,
-          "run_attempt": 1,
-          "started_at": "2026-08-30T02:31:50Z",
-          "completed_at": "2026-08-30T04:13:56Z",
           "variants": [
             {
               "py": "3.12",
@@ -538,7 +534,7 @@
             "run_id": 33288133964,
             "run_attempt": 1,
             "started_at": "2026-08-30T03:11:22Z",
-            "completed_at": "2026-08-30T04:13:39Z",
+            "completed_at": "2026-08-30T04:18:17Z",
             "variants": [
               {
                 "py": "3.14",
@@ -595,18 +591,20 @@
               {
                 "py": "3.14",
                 "jax_version": "0.10.2",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33288133964,
                 "run_attempt": 1,
-                "started_at": "2026-08-30T03:15:30Z"
+                "started_at": "2026-08-30T03:15:30Z",
+                "completed_at": "2026-08-30T04:17:38Z"
               },
               {
                 "py": "3.12",
                 "jax_version": "0.11.0",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33288133964,
                 "run_attempt": 1,
-                "started_at": "2026-08-30T03:15:22Z"
+                "started_at": "2026-08-30T03:15:22Z",
+                "completed_at": "2026-08-30T04:17:40Z"
               },
               {
                 "py": "3.14",
@@ -622,7 +620,8 @@
                 "status": "failure",
                 "run_id": 33288133964,
                 "run_attempt": 1,
-                "started_at": "2026-08-30T03:17:03Z"
+                "started_at": "2026-08-30T03:17:03Z",
+                "completed_at": "2026-08-30T04:17:35Z"
               },
               {
                 "py": "3.12",

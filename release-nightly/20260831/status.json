@@ -9,7 +9,7 @@
   "completed_at": "2026-08-31T02:32:40Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-08-31T00:02:02Z",
-  "status_json_last_updated": "2026-08-31T02:59:28Z",
+  "status_json_last_updated": "2026-08-31T03:00:38Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -57,8 +57,8 @@
         },
         "test": {
           "success": 18,
-          "failure": 28,
-          "in_progress": 34,
+          "failure": 30,
+          "in_progress": 32,
           "cancelled": 0,
           "skipped": 0
         },
@@ -723,10 +723,11 @@
             ]
           },
           "gfx120X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 33349168122,
             "run_attempt": 1,
             "started_at": "2026-08-31T02:35:36Z",
+            "completed_at": "2026-08-31T02:59:00Z",
             "variants": [
               {
                 "py": "3.10",
@@ -758,10 +759,11 @@
               {
                 "py": "3.12",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33349168122,
                 "run_attempt": 1,
-                "started_at": "2026-08-31T02:48:27Z"
+                "started_at": "2026-08-31T02:48:27Z",
+                "completed_at": "2026-08-31T02:59:00Z"
               },
               {
                 "py": "3.14",
@@ -832,7 +834,7 @@
             "run_id": 33349168122,
             "run_attempt": 1,
             "started_at": "2026-08-31T02:36:45Z",
-            "completed_at": "2026-08-31T02:57:35Z",
+            "completed_at": "2026-08-31T03:00:01Z",
             "variants": [
               {
                 "py": "3.10",
@@ -862,10 +864,11 @@
               {
                 "py": "3.12",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33349168122,
                 "run_attempt": 1,
-                "started_at": "2026-08-31T02:39:17Z"
+                "started_at": "2026-08-31T02:39:17Z",
+                "completed_at": "2026-08-31T03:00:01Z"
               },
               {
                 "py": "3.14",

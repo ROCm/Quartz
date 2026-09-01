@@ -9,7 +9,7 @@
   "completed_at": "2026-09-01T03:38:13Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-09-01T00:02:32Z",
-  "status_json_last_updated": "2026-09-01T05:17:42Z",
+  "status_json_last_updated": "2026-09-01T05:17:49Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -56,9 +56,9 @@
           "status": "success"
         },
         "test": {
-          "success": 69,
-          "failure": 187,
-          "in_progress": 64,
+          "success": 70,
+          "failure": 188,
+          "in_progress": 62,
           "cancelled": 0,
           "skipped": 0
         },
@@ -599,7 +599,7 @@
             "run_id": 33461127277,
             "run_attempt": 1,
             "started_at": "2026-09-01T04:03:44Z",
-            "completed_at": "2026-09-01T05:15:27Z",
+            "completed_at": "2026-09-01T05:17:17Z",
             "variants": [
               {
                 "py": "3.10",
@@ -729,10 +729,11 @@
               {
                 "py": "3.14",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33461127277,
                 "run_attempt": 1,
-                "started_at": "2026-09-01T04:09:28Z"
+                "started_at": "2026-09-01T04:09:28Z",
+                "completed_at": "2026-09-01T05:17:17Z"
               },
               {
                 "py": "3.10",
@@ -974,7 +975,7 @@
             "run_id": 33461127277,
             "run_attempt": 1,
             "started_at": "2026-09-01T04:08:12Z",
-            "completed_at": "2026-09-01T05:11:17Z",
+            "completed_at": "2026-09-01T05:17:15Z",
             "variants": [
               {
                 "py": "3.10",
@@ -1150,10 +1151,11 @@
               {
                 "py": "3.14",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 33461127277,
                 "run_attempt": 1,
-                "started_at": "2026-09-01T04:52:56Z"
+                "started_at": "2026-09-01T04:52:56Z",
+                "completed_at": "2026-09-01T05:17:15Z"
               }
             ]
           },

@@ -227,6 +227,19 @@ class LoadStatusTest(unittest.TestCase):
         finally:
             Path(path).unlink()
 
+    def test_local_pointer_file_is_not_followed(self):
+        # A local file whose body looks like a "<date>/status.json" pointer must
+        # raise JSONDecodeError, not silently load a sibling. The pointer
+        # fallback is for raw GitHub symlinks only; local paths follow symlinks
+        # natively and never reach it.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "real.json").write_text(json.dumps(_load_reference()))
+            pointer = base / "latest.json"
+            pointer.write_text("real.json")
+            with self.assertRaises(json.JSONDecodeError):
+                load_status(str(pointer))
+
 
 def _fake_raw_urlopen(base_dir: Path):
     """A urlopen stand-in that emulates raw.githubusercontent.com over base_dir.

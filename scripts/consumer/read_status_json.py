@@ -357,9 +357,17 @@ def load_status(
     except json.JSONDecodeError:
         # raw serves a latest.json symlink as its target path, not the file, so
         # the body may be a bare "<date>/status.json" pointer rather than JSON.
+        # This only happens over raw GitHub; local paths follow symlinks natively,
+        # so restrict the fallback to URLs and never resolve a pointer off disk.
         # Follow it once; anything not clearly a pointer re-raises the real error.
         pointer = body.strip()
-        if "\n" in pointer or "{" in pointer or not pointer.endswith(".json"):
+        is_url = source.startswith(("http://", "https://"))
+        if (
+            not is_url
+            or "\n" in pointer
+            or "{" in pointer
+            or not pointer.endswith(".json")
+        ):
             raise
         return StatusDocument(
             json.loads(_read_source(urljoin(source, pointer), timeout))

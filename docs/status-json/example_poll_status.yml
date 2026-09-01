@@ -46,13 +46,12 @@ permissions:
   contents: read
 
 # Run one poll at a time (scheduled and manual runs) and let an in-flight run
-# finish. This is why the save-after marker below is enough: React always
-# finishes and writes its marker before the next run starts, so no build is
-# processed twice, even when React is slower than the poll interval. The group is
-# static because build_date is not known yet when concurrency is evaluated.
-# This gate only serializes runs of THIS workflow. If React dispatches a separate
-# workflow_dispatch (fire-and-forget), that run is independent and NOT covered
-# here; see "Dispatching a separate long-running workflow" in tutorial.md.
+# finish. This is why the save-after marker below is enough: the react step
+# always finishes and writes its marker before the next run starts, so no build
+# is processed twice, even when that step is slower than the poll interval. The
+# group is static because build_date is not known yet when concurrency is
+# evaluated. Note this only serializes runs of THIS workflow, not any separate
+# workflow it might dispatch (see the react step below).
 concurrency:
   group: poll-rocm-nightly
   cancel-in-progress: false
@@ -70,12 +69,10 @@ jobs:
         # Sets outputs ready / rocm_version / build_date (see the script).
         run: python3 scripts/consumer/example_consume_status.py
 
-      # Deduplicate across runs without any external state store. The cache is
-      # keyed on the exact (rocm_version, build_date) of this build, so a hit
-      # means a previous run already reacted to it. restore is lookup-only (no
-      # download) and only probes; the save below writes the marker. This is the
-      # workflow-side counterpart to should_process() in the Python script - use
-      # whichever fits; you do not need both.
+      # Dedup marker: actions/cache is used as cross-run state (no external
+      # store). A hit on this build's key means a previous run already reacted to
+      # it; lookup-only probes without downloading. See "Deduplicating across
+      # runs" in tutorial.md for why a cache works as a marker.
       - name: Check whether this build was already processed
         id: marker
         if: steps.status.outputs.ready == 'true'
@@ -86,31 +83,18 @@ jobs:
           lookup-only: true
 
       # >>> Replace this with your project's real work. <<<
-      # Runs only when the build you depend on passed the gate AND this exact
-      # build has not been processed before. For example: build against the new
+      # Runs only when the build you depend on is ready (passed the gate) and has
+      # not been processed by a previous run. For example: build against the new
       # ROCm version, run a smoke test, or dispatch another workflow that opens a
       # PR bumping your ROCm pin.
-      # A manual run with force=true bypasses the already-processed marker to
+      # A manual dispatch with force=true bypasses the already-processed marker to
       # re-run a build on purpose (a flaky result, or re-testing after a fix).
       #
-      # Doing the work INLINE (as below) vs. triggering a SEPARATE workflow: the
-      # concurrency group above only serializes runs of THIS workflow. If React
-      # dispatches another workflow (e.g. `gh workflow run my_build.yml`), that
-      # dispatch returns immediately and my_build.yml becomes its own independent
-      # run. This job does NOT wait for it: the moment React returns, the poll run
-      # ends and the concurrency lane frees for the next queued poll, even while
-      # my_build.yml is still running. Two consequences to design around:
-      #   - React "success" then means "dispatch accepted", not "build passed",
-      #     so the marker below is written even if my_build.yml later fails - the
-      #     build is not retried. To keep the marker meaningful, wait for the
-      #     dispatched run before it.
-      #   - The serialization from concurrency does not extend to my_build.yml.
-      # Simplest fix: keep the work in THIS run - inline steps, or a reusable
-      # workflow called as a job with `uses:` - so React's outcome reflects the
-      # real result and the marker below stays honest. If you must fire-and-forget
-      # a separate workflow via workflow-dispatch, move the done-marker INTO that workflow
-      # (only it knows the true outcome) and key its concurrency per build. See
-      # "Dispatching a separate long-running workflow" in tutorial.md.
+      # This does the work INLINE, so the concurrency group above covers it and
+      # the marker below is honest. If you instead dispatch a SEPARATE workflow
+      # via `workflow_dispatch`, this run here does not wait for it and the marker would
+      # record only "dispatch accepted", not the dispatch's result. See "Dispatching
+      # a separate long-running workflow" in tutorial.md before doing that.
       - name: React to the build
         id: react
         if: steps.status.outputs.ready == 'true' && (inputs.force || steps.marker.outputs.cache-hit != 'true')
@@ -118,7 +102,7 @@ jobs:
           echo "ROCm ${{ steps.status.outputs.rocm_version }} (${{ steps.status.outputs.build_date }}) is ready."
           echo "Add your downstream build/test step here."
 
-      # Record this build as processed only after React succeeded, so a failed
+      # Record this build as processed only after `react` succeeded, so a failed
       # run is retried on the next poll instead of being marked done. The cache
       # is immutable and matched exactly, so this key is written once per build.
       - name: Mark this build as processed

@@ -47,6 +47,7 @@ sys.path shim below then resolves the helper in either layout.
 """
 
 import os
+import shlex
 import subprocess
 import sys
 import urllib.request
@@ -138,31 +139,35 @@ def process(status: StatusDocument, platform: PlatformStatus) -> None:
     print(f"architectures: {', '.join(architectures) or 'none'}")
 
     # Dry-run install of the ROCm Python packages: point pip at the wheels index
-    # and pick the device extra for the architecture you target (one device
-    # extra per gfx target, e.g. device-gfx942). --dry-run only resolves and
-    # reports; drop it to actually install, and do that inside a virtual
+    # and pick the device extra for the architecture you target. The device extra
+    # takes a CONCRETE gfx (device-gfx942), not the family token that
+    # platform.architectures reports (gfx94X-dcgpu is a family, gfx942 one of its
+    # members; the family -> member map lives in TheRock, not the status doc), so
+    # this is hardcoded to the arch this example targets. --dry-run only resolves
+    # and reports; drop it to actually install, and do that inside a virtual
     # environment so it never touches your system Python.
     wheels_url = platform.url("wheels")
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "pip",
-            "install",
-            "--dry-run",
-            "rocm[devel,device-gfx942]",
-            f"--index-url={wheels_url}",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    print(result.stdout)
+    pip_command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--dry-run",
+        "rocm[device-gfx1150]",
+        f"--index-url={wheels_url}",
+    ]
+    # Resolving against the wheels index can take a while; echo the command and
+    # let pip stream its own output live (no capture) so the wait is visible.
+    print(f"\nRunning Dry-Run: {shlex.join(pip_command)}\n")
+    subprocess.run(pip_command, check=True)
 
     # Check one tarball exists without downloading it (they are many GB). The
-    # target is "multiarch" or a gfx target like "gfx94X-dcgpu" (note the difference to
-    # device-gfx942); pass with_tests=True for the variant that bundles the test assets.
-    tarball_url = platform.tarball_url(status.rocm_version, "gfx94X-dcgpu")
+    # target is "multiarch" or a family token like "gfx94X-dcgpu" - which is what
+    # platform.architectures reports, and note it differs from the concrete
+    # device-gfx942 the pip extra needs above. pass with_tests=True for the
+    # variant that bundles the test assets.
+    print(f"\nChecking existence of the tarball for {architectures[0]}:")
+    tarball_url = platform.tarball_url(status.rocm_version, architectures[0])
     request = urllib.request.Request(tarball_url, method="HEAD")
     with urllib.request.urlopen(request) as response:
         print(f"{tarball_url} -> HTTP {response.status}")

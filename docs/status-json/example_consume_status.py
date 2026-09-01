@@ -29,9 +29,13 @@ Run it from a checkout of the Quartz repository:
 
     python3 docs/status-json/example_consume_status.py
 
-Exit code: 0 when the build is ready and downstream work ran (or would run), 0
-when there is simply nothing new to do yet, and non-zero only on an actual error
-(the fetch or the resolve failed).
+Exit code: 0 when the build is ready and downstream work ran (or would run), and
+0 when there is simply nothing new to do yet - including the expected transient
+case where status.json is momentarily unavailable, which is reported as
+ready=false so the next poll retries. It exits non-zero on a permanent problem: an
+unsupported schema major (retrying cannot fix it, so the consumer must be
+updated), or an error once a good build is being processed (the wheels or tarball
+resolve failed).
 
 When run inside GitHub Actions it also writes step outputs (ready, rocm_version,
 build_date) to $GITHUB_OUTPUT, so a later step can gate on the build without
@@ -59,6 +63,11 @@ from read_status_json import PlatformStatus, StatusDocument, load_status
 # you actually use, not overall_status.
 PLATFORM = "linux"
 PIPELINE = "rocm"
+
+# The status.json schema major this example understands. A bump to a new major
+# (e.g. "3.") can move or rename the fields the accessors read, so we skip rather
+# than misread a document we were not written for. Minor bumps stay compatible.
+SUPPORTED_SCHEMA_MAJOR = "2."
 
 
 def set_github_outputs(**outputs: str) -> None:
@@ -136,6 +145,8 @@ def process(status: StatusDocument, platform: PlatformStatus) -> None:
     wheels_url = platform.url("wheels")
     result = subprocess.run(
         [
+            sys.executable,
+            "-m",
             "pip",
             "install",
             "--dry-run",
@@ -157,9 +168,40 @@ def process(status: StatusDocument, platform: PlatformStatus) -> None:
         print(f"{tarball_url} -> HTTP {response.status}")
 
 
+def not_ready(reason: str) -> None:
+    """Report "nothing to do" cleanly: log the reason, emit ready=false, return.
+
+    Used for the expected transient case where status.json is briefly unavailable
+    around a release. The point is that a hiccup reading a public file must not
+    fail the whole workflow: a later poll picks the build up once it is published
+    and readable. Permanent problems (an unsupported schema major) still fail.
+    """
+    print(reason, file=sys.stderr)
+    set_github_outputs(ready="false")
+
+
 def main() -> None:
-    status = load_status()  # latest nightly (or pass a URL / path)
+    # Availability canary. latest.json is published as a symlink and may be
+    # momentarily absent or truncated around a release; load_status follows the
+    # symlink for us, but a transient fetch/parse failure here should not fail the
+    # run. Treat it as "not ready yet" and let the next poll retry.
+    try:
+        status = load_status()  # latest nightly (or pass a URL / path)
+    except (OSError, ValueError) as error:
+        not_ready(f"status.json unavailable, will retry next poll: {error}")
+        return
     print(f"{status.rocm_version} (overall: {status.overall_status})")
+
+    # An unsupported schema major is permanent, unlike a transient fetch hiccup:
+    # retrying will not help, and a new major can move or rename the fields the
+    # accessors read, so continuing risks silently misreading the document. Fail
+    # loudly so the consumer gets updated, rather than reporting a false "nothing
+    # to do" that hides the break on every future poll.
+    if not status.schema_version.startswith(SUPPORTED_SCHEMA_MAJOR):
+        sys.exit(
+            f"schema_version {status.schema_version} unsupported "
+            f"(this example handles {SUPPORTED_SCHEMA_MAJOR}x); update the consumer."
+        )
 
     platform = ready_platform(status)
     # ready means "this build should be processed": it passed the gate AND we

@@ -85,6 +85,14 @@ Each is served as raw content. The raw URL form is:
 https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json
 ```
 
+> **Note on the `latest.json` pointers:** `latest.json` and `prerelease/latest.json`
+> are git symlinks to the dated `status.json` they currently point at. Raw GitHub
+> serves a symlink as its target path (a one-line body like `20260707/status.json`),
+> not the file it points to, so a plain fetch of `latest.json` returns that path
+> rather than JSON. The Python helper `load_status` follows this pointer for you
+> transparently; if you fetch it yourself, resolve the returned path against the
+> `latest.json` URL and fetch again.
+
 > **Note on `latest_good.json`:** Is currently unavailable, as the definition of "fully passing"
 > still needs to be determined.
 

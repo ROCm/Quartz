@@ -76,6 +76,7 @@ import json
 import urllib.request
 from enum import StrEnum
 from pathlib import Path
+from urllib.parse import urljoin
 
 # latest nightly status.json published by Quartz for TheRock releases.
 DEFAULT_SOURCE = (
@@ -319,6 +320,14 @@ class StatusDocument:
         return (self.rocm_version, self.build_date)
 
 
+def _read_source(source: str, timeout: float) -> str:
+    """Return the raw body of a URL or local path (no parsing)."""
+    if source.startswith(("http://", "https://")):
+        with urllib.request.urlopen(source, timeout=timeout) as response:
+            return response.read().decode("utf-8")
+    return Path(source).read_text()
+
+
 def load_status(
     source: str = DEFAULT_SOURCE, timeout: float = DEFAULT_TIMEOUT
 ) -> StatusDocument:
@@ -329,16 +338,32 @@ def load_status(
     timeout is the per-fetch deadline in seconds for URL sources (ignored for
     local paths).
 
+    The published latest.json / prereleases/latest.json endpoints are symlinks.
+    Over raw.githubusercontent.com a symlink is served as its target path rather
+    than the file it points to, so when the body is such a pointer this follows
+    it once, resolving the target against source, and fetches the real document.
+    Local paths follow symlinks natively and never take this fallback.
+
     Raises:
         urllib.error.URLError: If a URL source cannot be fetched (a socket
             timeout raises URLError wrapping a socket.timeout).
         OSError: If a local path cannot be read.
-        json.JSONDecodeError: If the content is not valid JSON.
+        json.JSONDecodeError: If the content is neither valid JSON nor a symlink
+            pointer to a JSON document.
     """
-    if source.startswith(("http://", "https://")):
-        with urllib.request.urlopen(source, timeout=timeout) as response:
-            return StatusDocument(json.load(response))
-    return StatusDocument(json.loads(Path(source).read_text()))
+    body = _read_source(source, timeout)
+    try:
+        return StatusDocument(json.loads(body))
+    except json.JSONDecodeError:
+        # raw serves a latest.json symlink as its target path, not the file, so
+        # the body may be a bare "<date>/status.json" pointer rather than JSON.
+        # Follow it once; anything not clearly a pointer re-raises the real error.
+        pointer = body.strip()
+        if "\n" in pointer or "{" in pointer or not pointer.endswith(".json"):
+            raise
+        return StatusDocument(
+            json.loads(_read_source(urljoin(source, pointer), timeout))
+        )
 
 
 def _print_summary(status: StatusDocument) -> None:

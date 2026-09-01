@@ -18,12 +18,15 @@ or directly:
     python3 scripts/consumer/tests/read_status_json_test.py
 """
 
+import io
 import json
+import os
 import re
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 CONSUMER_DIR = Path(__file__).resolve().parent.parent
 if str(CONSUMER_DIR) not in sys.path:
@@ -223,6 +226,67 @@ class LoadStatusTest(unittest.TestCase):
             self.assertEqual(status.rocm_version, "7.13.0a20260408")
         finally:
             Path(path).unlink()
+
+
+def _fake_raw_urlopen(base_dir: Path):
+    """A urlopen stand-in that emulates raw.githubusercontent.com over base_dir.
+
+    The URL host is ignored; the path after it is resolved as a file under
+    base_dir. A symlink is served the way raw does it -- as its target path text,
+    not the file it points to -- so the reader's pointer-following fallback is
+    exercised end to end.
+    """
+
+    def fake_urlopen(url, timeout=None):
+        rel = url.split("://", 1)[1].split("/", 1)[1]
+        path = base_dir / rel
+        if path.is_symlink():
+            return io.BytesIO(os.readlink(path).encode("utf-8"))
+        return io.BytesIO(path.read_bytes())
+
+    return fake_urlopen
+
+
+class LoadStatusSymlinkTest(unittest.TestCase):
+    """Back to front: a published symlink layout served the raw way resolves.
+
+    Mirrors what the producer writes (a dated status.json plus a latest.json
+    symlink whose target is "<date>/status.json") and what raw serves for that
+    symlink (the bare target path), then checks load_status follows it.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+        dated_dir = self.base / "20260408"
+        dated_dir.mkdir()
+        (dated_dir / "status.json").write_text(json.dumps(_load_reference()))
+        # Same relative target the producer's _update_symlinks writes.
+        (self.base / "latest.json").symlink_to("20260408/status.json")
+
+    def test_follows_symlink_pointer(self):
+        with mock.patch(
+            "read_status_json.urllib.request.urlopen", _fake_raw_urlopen(self.base)
+        ):
+            status = load_status("https://raw.example/latest.json")
+        self.assertEqual(status.rocm_version, "7.13.0a20260408")
+
+    def test_direct_dated_document_needs_no_fallback(self):
+        with mock.patch(
+            "read_status_json.urllib.request.urlopen", _fake_raw_urlopen(self.base)
+        ):
+            status = load_status("https://raw.example/20260408/status.json")
+        self.assertEqual(status.rocm_version, "7.13.0a20260408")
+
+    def test_malformed_json_is_not_treated_as_pointer(self):
+        (self.base / "broken.json").write_text("{ not valid json")
+        with mock.patch(
+            "read_status_json.urllib.request.urlopen", _fake_raw_urlopen(self.base)
+        ):
+            with self.assertRaises(json.JSONDecodeError):
+                load_status("https://raw.example/broken.json")
 
 
 if __name__ == "__main__":

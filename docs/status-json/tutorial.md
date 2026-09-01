@@ -87,7 +87,9 @@ dependency-free read helper do it for you:
 
 - **[`read_status_json.py`](../../scripts/consumer/read_status_json.py)** (in the
   Quartz repository under `scripts/consumer/`) loads a `status.json` from a URL
-  or a local path and exposes typed accessors.
+  or a local path and exposes typed accessors. `latest.json` is a git symlink and
+  raw GitHub serves it as its target path rather than the file; `load_status`
+  follows that pointer for you, so pointing it at `latest.json` just works.
 
 > Want a quick look without writing code? The helper also runs as a script.
 > `python3 read_status_json.py` prints a summary of the latest nightly, or pass a
@@ -160,3 +162,93 @@ consume script writes `ready`, `rocm_version`, and `build_date` to
 `if: steps.status.outputs.ready == 'true'` so it fires only when the build you
 depend on passed. That keeps the decision (is the build ready?) separate from the
 action (what you do about it).
+
+The example also deduplicates so each build is acted on once. It runs the work
+inline and writes an `actions/cache` marker keyed on `(rocm_version, build_date)`
+only after the "React" step succeeds, so a failed run is retried on the next
+poll. Overlapping polls are serialized by a `concurrency` group, which is what
+makes that single marker enough even when the work outlives the poll interval. A
+manual `workflow_dispatch` with `force=true` bypasses the marker to re-run a
+build on purpose.
+
+### Dispatching a separate long-running workflow
+
+The inline example keeps the work in the poll run itself, so the "React" step's
+outcome reflects the real build result and the marker is written only on success.
+Some projects instead have the poll dispatch a separate workflow, for example a
+heavy build/test that lives in its own file. That fire-and-forget dispatch
+changes the picture and needs the marker to move.
+
+A workflow's `concurrency` group only serializes runs of that same workflow. When
+the polling workflow (e.g. `example_poll_status.yml`) dispatches `my_build.yml` via `workflow_dispatch`, the dispatch returns
+immediately and `my_build.yml` becomes an independent run; the poll job does not
+wait for it. As such, the poll run ends and its concurrency lane frees for the
+next poll while `my_build.yml` is still running. Two things follow: the poll's
+"React" success means "dispatch accepted", not "build passed", and the poll's
+serialization does not extend to `my_build.yml`.
+
+The fix is to move the marker into `my_build.yml`, the only run that knows the
+true outcome, and to let that workflow deduplicate itself per build:
+
+- Pass `rocm_version` and `build_date` to `my_build.yml` as `workflow_dispatch`
+  inputs. Because they are known when that run starts, `my_build.yml` can key its
+  own `concurrency` group on the build, which the poll workflow cannot (it does
+  not learn the build until after it consumes `status.json`). This per-build
+  group prevents a duplicate dispatch from ever building the same version twice.
+- Write the marker at the end of `my_build.yml`, only on success. A failed run
+  leaves no marker, so the next poll re-dispatches. This keeps the
+  retry-on-failure behavior the inline example has.
+- The poll then only reads that marker before dispatching, and writes nothing
+  itself.
+
+> [!IMPORTANT]
+> Repeat this for every dispatched workflow whose run time is uncertain: each
+> needs its own per-build `concurrency` group and marker. Dispatching more than
+> one? Prefix each marker key with the workflow's own name (`my-build-done-`,
+> `my-test-done-`) so one workflow's marker never masks another's.
+
+```yaml
+# my_build.yml - the long-running workflow the poll dispatches.
+on:
+  workflow_dispatch:
+    inputs:
+      rocm_version: { required: true }
+      build_date: { required: true }
+
+# my_build.yml knows the build (it is an input, available at run start), so
+# unlike the poll workflow it can key concurrency per build. A duplicate dispatch
+# for the same version is serialized here, then exits on the marker below.
+concurrency:
+  group: react-${{ inputs.rocm_version }}-${{ inputs.build_date }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Already done for this build?
+        id: done
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .my-build-done
+          key: my-build-done-${{ inputs.rocm_version }}-${{ inputs.build_date }}
+          lookup-only: true
+      - name: Real work
+        id: work
+        if: steps.done.outputs.cache-hit != 'true'
+        run: echo "the long build/test for ${{ inputs.rocm_version }}"
+      # Marker written only on success, so a failed run retries on the next poll.
+      - run: touch .my-build-done
+        if: steps.work.outcome == 'success'
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: steps.work.outcome == 'success'
+        with:
+          path: .my-build-done
+          key: my-build-done-${{ inputs.rocm_version }}-${{ inputs.build_date }}
+```
+
+A separate "claim" marker, written by the poll before it dispatches, is not
+needed. The per-build `concurrency` group in `my_build.yml` already blocks a
+duplicate build, and a claim marker would trade away retry-on-failure: an
+immutable cache entry survives a failed run for the full cache lifetime, so a
+build claimed and then failed would never be retried.

@@ -17,8 +17,6 @@
 #     "React to the build" step runs only when ready == true AND this exact build
 #     has not been reacted to before. The marker is saved only after React
 #     succeeds, so a failed run retries on the next poll.
-#   - Can be dispatched manually with force=true to re-run React on a build that
-#     was already processed (a flaky result, or a re-test after a fix).
 #
 # Both scripts come from the Quartz repository and use only the Python standard
 # library - nothing to install. Copy them into your own repository preserving
@@ -36,11 +34,6 @@ on:
     # clock) is plenty.
     - cron: "17 5-19 * * *"
   workflow_dispatch:
-    inputs:
-      force:
-        description: "Re-run React even if this build was already processed."
-        type: boolean
-        default: false
 
 permissions:
   contents: read
@@ -87,17 +80,15 @@ jobs:
       # not been processed by a previous run. For example: build against the new
       # ROCm version, run a smoke test, or dispatch another workflow that opens a
       # PR bumping your ROCm pin.
-      # A manual dispatch with force=true bypasses the already-processed marker to
-      # re-run a build on purpose (a flaky result, or re-testing after a fix).
       #
       # This does the work INLINE, so the concurrency group above covers it and
       # the marker below is honest. If you instead dispatch a SEPARATE workflow
       # via `workflow_dispatch`, this run here does not wait for it and the marker would
       # record only "dispatch accepted", not the dispatch's result. See "Dispatching
-      # a separate long-running workflow" in tutorial.md before doing that.
+      # a separate workflow via workflow_dispatch" in tutorial.md before doing that.
       - name: React to the build
         id: react
-        if: steps.status.outputs.ready == 'true' && (inputs.force || steps.marker.outputs.cache-hit != 'true')
+        if: steps.status.outputs.ready == 'true' && steps.marker.outputs.cache-hit != 'true'
         run: |
           echo "ROCm ${{ steps.status.outputs.rocm_version }} (${{ steps.status.outputs.build_date }}) is ready."
           echo "Add your downstream build/test step here."

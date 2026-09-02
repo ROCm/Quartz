@@ -175,13 +175,35 @@ The `react` step is gated on a cache miss, and the key is saved only after
 `react` succeeds, so a failed run leaves no marker and is retried on the next
 poll. Overlapping polls are serialized by the `concurrency` group, which is what
 makes that single save-after-success marker enough even when the work outlives
-the poll interval. A manual `workflow_dispatch` with `force=true` bypasses the
-marker to re-run a build on purpose.
+the poll interval.
 
 The consume script offers the same check in Python (`should_process()`); use
-whichever fits your workflow - you do not need both.
+whichever fits your workflow.
 
-### Dispatching a separate long-running workflow
+### Serializing overlapping polls
+
+The example sets a top-level `concurrency` group so that only one poll runs at a
+time:
+
+```yaml
+concurrency:
+  group: poll-rocm-nightly
+  cancel-in-progress: false
+```
+
+`cancel-in-progress: false` lets an in-flight run finish rather than cancelling
+it, and a scheduled poll that arrives while one is running queues behind it. This
+is what makes the save-after-success marker enough: the `react` step always
+writes its marker before the next poll starts, so no build is processed twice,
+even when the work outlives the poll interval. The group is a static string
+because `build_date` is not yet known when `concurrency` is evaluated.
+
+This is the conservative default. GitHub also supports cancelling an in-progress
+run (`cancel-in-progress: true`), keying the group on an expression, and other
+scenarios - for instance, letting a manual run pre-empt a scheduled one. See the
+[`concurrency` syntax reference](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency).
+
+### Dispatching a separate workflow via `workflow_dispatch`
 
 The example `example_poll_status.yml` keeps the work in the poll run itself, so the `react` step's
 outcome reflects whether the downstream run actually passed, and the marker is

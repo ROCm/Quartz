@@ -7,11 +7,11 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-09-02T00:01:00Z",
   "status_json_created": "2026-09-02T00:02:35Z",
-  "status_json_last_updated": "2026-09-02T01:32:41Z",
+  "status_json_last_updated": "2026-09-02T01:34:42Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
-      "status": "in_progress",
+      "status": "failure",
       "architectures": [
         "gfx94X-dcgpu",
         "gfx110X-all",
@@ -43,8 +43,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 0,
-          "in_progress": 8,
+          "failure": 1,
+          "in_progress": 7,
           "cancelled": 0,
           "skipped": 0
         }
@@ -157,10 +157,11 @@
             "started_at": "2026-09-02T01:29:47Z"
           },
           "gfx90a": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 33579609214,
             "run_attempt": 1,
-            "started_at": "2026-09-02T01:29:44Z"
+            "started_at": "2026-09-02T01:29:44Z",
+            "completed_at": "2026-09-02T01:33:32Z"
           },
           "gfx1150": {
             "status": "in_progress",

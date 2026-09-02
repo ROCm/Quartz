@@ -28,6 +28,7 @@ from therock_status_document import (  # noqa: E402
     Variant,
     _merge_variant_leaf,
     merge_matrix_test_leaf,
+    rollup_sibling_statuses,
 )
 
 
@@ -228,6 +229,45 @@ def test_rollup_all_success_is_success() -> None:
 def test_rollup_all_skipped_is_skipped() -> None:
     variants = [_variant(status=Status.skipped), _variant(status=Status.skipped)]
     assert Variant.rollup_status(variants, Status.success) is Status.skipped
+
+
+# --- rollup_sibling_statuses (cross-pipeline priority ordering) -------------
+#
+# Deliberately the opposite precedence from rollup_statuses above: a sibling
+# pipeline is a separate, independently-dispatched unit of work, so one having
+# already failed says nothing about whether another, still-running one is
+# done -- in_progress must not be masked by a terminal failure/cancelled here.
+
+
+def test_rollup_sibling_empty_returns_fallback() -> None:
+    assert rollup_sibling_statuses([], Status.skipped) is Status.skipped
+
+
+def test_rollup_sibling_in_progress_beats_failure() -> None:
+    statuses = [Status.failure, Status.in_progress, Status.success]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.in_progress
+
+
+def test_rollup_sibling_failure_beats_cancelled_and_success() -> None:
+    # Also covers the all-terminal case: with no in_progress present, the
+    # worst-of applies -- same terminal ordering as rollup_statuses.
+    statuses = [Status.success, Status.cancelled, Status.failure]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.failure
+
+
+def test_rollup_sibling_cancelled_beats_success() -> None:
+    statuses = [Status.success, Status.cancelled]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.cancelled
+
+
+def test_rollup_sibling_all_success_is_success() -> None:
+    statuses = [Status.success, Status.success]
+    assert rollup_sibling_statuses(statuses, Status.in_progress) is Status.success
+
+
+def test_rollup_sibling_all_skipped_is_skipped() -> None:
+    statuses = [Status.skipped, Status.skipped]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.skipped
 
 
 # --- is_terminal ------------------------------------------------------------

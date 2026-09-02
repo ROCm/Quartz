@@ -113,16 +113,10 @@ def _build_platform_summary(
         failure        failure                       skipped
 
     Each pipeline (rocm, pytorch, jax, native_packages) first rolls its own
-    build/test/test_full leaves up to a single status with `rollup_statuses`
-    (failure beats a still-running cell of the *same* pipeline -- that cell
-    cannot undo a real failure). The platform status then combines those
-    per-pipeline statuses -- plus a placeholder for any pipeline that has not
-    reported at all -- with `rollup_sibling_statuses`, which lets in_progress
-    outrank a sibling pipeline's failure: independent pipelines are separate
-    units of work, so one having already failed does not mean another,
-    still-running one is done. This makes a failed rocm *test* behave like a
-    cancelled one (see below) instead of prematurely deciding the platform's
-    verdict while pytorch/jax/native_packages are still pending.
+    leaves up to a single status with `rollup_statuses`. Those per-pipeline
+    statuses, plus a placeholder for any pipeline that has not reported,
+    then combine into the platform status with `rollup_sibling_statuses`: if
+    any pipeline is still in_progress, the platform stays in_progress.
     """
     architectures = (
         doc.linux_architectures if platform == "linux" else doc.windows_architectures

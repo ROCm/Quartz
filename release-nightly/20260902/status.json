@@ -9,7 +9,7 @@
   "completed_at": "2026-09-02T10:34:24Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-09-02T00:02:35Z",
-  "status_json_last_updated": "2026-09-02T13:29:31Z",
+  "status_json_last_updated": "2026-09-02T13:30:28Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -131,8 +131,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 34,
-          "in_progress": 31,
+          "failure": 35,
+          "in_progress": 30,
           "cancelled": 0,
           "skipped": 0
         }
@@ -4040,18 +4040,20 @@
             ]
           },
           "gfx103X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 33619994226,
             "run_attempt": 1,
             "started_at": "2026-09-02T13:17:24Z",
+            "completed_at": "2026-09-02T13:28:38Z",
             "variants": [
               {
                 "py": "3.12",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33619994226,
                 "run_attempt": 1,
-                "started_at": "2026-09-02T13:17:24Z"
+                "started_at": "2026-09-02T13:17:24Z",
+                "completed_at": "2026-09-02T13:28:38Z"
               },
               {
                 "py": "3.13",

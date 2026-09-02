@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-09-02T00:01:00Z",
   "status_json_created": "2026-09-02T00:02:35Z",
-  "status_json_last_updated": "2026-09-02T04:46:39Z",
+  "status_json_last_updated": "2026-09-02T04:46:58Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -54,9 +54,9 @@
           "status": "success"
         },
         "test": {
-          "success": 61,
-          "failure": 137,
-          "in_progress": 122,
+          "success": 54,
+          "failure": 146,
+          "in_progress": 120,
           "cancelled": 0,
           "skipped": 0
         },
@@ -1300,7 +1300,7 @@
             "run_id": 33582220583,
             "run_attempt": 1,
             "started_at": "2026-09-02T04:12:48Z",
-            "completed_at": "2026-09-02T04:45:06Z",
+            "completed_at": "2026-09-02T04:46:48Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1313,18 +1313,20 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
-                "started_at": "2026-09-02T04:22:03Z"
+                "started_at": "2026-09-02T04:22:03Z",
+                "completed_at": "2026-09-02T04:46:48Z"
               },
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
-                "started_at": "2026-09-02T04:22:03Z"
+                "started_at": "2026-09-02T04:22:03Z",
+                "completed_at": "2026-09-02T04:45:46Z"
               },
               {
                 "py": "3.12",
@@ -1504,7 +1506,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",
@@ -1693,7 +1695,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",
@@ -1882,7 +1884,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",
@@ -2071,7 +2073,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",
@@ -2260,7 +2262,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",
@@ -2785,7 +2787,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",
@@ -3142,7 +3144,7 @@
               {
                 "py": "3.10",
                 "torch": "release/2.13",
-                "status": "success",
+                "status": "failure",
                 "run_id": 33582220583,
                 "run_attempt": 1,
                 "started_at": "2026-09-02T02:10:18Z",

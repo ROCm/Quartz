@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-09-02T00:01:00Z",
   "status_json_created": "2026-09-02T00:02:35Z",
-  "status_json_last_updated": "2026-09-02T06:21:15Z",
+  "status_json_last_updated": "2026-09-02T06:23:16Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -90,7 +90,7 @@
       }
     },
     "windows": {
-      "status": "in_progress",
+      "status": "failure",
       "architectures": [
         "gfx110X-all",
         "gfx1151",
@@ -113,7 +113,7 @@
       },
       "rocm": {
         "build": {
-          "status": "success"
+          "status": "failure"
         },
         "test": {
           "success": 0,
@@ -125,7 +125,7 @@
       },
       "pytorch": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -148,11 +148,11 @@
           "completed_at": "2026-09-02T01:29:57Z"
         },
         "windows": {
-          "status": "success",
+          "status": "failure",
           "run_id": 33573526042,
           "run_attempt": 1,
           "started_at": "2026-09-02T00:01:00Z",
-          "completed_at": "2026-09-02T02:11:13Z"
+          "completed_at": "2026-09-02T06:21:56Z"
         }
       },
       "test": {

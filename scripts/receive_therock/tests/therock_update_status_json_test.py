@@ -423,10 +423,8 @@ def test_leaf_does_not_stamp_orchestrator_owner(tmp_path: Path) -> None:
 
 
 def test_orchestrator_start_captures_pytorch_jax_enable_flags(tmp_path: Path) -> None:
-    # The top-level orchestrator's own dispatch inputs (build_pytorch /
-    # build_jax) are the source of truth for issue #57's expected-pipeline
-    # tracking; its `workflow_run_in_progress` (start) event is enough to
-    # anchor them, before any leaf or the setup run reports.
+    # The orchestrator's own `workflow_run_in_progress` (start) event is
+    # enough to capture build_pytorch/build_jax, before any leaf reports.
     orch = _orchestrator_run()
     orch.workflow_run_id = 29079513704
     orch.conclusion = None

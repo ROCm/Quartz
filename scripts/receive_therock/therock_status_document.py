@@ -578,15 +578,10 @@ class StatusDocument(BaseModel):
     # `summary.overall_status` so an aborted or failed release is never reported
     # as `success` just because the leaves that happened to report all passed.
     orchestrator_conclusion: Status | None = None
-    # Whether this release's own dispatch enabled the pytorch / jax pipeline
-    # (the orchestrator's `build_pytorch` / `build_jax` inputs), captured by
-    # `therock_update_status_json._apply_pipeline_enable_flags` off the
-    # owning run's inputs. rocm and native_packages have no such flag -- both
-    # are unconditional `workflow_call` builds the orchestrator always
-    # dispatches and waits on -- so they carry no field here. Defaults to
-    # `True` (expected) until an explicit `false` is observed: this is a
-    # disable-only signal, never a way to expect *more* than the static
-    # default (see `therock_summary._pipeline_enabled`).
+    # Whether this release's own dispatch enabled pytorch / jax (rocm and
+    # native_packages have no such flag). Disable-only: defaults to `True`
+    # until an explicit `false` is observed (see
+    # `therock_summary._pipeline_enabled`).
     pytorch_enabled: bool = True
     jax_enabled: bool = True
     status_json_created: str = ""

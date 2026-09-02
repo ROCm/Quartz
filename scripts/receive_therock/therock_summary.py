@@ -32,11 +32,7 @@ _PIPELINE_ENABLE_FLAGS: frozenset[str] = frozenset({"pytorch", "jax"})
 def _pipeline_enabled(doc: StatusDocument, pipeline_type: str) -> bool:
     """Whether `pipeline_type` is expected to run this release.
 
-    Defaults to enabled for rocm/native_packages (no flag exists) and for
-    pytorch/jax until this release's own dispatch is observed to have
-    disabled it -- see `StatusDocument.pytorch_enabled`/`.jax_enabled`: this
-    is a disable-only signal, never a way to expect *more* than the static
-    `EXPECTED_PIPELINE_TYPES` default.
+    rocm/native_packages have no enable-flag, so they are always enabled.
     """
     if pipeline_type == "pytorch":
         return doc.pytorch_enabled
@@ -156,7 +152,7 @@ def _build_platform_summary(
     native_packages = _native_rollup(doc, platform, native_seen)
 
     empty_platform_status = Status.in_progress if architectures else Status.skipped
-    gate_status = _unstarted_pipeline_status(doc, platform, empty_platform_status)
+    unstarted_status = _unstarted_pipeline_status(doc, platform, empty_platform_status)
 
     rollups = {
         "rocm": (rocm, rocm_seen),
@@ -174,19 +170,17 @@ def _build_platform_summary(
             has_data = True
             sibling_statuses.append(rollup_statuses(seen, empty_platform_status))
             continue
-        if pipeline_type in _PIPELINE_ENABLE_FLAGS and not _pipeline_enabled(
-            doc, pipeline_type
-        ):
+        if not _pipeline_enabled(doc, pipeline_type):
             placeholder_statuses[pipeline_type] = Status.skipped
             continue
-        placeholder_statuses[pipeline_type] = gate_status
+        placeholder_statuses[pipeline_type] = unstarted_status
         if pipeline_type in _PIPELINE_ENABLE_FLAGS or doc.completed_at is None:
-            sibling_statuses.append(gate_status)
+            sibling_statuses.append(unstarted_status)
 
     def _placeholder(pipeline_type: str) -> PipelineRollup:
         return PipelineRollup(
             build=BuildRollup(
-                status=placeholder_statuses.get(pipeline_type, gate_status)
+                status=placeholder_statuses.get(pipeline_type, unstarted_status)
             )
         )
 
@@ -202,7 +196,9 @@ def _build_platform_summary(
         if native_packages is not None:
             fields["native_packages"] = native_packages
         else:
-            native_status = placeholder_statuses.get("native_packages", gate_status)
+            native_status = placeholder_statuses.get(
+                "native_packages", unstarted_status
+            )
             fields["native_packages"] = NativePackagesRollup(
                 rpm=BuildRollup(status=native_status),
                 deb=BuildRollup(status=native_status),

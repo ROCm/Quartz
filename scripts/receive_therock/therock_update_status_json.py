@@ -69,6 +69,7 @@ from therock_types import (
     TheRockDispatchEvent,
     WorkflowJobRecord,
     WorkflowRunRecord,
+    _parse_bool,
 )
 
 log = logging.getLogger(__name__)
@@ -865,22 +866,6 @@ def _update_release_cdn_urls(
         urls["deb"] = next(iter(workflow_run.deb_urls.values()))
 
 
-def _input_bool(inputs: dict[str, object], key: str) -> bool | None:
-    """Parse a boolean dispatch input, tolerant of it arriving as a native
-    `bool` (a typed `workflow_dispatch`/`workflow_call` input serialized via
-    `toJSON`) or as a string. Returns `None` when absent or unparsable, so the
-    caller can leave an existing value untouched rather than clobber it with
-    a guessed default."""
-    value = inputs.get(key)
-    if isinstance(value, bool):
-        return value
-    if isinstance(value, str):
-        lowered = value.strip().lower()
-        if lowered in ("true", "false"):
-            return lowered == "true"
-    return None
-
-
 def _apply_pipeline_enable_flags(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> None:
@@ -897,10 +882,10 @@ def _apply_pipeline_enable_flags(
     an older orchestrator run that predates it.
     """
     inputs = workflow_run.inputs or {}
-    pytorch_enabled = _input_bool(inputs, "build_pytorch")
+    pytorch_enabled = _parse_bool(inputs.get("build_pytorch"))
     if pytorch_enabled is not None:
         doc.pytorch_enabled = pytorch_enabled
-    jax_enabled = _input_bool(inputs, "build_jax")
+    jax_enabled = _parse_bool(inputs.get("build_jax"))
     if jax_enabled is not None:
         doc.jax_enabled = jax_enabled
 
@@ -946,13 +931,15 @@ def _record_orchestrator_owner(
 
 
 def _reset_document_for_new_owner(doc: StatusDocument) -> None:
-    """Clear run-owned detail when a newer top-level orchestrator takes over."""
+    """Clear run-owned detail when a newer top-level orchestrator takes over.
+
+    pytorch_enabled/jax_enabled reset to the default-enabled state;
+    `_apply_pipeline_enable_flags`, called right after this from
+    `_record_orchestrator_owner`, re-derives them from the new owner's inputs.
+    """
     doc.completed_at = None
     doc.orchestrator_conclusion = None
     doc.created_at = None
-    # Reset to the default-enabled state; `_apply_pipeline_enable_flags`
-    # (called right after this, from the same `_record_orchestrator_owner`)
-    # re-derives them from the new owner's own dispatch inputs.
     doc.pytorch_enabled = True
     doc.jax_enabled = True
     doc.linux_architectures.clear()

@@ -53,13 +53,6 @@ def _variant(*, matrix: dict[str, str], status: Status = Status.success) -> Vari
 
 
 def _disable_pytorch_and_jax(doc: StatusDocument) -> None:
-    """Mark pytorch/jax disabled (as if `build_pytorch`/`build_jax` were
-    `false` on this release's dispatch) so a test can isolate behavior
-    unrelated to pipeline-expectation tracking (issue #57) -- e.g. the
-    completed_at cap or the orchestrator-conclusion override -- without an
-    enabled-by-default pytorch/jax holding the platform/overall rollup
-    pending forever past `completed_at` (see `therock_summary._pipeline_enabled`).
-    """
     doc.pytorch_enabled = False
     doc.jax_enabled = False
 
@@ -239,16 +232,21 @@ def test_failure_beats_cancelled_and_success_within_one_pipeline() -> None:
     # still outranks a terminal cancelled and a terminal success -- that
     # precedence is unaffected by the cross-pipeline sibling rule (see the
     # rollup_sibling_statuses unit tests). completed_at is set so the
-    # unreported pytorch/jax/native siblings are dropped from the platform
-    # rollup instead of injecting in_progress (see the finalized-drops-
-    # unstarted-siblings comment in _build_platform_summary), isolating the
-    # within-pipeline precedence being tested here.
+    # unreported native_packages sibling is dropped from the platform rollup
+    # instead of injecting in_progress (see the finalized-drops-unstarted-
+    # siblings comment in _build_platform_summary). pytorch/jax must still
+    # report terminally: as enable-flag pipelines they keep injecting
+    # in_progress even once completed_at is set (see _pipeline_enabled /
+    # issue #57), since they are fire-and-forget dispatches the orchestrator
+    # never awaits, so completion does not mean they are done.
     doc = StatusDocument()
     doc.completed_at = "2026-04-08T02:00:00Z"
     _freeze(doc, "linux", ["gfx942", "gfx1100"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
     doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.cancelled))
     doc.upsert_leaf("linux", "gfx1100", "rocm", "test", _leaf(status=Status.failure))
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
     rebuild_summary(doc)
     assert doc.summary.linux.status is Status.failure
 

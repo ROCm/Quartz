@@ -87,7 +87,9 @@ dependency-free read helper do it for you:
 
 - **[`read_status_json.py`](../../scripts/consumer/read_status_json.py)** (in the
   Quartz repository under `scripts/consumer/`) loads a `status.json` from a URL
-  or a local path and exposes typed accessors.
+  or a local path and exposes typed accessors. `latest.json` is a git symlink and
+  raw GitHub serves it as its target path rather than the file; `load_status`
+  follows that pointer for you, so pointing it at `latest.json` just works.
 
 > Want a quick look without writing code? The helper also runs as a script.
 > `python3 read_status_json.py` prints a summary of the latest nightly, or pass a
@@ -160,3 +162,117 @@ consume script writes `ready`, `rocm_version`, and `build_date` to
 `if: steps.status.outputs.ready == 'true'` so it fires only when the build you
 depend on passed. That keeps the decision (is the build ready?) separate from the
 action (what you do about it).
+
+### Deduplicating across runs
+
+The example acts on each build once, with no external database. It repurposes
+`actions/cache` as a **marker**: the cache key encodes the build
+(`rocm-tested-<rocm_version>-<build_date>`), and the mere presence of that key is
+the signal - a cache hit means a previous run already reacted to this build. The
+cached file itself is empty; only the key matters.
+
+The `react` step is gated on a cache miss, and the key is saved only after
+`react` succeeds, so a failed run leaves no marker and is retried on the next
+poll. Overlapping polls are serialized by the `concurrency` group, which is what
+makes that single save-after-success marker enough even when the work outlives
+the poll interval.
+
+The consume script offers the same check in Python (`should_process()`); use
+whichever fits your workflow.
+
+### Serializing overlapping polls
+
+The example sets a top-level `concurrency` group so that only one poll runs at a
+time:
+
+```yaml
+concurrency:
+  group: poll-rocm-nightly
+  cancel-in-progress: false
+```
+
+`cancel-in-progress: false` lets an in-flight run finish rather than cancelling
+it, and a scheduled poll that arrives while one is running queues behind it. This
+is what makes the save-after-success marker enough: the `react` step always
+writes its marker before the next poll starts, so no build is processed twice,
+even when the work outlives the poll interval. The group is a static string
+because `build_date` is not yet known when `concurrency` is evaluated.
+
+This is the conservative default. GitHub also supports cancelling an in-progress
+run (`cancel-in-progress: true`), keying the group on an expression, and other
+scenarios - for instance, letting a manual run pre-empt a scheduled one. See the
+[`concurrency` syntax reference](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#concurrency).
+
+### Dispatching a separate workflow via `workflow_dispatch`
+
+The example `example_poll_status.yml` keeps the work in the poll run itself, so the `react` step's
+outcome reflects whether the downstream run actually passed, and the marker is
+written only on success.
+Some projects instead have the poll dispatch a separate workflow via `workflow_dispatch`. This changes the picture and needs the marker to move.
+
+A workflow's `concurrency` group only serializes runs of that same workflow. When
+the polling workflow (e.g. `example_poll_status.yml`) dispatches `my_build.yml` via `workflow_dispatch`, the dispatch returns
+immediately and `my_build.yml` becomes an independent run; the poll job does not
+wait for it. As such, the poll run ends and its concurrency lane frees for the
+next poll while `my_build.yml` is still running. Two things follow: the poll's
+`react` step succeeding means "dispatch accepted", not "build passed", and the
+poll's serialization does not extend to `my_build.yml`.
+
+The fix is to move the marker into `my_build.yml`, the only run that knows the
+true outcome, and to let that workflow deduplicate itself per build:
+
+- Pass `rocm_version` and `build_date` to `my_build.yml` as `workflow_dispatch`
+  inputs, so the run knows which build it is handling.
+- Key `my_build.yml`'s own `concurrency` group on that build, so duplicate
+  dispatches for the same build serialize instead of running in parallel.
+- At the start of `my_build.yml`, check the marker and do the real work only on a
+  miss.
+- At the end, write the marker only on success. A failed run leaves no marker, so
+  the next poll re-dispatches - the same retry-on-failure the inline example has.
+
+Whether to write the marker on success or on completion depends on how green your
+build is. Marking only on success (as above) leaves a failed run unmarked, so the
+next poll retries it - what you want when failures are transient. If your build is
+instead often red and expected to stay that way for a while, only-on-success
+re-dispatches on every poll and never settles; marking on completion, regardless
+of outcome, processes each build once and stops the churn.
+
+> [!IMPORTANT]
+> Repeat this for every dispatched workflow (or just the longest running one): each
+> needs its own per-build `concurrency` group and marker. Concurrency groups
+> share one repository-wide namespace. Dispatching more than one? Prefix both the concurrency group and the marker key with the workflow's own name (`my-build-`, `my-test-`).
+
+The two lines that carry the section are the per-build `concurrency` group and
+the save-on-success marker:
+
+```yaml
+# my_build.yml - the dispatched workflow. The build arrives as inputs, so unlike
+# the poll it can key concurrency per build and own the marker.
+on:
+  workflow_dispatch:
+  # ...
+
+concurrency:
+  group: my-build-${{ inputs.rocm_version }}-${{ inputs.build_date }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      # ... restore the marker (lookup-only), run the real work only on a miss ...
+      # Marker written only on success, so a failed run retries on the next poll.
+      - run: touch .my-build-done
+        if: steps.work.outcome == 'success'
+      - uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        if: steps.work.outcome == 'success'
+        with:
+          path: .my-build-done
+          key: my-build-done-${{ inputs.rocm_version }}-${{ inputs.build_date }}
+```
+
+A separate "claim" marker, written by the poll before it dispatches, is not
+needed. The per-build `concurrency` group in `my_build.yml` already blocks a
+duplicate build, and a claim marker would trade away retry-on-failure: an
+immutable cache entry survives a failed run for the full cache lifetime, so a
+build claimed and then failed would never be retried.

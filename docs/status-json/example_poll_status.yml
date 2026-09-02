@@ -12,8 +12,11 @@
 #     triggered manually from the Actions tab).
 #   - Runs example_consume_status.py, which fetches release-nightly/latest.json,
 #     gates on the Linux ROCm build, and reports the wheels and a tarball for it.
-#     The script sets step outputs (ready / rocm_version / build_date); the
-#     "React to the build" step runs only when ready == true.
+#     The script sets step outputs (ready / rocm_version / build_date).
+#   - Deduplicates with actions/cache keyed on (rocm_version, build_date), so the
+#     "React to the build" step runs only when ready == true AND this exact build
+#     has not been reacted to before. The marker is saved only after React
+#     succeeds, so a failed run retries on the next poll.
 #
 # Both scripts come from the Quartz repository and use only the Python standard
 # library - nothing to install. Copy them into your own repository preserving
@@ -35,6 +38,17 @@ on:
 permissions:
   contents: read
 
+# Run one poll at a time (scheduled and manual runs) and let an in-flight run
+# finish. This is why the save-after marker below is enough: the react step
+# always finishes and writes its marker before the next run starts, so no build
+# is processed twice, even when that step is slower than the poll interval. The
+# group is static because build_date is not known yet when concurrency is
+# evaluated. Note this only serializes runs of THIS workflow, not any separate
+# workflow it might dispatch (see the react step below).
+concurrency:
+  group: poll-rocm-nightly
+  cancel-in-progress: false
+
 jobs:
   poll:
     runs-on: ubuntu-24.04
@@ -48,12 +62,47 @@ jobs:
         # Sets outputs ready / rocm_version / build_date (see the script).
         run: python3 scripts/consumer/example_consume_status.py
 
-      # >>> Replace this with your project's real work. <<<
-      # Runs only when the build you depend on passed the gate. For example:
-      # build against the new ROCm version, run a smoke test, or dispatch another
-      # workflow that opens a PR bumping your ROCm pin.
-      - name: React to the build
+      # Dedup marker: actions/cache is used as cross-run state (no external
+      # store). A hit on this build's key means a previous run already reacted to
+      # it; lookup-only probes without downloading. See "Deduplicating across
+      # runs" in tutorial.md for why a cache works as a marker.
+      - name: Check whether this build was already processed
+        id: marker
         if: steps.status.outputs.ready == 'true'
+        uses: actions/cache/restore@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .rocm-tested
+          key: rocm-tested-${{ steps.status.outputs.rocm_version }}-${{ steps.status.outputs.build_date }}
+          lookup-only: true
+
+      # >>> Replace this with your project's real work. <<<
+      # Runs only when the build you depend on is ready (passed the gate) and has
+      # not been processed by a previous run. For example: build against the new
+      # ROCm version, run a smoke test, or dispatch another workflow that opens a
+      # PR bumping your ROCm pin.
+      #
+      # This does the work INLINE, so the concurrency group above covers it and
+      # the marker below is honest. If you instead dispatch a SEPARATE workflow
+      # via `workflow_dispatch`, this run here does not wait for it and the marker would
+      # record only "dispatch accepted", not the dispatch's result. See "Dispatching
+      # a separate workflow via workflow_dispatch" in tutorial.md before doing that.
+      - name: React to the build
+        id: react
+        if: steps.status.outputs.ready == 'true' && steps.marker.outputs.cache-hit != 'true'
         run: |
           echo "ROCm ${{ steps.status.outputs.rocm_version }} (${{ steps.status.outputs.build_date }}) is ready."
           echo "Add your downstream build/test step here."
+
+      # Record this build as processed only after `react` succeeded, so a failed
+      # run is retried on the next poll instead of being marked done. The cache
+      # is immutable and matched exactly, so this key is written once per build.
+      - name: Mark this build as processed
+        if: steps.react.outcome == 'success'
+        run: touch .rocm-tested
+
+      - name: Save the processed marker
+        if: steps.react.outcome == 'success'
+        uses: actions/cache/save@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
+        with:
+          path: .rocm-tested
+          key: rocm-tested-${{ steps.status.outputs.rocm_version }}-${{ steps.status.outputs.build_date }}

@@ -29,9 +29,13 @@ Run it from a checkout of the Quartz repository:
 
     python3 docs/status-json/example_consume_status.py
 
-Exit code: 0 when the build is ready and downstream work ran (or would run), 0
-when there is simply nothing new to do yet, and non-zero only on an actual error
-(the fetch or the resolve failed).
+Exit code: 0 when the build is ready and downstream work ran (or would run), and
+0 when there is simply nothing new to do yet - including the expected transient
+case where status.json is momentarily unavailable, which is reported as
+ready=false so the next poll retries. It exits non-zero on a permanent problem: an
+unsupported schema major (retrying cannot fix it, so the consumer must be
+updated), or an error once a good build is being processed (the wheels or tarball
+resolve failed).
 
 When run inside GitHub Actions it also writes step outputs (ready, rocm_version,
 build_date) to $GITHUB_OUTPUT, so a later step can gate on the build without
@@ -43,6 +47,7 @@ sys.path shim below then resolves the helper in either layout.
 """
 
 import os
+import shlex
 import subprocess
 import sys
 import urllib.request
@@ -59,6 +64,11 @@ from read_status_json import PlatformStatus, StatusDocument, load_status
 # you actually use, not overall_status.
 PLATFORM = "linux"
 PIPELINE = "rocm"
+
+# The status.json schema major this example understands. A bump to a new major
+# (e.g. "3.") can move or rename the fields the accessors read, so we skip rather
+# than misread a document we were not written for. Minor bumps stay compatible.
+SUPPORTED_SCHEMA_MAJOR = "2."
 
 
 def set_github_outputs(**outputs: str) -> None:
@@ -129,37 +139,74 @@ def process(status: StatusDocument, platform: PlatformStatus) -> None:
     print(f"architectures: {', '.join(architectures) or 'none'}")
 
     # Dry-run install of the ROCm Python packages: point pip at the wheels index
-    # and pick the device extra for the architecture you target (one device
-    # extra per gfx target, e.g. device-gfx942). --dry-run only resolves and
-    # reports; drop it to actually install, and do that inside a virtual
+    # and pick the device extra for the architecture you target. The device extra
+    # takes a CONCRETE gfx (device-gfx942), not the family token that
+    # platform.architectures reports (gfx94X-dcgpu is a family, gfx942 one of its
+    # members; the family -> member map lives in TheRock, not the status doc), so
+    # this is hardcoded to the arch this example targets. --dry-run only resolves
+    # and reports; drop it to actually install, and do that inside a virtual
     # environment so it never touches your system Python.
     wheels_url = platform.url("wheels")
-    result = subprocess.run(
-        [
-            "pip",
-            "install",
-            "--dry-run",
-            "rocm[devel,device-gfx942]",
-            f"--index-url={wheels_url}",
-        ],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    print(result.stdout)
+    pip_command = [
+        sys.executable,
+        "-m",
+        "pip",
+        "install",
+        "--dry-run",
+        "rocm[device-gfx1150]",
+        f"--index-url={wheels_url}",
+    ]
+    # Resolving against the wheels index can take a while; echo the command and
+    # let pip stream its own output live (no capture) so the wait is visible.
+    print(f"\nRunning Dry-Run: {shlex.join(pip_command)}\n")
+    subprocess.run(pip_command, check=True)
 
     # Check one tarball exists without downloading it (they are many GB). The
-    # target is "multiarch" or a gfx target like "gfx94X-dcgpu" (note the difference to
-    # device-gfx942); pass with_tests=True for the variant that bundles the test assets.
-    tarball_url = platform.tarball_url(status.rocm_version, "gfx94X-dcgpu")
+    # target is "multiarch" or a family token like "gfx94X-dcgpu" - which is what
+    # platform.architectures reports, and note it differs from the concrete
+    # device-gfx942 the pip extra needs above. pass with_tests=True for the
+    # variant that bundles the test assets.
+    print(f"\nChecking existence of the tarball for {architectures[0]}:")
+    tarball_url = platform.tarball_url(status.rocm_version, architectures[0])
     request = urllib.request.Request(tarball_url, method="HEAD")
     with urllib.request.urlopen(request) as response:
         print(f"{tarball_url} -> HTTP {response.status}")
 
 
+def not_ready(reason: str) -> None:
+    """Report "nothing to do" cleanly: log the reason, emit ready=false, return.
+
+    Used for the expected transient case where status.json is briefly unavailable
+    around a release. The point is that a hiccup reading a public file must not
+    fail the whole workflow: a later poll picks the build up once it is published
+    and readable. Permanent problems (an unsupported schema major) still fail.
+    """
+    print(reason, file=sys.stderr)
+    set_github_outputs(ready="false")
+
+
 def main() -> None:
-    status = load_status()  # latest nightly (or pass a URL / path)
+    # Availability canary. latest.json is published as a symlink and may be
+    # momentarily absent or truncated around a release; load_status follows the
+    # symlink for us, but a transient fetch/parse failure here should not fail the
+    # run. Treat it as "not ready yet" and let the next poll retry.
+    try:
+        status = load_status()  # latest nightly (or pass a URL / path)
+    except (OSError, ValueError) as error:
+        not_ready(f"status.json unavailable, will retry next poll: {error}")
+        return
     print(f"{status.rocm_version} (overall: {status.overall_status})")
+
+    # An unsupported schema major is permanent, unlike a transient fetch hiccup:
+    # retrying will not help, and a new major can move or rename the fields the
+    # accessors read, so continuing risks silently misreading the document. Fail
+    # loudly so the consumer gets updated, rather than reporting a false "nothing
+    # to do" that hides the break on every future poll.
+    if not status.schema_version.startswith(SUPPORTED_SCHEMA_MAJOR):
+        sys.exit(
+            f"schema_version {status.schema_version} unsupported "
+            f"(this example handles {SUPPORTED_SCHEMA_MAJOR}x); update the consumer."
+        )
 
     platform = ready_platform(status)
     # ready means "this build should be processed": it passed the gate AND we

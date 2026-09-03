@@ -338,7 +338,7 @@ def load_status(
     timeout is the per-fetch deadline in seconds for URL sources (ignored for
     local paths).
 
-    The published latest.json / prereleases/latest.json endpoints are symlinks.
+    The published latest.json / prerelease/latest.json endpoints are symlinks.
     Over raw.githubusercontent.com a symlink is served as its target path rather
     than the file it points to, so when the body is such a pointer this follows
     it once, resolving the target against source, and fetches the real document.

@@ -228,7 +228,7 @@ def _status_json_path(
         return repo_dir / "release-nightly" / suffix / "status.json"
     if release_type == "prerelease":
         base, full = _prerelease_dirs(release_version)
-        return repo_dir / "prereleases" / base / full / "status.json"
+        return repo_dir / "prerelease" / base / full / "status.json"
 
     raise ValueError(f"Unexpected release_type: {release_type!r}")
 
@@ -1141,8 +1141,8 @@ def _update_symlinks(
 
 
 def _update_prerelease_latest(repo_dir: Path, status_path: Path) -> list[Path]:
-    """Point `prereleases/latest.json` at the newest release candidate."""
-    prerelease_root = repo_dir / "prereleases"
+    """Point `prerelease/latest.json` at the newest release candidate."""
+    prerelease_root = repo_dir / "prerelease"
     new_target_relative = status_path.relative_to(prerelease_root)
     new_version = new_target_relative.parent.name
 

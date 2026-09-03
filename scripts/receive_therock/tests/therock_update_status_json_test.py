@@ -570,7 +570,7 @@ def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
         _event(release), repo_dir=tmp_path, commit_and_push=False
     )
 
-    assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
+    assert out == tmp_path / "prerelease" / "7.14.0" / "7.14.0rc1" / "status.json"
     doc = _load(out)
     assert doc.completed_at is None
     assert doc.summary.overall_status is Status.in_progress
@@ -742,8 +742,8 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
     out = tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    # prereleases/<base>/<full>/status.json
-    assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
+    # prerelease/<base>/<full>/status.json
+    assert out == tmp_path / "prerelease" / "7.14.0" / "7.14.0rc1" / "status.json"
     assert not (tmp_path / "release-nightly").exists()
 
 
@@ -752,11 +752,11 @@ def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
     tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    latest = tmp_path / "prereleases" / "latest.json"
+    latest = tmp_path / "prerelease" / "latest.json"
     assert latest.is_symlink()
     assert latest.readlink() == Path("7.14.0/7.14.0rc1/status.json")
     # prerelease has no notion of latest_good.
-    assert not (tmp_path / "prereleases" / "latest_good.json").exists()
+    assert not (tmp_path / "prerelease" / "latest_good.json").exists()
 
 
 def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
@@ -772,7 +772,7 @@ def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    latest = tmp_path / "prereleases" / "latest.json"
+    latest = tmp_path / "prerelease" / "latest.json"
     assert latest.readlink() == Path("7.14.0/7.14.0rc2/status.json")
 
 
@@ -792,7 +792,7 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    latest = tmp_path / "prereleases" / "latest.json"
+    latest = tmp_path / "prerelease" / "latest.json"
     assert latest.readlink() == Path("7.14.0/7.14.0rc10/status.json")
 
 

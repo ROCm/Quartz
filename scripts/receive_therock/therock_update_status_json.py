@@ -23,11 +23,7 @@ does not qualify (see `update_status_json` for the gate conditions).
 When `commit_and_push` is True (production): each attempt fetches and
 hard-resets onto the upstream head, then applies the run, commits, and pushes,
 retrying until a wall-clock deadline (`QUARTZ_STATUS_PUSH_MAX_WAIT_SEC`,
-default 15 minutes) elapses -- not a fixed attempt count. A large release
-fan-out can have dozens of runs pushing to the same ref within a minute or
-two; a fixed retry budget can exhaust mid-burst and permanently drop an
-update, whereas a losing run backed by a deadline always outlasts a bounded
-burst of sibling contention. Resetting to `@{u}` before every attempt drops a
+default 15 minutes) elapses. Resetting to `@{u}` before every attempt drops a
 commit that lost the push race and rebuilds against whatever already landed, so
 each attempt starts from fresh upstream state (back off randomly between
 retries).
@@ -76,17 +72,14 @@ from therock_types import (
 log = logging.getLogger(__name__)
 
 
-# Push-race retry tuning. A large release fan-out has dozens of runs pushing to
-# the same branch ref within a minute or two, so a losing run must be able to
-# wait out that whole contention window. Each attempt rebuilds against fresh
-# upstream (see the loop in `update_status_json`), so retrying is idempotent and
-# safe. Retrying is bounded by wall-clock time, not attempt count: a fixed
-# attempt budget can exhaust mid-burst (permanently dropping the update --
-# there is no redelivery), whereas a deadline lets a losing run simply outlast
-# whatever bounded contention window it is caught in. The deadline is the only
-# tuning lever for contention, so it is overridable via the
-# `QUARTZ_STATUS_PUSH_MAX_WAIT_SEC` env var for unusually large fan-outs.
 def _max_wait_seconds() -> float:
+    """Push-race retry tuning. A large release fan-out has dozens of runs
+    pushing to the same branch ref within a minute or two, so a losing run
+    must be able to wait out that whole contention window. Each attempt
+    rebuilds against fresh upstream (see the loop in `update_status_json`), so
+    retrying is idempotent and safe. Overridable via
+    `QUARTZ_STATUS_PUSH_MAX_WAIT_SEC` for unusually large fan-outs.
+    """
     raw = os.environ.get("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC")
     if raw:
         try:

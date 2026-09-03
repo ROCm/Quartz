@@ -73,16 +73,16 @@ most recent builds.
 
 | Endpoint                                | Points to                                                                     |
 | --------------------------------------- | ----------------------------------------------------------------------------- |
-| `release-nightly/<date>/status.json`    | A specific nightly, for example `release-nightly/20260707/status.json`        |
-| `release-nightly/latest.json`           | The most recent nightly (any result, including still in progress)             |
-| `release-nightly/latest_good.json`      | The most recent fully-passing nightly                                         |
+| `nightly/<date>/status.json`            | A specific nightly, for example `nightly/20260707/status.json`                |
+| `nightly/latest.json`                   | The most recent nightly (any result, including still in progress)             |
+| `nightly/latest_good.json`              | The most recent fully-passing nightly                                         |
 | `prereleases/<base>/<full>/status.json` | A specific prerelease, for example `prereleases/7.14.0/7.14.0rc1/status.json` |
 | `prereleases/latest.json`               | The most recent prerelease                                                    |
 
 Each is served as raw content. The raw URL form is:
 
 ```text
-https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json
+https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 ```
 
 > **Note on the `latest.json` pointers:** `latest.json` and `prereleases/latest.json`

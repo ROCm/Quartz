@@ -225,7 +225,7 @@ def _status_json_path(
         suffix = _release_version_suffix(release_version)
 
     if release_type == "nightly":
-        return repo_dir / "release-nightly" / suffix / "status.json"
+        return repo_dir / "nightly" / suffix / "status.json"
     if release_type == "prerelease":
         base, full = _prerelease_dirs(release_version)
         return repo_dir / "prereleases" / base / full / "status.json"
@@ -1109,7 +1109,7 @@ def _update_symlinks(
     if release_type != "nightly":
         return []
 
-    latest_dir = repo_dir / "release-nightly"
+    latest_dir = repo_dir / "nightly"
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
 

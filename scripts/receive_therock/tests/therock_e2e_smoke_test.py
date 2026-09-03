@@ -65,7 +65,7 @@ def _process(fixture: str, status_repo: Path) -> int:
 
 
 def _load(status_repo: Path) -> StatusDocument:
-    path = status_repo / "release-nightly" / _NIGHTLY_DATE / "status.json"
+    path = status_repo / "nightly" / _NIGHTLY_DATE / "status.json"
     return StatusDocument.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
@@ -94,7 +94,7 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
     for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
         assert _process(fixture, tmp_path) == 0
 
-    nightly_dir = tmp_path / "release-nightly"
+    nightly_dir = tmp_path / "nightly"
     latest_good = nightly_dir / "latest_good.json"
 
     # latest_good is a success-only snapshot and must not exist until

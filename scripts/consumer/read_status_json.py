@@ -80,7 +80,7 @@ from urllib.parse import urljoin
 
 # latest nightly status.json published by Quartz for TheRock releases.
 DEFAULT_SOURCE = (
-    "https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json"
+    "https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json"
 )
 
 # Seconds to wait on a URL fetch before giving up. Without a timeout urlopen can

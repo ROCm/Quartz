@@ -22,7 +22,7 @@ Once you know the shape, wiring up a consumer is short. The idea: on a schedule,
 grab the latest status, check whether it is new and whether it passed, and if so
 kick off your own work. Concretely:
 
-1. **Fetch** `release-nightly/latest.json` on a schedule. A cron job or a
+1. **Fetch** `nightly/latest.json` on a schedule. A cron job or a
    scheduled GitHub Actions workflow both work well. Note that `latest.json` can
    point at a build still in progress, so step 3 matters.
 1. **Skip what you have seen.** Read `rocm_version` / `build_date` and compare
@@ -147,7 +147,7 @@ A ready-to-adapt scheduled GitHub Actions workflow lives next to this guide:
 
 - **[`example_poll_status.yml`](example_poll_status.yml)** runs
   `example_consume_status.py` hourly during the UTC window when the ROCm release
-  lands, to fetch `release-nightly/latest.json`, gate
+  lands, to fetch `nightly/latest.json`, gate
   on the Linux ROCm build, and report its wheels and a tarball, leaving a clearly
   marked step for your own work.
 

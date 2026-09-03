@@ -174,7 +174,7 @@ def _load(status_path: Path) -> StatusDocument:
 
 
 def _nightly_status_path(repo_dir: Path) -> Path:
-    return repo_dir / "release-nightly" / _NIGHTLY_DATE / "status.json"
+    return repo_dir / "nightly" / _NIGHTLY_DATE / "status.json"
 
 
 def _establish_owner(
@@ -704,13 +704,13 @@ def test_nightly_leaf_creates_latest_symlink_but_not_latest_good(
     )
     assert out == _nightly_status_path(tmp_path)
 
-    latest = tmp_path / "release-nightly" / "latest.json"
+    latest = tmp_path / "nightly" / "latest.json"
     assert latest.is_symlink()
     assert latest.readlink().parts[0] == _NIGHTLY_DATE
 
     # latest_good only tracks a successful release; the leaf alone keeps the
     # release capped at in_progress, so no snapshot yet.
-    assert not (tmp_path / "release-nightly" / "latest_good.json").exists()
+    assert not (tmp_path / "nightly" / "latest_good.json").exists()
 
 
 def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
@@ -721,7 +721,7 @@ def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
         _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
     )
 
-    latest_good = tmp_path / "release-nightly" / "latest_good.json"
+    latest_good = tmp_path / "nightly" / "latest_good.json"
     assert latest_good.exists()
     assert not latest_good.is_symlink()  # snapshot file, not a symlink
     snapshot = StatusDocument.from_dict(
@@ -744,7 +744,7 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
     )
     # prereleases/<base>/<full>/status.json
     assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
-    assert not (tmp_path / "release-nightly").exists()
+    assert not (tmp_path / "nightly").exists()
 
 
 def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:

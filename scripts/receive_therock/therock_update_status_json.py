@@ -69,6 +69,7 @@ from therock_types import (
     TheRockDispatchEvent,
     WorkflowJobRecord,
     WorkflowRunRecord,
+    _parse_bool,
 )
 
 log = logging.getLogger(__name__)
@@ -865,6 +866,30 @@ def _update_release_cdn_urls(
         urls["deb"] = next(iter(workflow_run.deb_urls.values()))
 
 
+def _apply_pipeline_enable_flags(
+    doc: StatusDocument, workflow_run: WorkflowRunRecord
+) -> None:
+    """Capture this release's pytorch/jax enable-flags off the owning run's
+    dispatch inputs (`build_pytorch` / `build_jax`), so the rollup can tell an
+    explicitly disabled pipeline apart from one that is merely dispatched but
+    has not reported yet (issue #57, see `therock_summary._pipeline_enabled`).
+
+    Both `multi_arch_release.yml` (the top-level orchestrator) and
+    `setup_multi_arch.yml` (its `workflow_call` child, which can also
+    establish ownership -- see `_record_orchestrator_owner`) carry these as
+    top-level dispatch inputs, so this is safe to call from either. Leaves the
+    existing (default-enabled) value untouched when an input is absent, e.g.
+    an older orchestrator run that predates it.
+    """
+    inputs = workflow_run.inputs or {}
+    pytorch_enabled = _parse_bool(inputs.get("build_pytorch"))
+    if pytorch_enabled is not None:
+        doc.pytorch_enabled = pytorch_enabled
+    jax_enabled = _parse_bool(inputs.get("build_jax"))
+    if jax_enabled is not None:
+        doc.jax_enabled = jax_enabled
+
+
 def _record_orchestrator_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
@@ -901,14 +926,22 @@ def _record_orchestrator_owner(
             _reset_finalization_for_rerun(doc)
         doc.trigger_workflow_run_id = rid
         doc.trigger_run_attempt = attempt
+    _apply_pipeline_enable_flags(doc, workflow_run)
     return True
 
 
 def _reset_document_for_new_owner(doc: StatusDocument) -> None:
-    """Clear run-owned detail when a newer top-level orchestrator takes over."""
+    """Clear run-owned detail when a newer top-level orchestrator takes over.
+
+    pytorch_enabled/jax_enabled reset to the default-enabled state;
+    `_apply_pipeline_enable_flags`, called right after this from
+    `_record_orchestrator_owner`, re-derives them from the new owner's inputs.
+    """
     doc.completed_at = None
     doc.orchestrator_conclusion = None
     doc.created_at = None
+    doc.pytorch_enabled = True
+    doc.jax_enabled = True
     doc.linux_architectures.clear()
     doc.windows_architectures.clear()
     doc.linux_urls.clear()

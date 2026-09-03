@@ -218,8 +218,17 @@ def test_in_progress_dominates_cancelled_and_success_on_platform() -> None:
     assert doc.summary.linux.status is Status.in_progress
 
 
-def test_failure_beats_cancelled_and_success() -> None:
+def test_failure_beats_cancelled_and_success_within_one_pipeline() -> None:
+    # Within one pipeline (matrix cells / build+test), a terminal failure
+    # still outranks a terminal cancelled and a terminal success -- that
+    # precedence is unaffected by the cross-pipeline sibling rule (see the
+    # rollup_sibling_statuses unit tests). completed_at is set so the
+    # unreported pytorch/jax/native siblings are dropped from the platform
+    # rollup instead of injecting in_progress (see the finalized-drops-
+    # unstarted-siblings comment in _build_platform_summary), isolating the
+    # within-pipeline precedence being tested here.
     doc = StatusDocument()
+    doc.completed_at = "2026-04-08T02:00:00Z"
     _freeze(doc, "linux", ["gfx942", "gfx1100"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
     doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.cancelled))
@@ -431,7 +440,25 @@ def test_native_packages_counts_rpm_and_deb_into_platform_status() -> None:
     assert native is not None
     assert native.rpm.status is Status.success
     assert native.deb.status is Status.failure
-    # deb failure drags the platform rollup.
+    # deb failure sets native_packages' own status to failure, but rocm/
+    # pytorch/jax are still pending (never reported) on this platform, so the
+    # platform itself must not crystallize to failure yet.
+    assert doc.summary.linux.status is Status.in_progress
+
+
+def test_native_packages_failure_drags_platform_once_siblings_are_terminal() -> None:
+    # Same deb failure, but every sibling pipeline has also reported
+    # terminally: nothing is left pending, so the worst-of (native's failure)
+    # now applies.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.failure))
+    rebuild_summary(doc)
     assert doc.summary.linux.status is Status.failure
 
 
@@ -560,8 +587,10 @@ def test_running_test_leaf_not_masked_by_terminal_cells() -> None:
 
 def test_test_full_phase_rolls_up_separately_and_feeds_platform() -> None:
     # The full-suite `test-full` phase renders as its own counts block and its
-    # status still feeds the platform worst-of (a failing full suite fails the
-    # platform even when the smoke `test` passed).
+    # status still feeds pytorch's own rollup (a failing full suite fails
+    # pytorch even when the smoke `test` passed). jax/native_packages are
+    # still pending on this platform, so the platform itself stays
+    # in_progress until they report too.
     doc = StatusDocument()
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
@@ -574,6 +603,24 @@ def test_test_full_phase_rolls_up_separately_and_feeds_platform() -> None:
     assert pytorch.test.success == 1
     assert pytorch.test_full is not None
     assert pytorch.test_full.failure == 1
+    assert doc.summary.linux.status is Status.in_progress
+
+
+def test_test_full_phase_failure_drags_platform_once_siblings_are_terminal() -> None:
+    # Same failing full suite, but jax/native_packages have also reported
+    # terminally: nothing is left pending, so the worst-of (pytorch's
+    # test-full failure) now applies.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "pytorch", "test", _leaf(status=Status.success))
+    doc.upsert_leaf(
+        "linux", "gfx942", "pytorch", "test-full", _leaf(status=Status.failure)
+    )
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.success))
+    rebuild_summary(doc)
     assert doc.summary.linux.status is Status.failure
 
 
@@ -695,9 +742,12 @@ def test_test_only_pipeline_rollup_does_not_leave_build_in_progress() -> None:
 
 
 def test_multiple_pipelines_aggregate_into_platform_status() -> None:
-    # rocm and pytorch both run on linux. The platform status is worst-of across
-    # pipelines, not within one: rocm all-success + pytorch build failure -> the
-    # platform rolls up to failure while each pipeline keeps its own status.
+    # rocm and pytorch both run on linux, but jax/native_packages are
+    # independent sibling pipelines that have not reported anything yet.
+    # rocm succeeds and pytorch's build fails -- each pipeline keeps its own
+    # status -- but jax/native_packages might still succeed or fail, so the
+    # platform must not crystallize to failure while they are still pending:
+    # it stays in_progress (see rollup_sibling_statuses).
     doc = StatusDocument()
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
@@ -707,7 +757,7 @@ def test_multiple_pipelines_aggregate_into_platform_status() -> None:
     assert doc.summary.linux.rocm.build.status is Status.success
     assert doc.summary.linux.rocm.test.success == 1
     assert doc.summary.linux.pytorch.build.status is Status.failure
-    assert doc.summary.linux.status is Status.failure
+    assert doc.summary.linux.status is Status.in_progress
 
 
 def test_overall_capped_in_progress_until_completed_at() -> None:

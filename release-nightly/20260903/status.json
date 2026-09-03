@@ -9,7 +9,7 @@
   "completed_at": "2026-09-03T04:11:38Z",
   "orchestrator_conclusion": "success",
   "status_json_created": "2026-09-03T00:03:13Z",
-  "status_json_last_updated": "2026-09-03T05:10:41Z",
+  "status_json_last_updated": "2026-09-03T05:11:29Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -76,8 +76,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 0,
-          "in_progress": 14,
+          "failure": 2,
+          "in_progress": 12,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3597,10 +3597,6 @@
       "build": {
         "linux": {
           "status": "success",
-          "run_id": 33707440698,
-          "run_attempt": 1,
-          "started_at": "2026-09-03T02:25:23Z",
-          "completed_at": "2026-09-03T03:42:14Z",
           "variants": [
             {
               "py": "3.14",
@@ -3734,10 +3730,11 @@
       "test": {
         "linux": {
           "gfx94X-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 33707440698,
             "run_attempt": 1,
             "started_at": "2026-09-03T03:11:50Z",
+            "completed_at": "2026-09-03T05:10:19Z",
             "variants": [
               {
                 "py": "3.11",
@@ -3798,10 +3795,11 @@
               {
                 "py": "3.14",
                 "jax_version": "0.11.1",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33707440698,
                 "run_attempt": 1,
-                "started_at": "2026-09-03T03:28:08Z"
+                "started_at": "2026-09-03T03:28:08Z",
+                "completed_at": "2026-09-03T05:09:58Z"
               },
               {
                 "py": "3.12",
@@ -3838,10 +3836,11 @@
               {
                 "py": "3.14",
                 "jax_version": "0.10.1",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 33707440698,
                 "run_attempt": 1,
-                "started_at": "2026-09-03T03:31:48Z"
+                "started_at": "2026-09-03T03:31:48Z",
+                "completed_at": "2026-09-03T05:10:13Z"
               },
               {
                 "py": "3.13",

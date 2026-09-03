@@ -1066,16 +1066,62 @@ def test_sync_to_upstream_true_on_success(monkeypatch: pytest.MonkeyPatch) -> No
     assert tusj._sync_to_upstream(Path("/x")) is True
 
 
-def test_max_retries_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_RETRIES", "25")
-    assert tusj._max_retries() == 25
+def test_max_wait_seconds_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC", "120")
+    assert tusj._max_wait_seconds() == 120.0
 
 
-def test_max_retries_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_RETRIES", "nonsense")
-    assert tusj._max_retries() == tusj._DEFAULT_MAX_RETRIES
-    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_RETRIES", "-3")
-    assert tusj._max_retries() == tusj._DEFAULT_MAX_RETRIES
+def test_max_wait_seconds_invalid_env_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC", "nonsense")
+    assert tusj._max_wait_seconds() == tusj._DEFAULT_MAX_WAIT_SEC
+    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC", "-3")
+    assert tusj._max_wait_seconds() == tusj._DEFAULT_MAX_WAIT_SEC
+
+
+# --- deadline-based retry -----------------------------------------------------
+
+
+def test_update_status_json_retries_until_deadline_then_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A push that always loses the race must keep retrying until the
+    # wall-clock deadline elapses (not a fixed attempt count), then raise.
+    monkeypatch.setattr(tusj, "INITIAL_JITTER_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_BASE_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_CAP_SEC", 0.0)
+    monkeypatch.setattr(tusj, "_max_wait_seconds", lambda: 0.05)
+    monkeypatch.setattr(tusj, "_clear_stale_git_locks", lambda repo_dir: None)
+    monkeypatch.setattr(tusj, "_sync_to_upstream", lambda repo_dir: True)
+    monkeypatch.setattr(
+        tusj, "_commit_and_push", lambda *a, **k: tusj._PushOutcome.RETRY
+    )
+
+    with pytest.raises(RuntimeError, match="deadline exceeded"):
+        tusj.update_status_json(
+            _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=True
+        )
+
+
+def test_update_status_json_succeeds_after_transient_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tusj, "INITIAL_JITTER_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_BASE_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_CAP_SEC", 0.0)
+    monkeypatch.setattr(tusj, "_clear_stale_git_locks", lambda repo_dir: None)
+    monkeypatch.setattr(tusj, "_sync_to_upstream", lambda repo_dir: True)
+
+    outcomes = iter(
+        [tusj._PushOutcome.RETRY, tusj._PushOutcome.RETRY, tusj._PushOutcome.DONE]
+    )
+    monkeypatch.setattr(tusj, "_commit_and_push", lambda *a, **k: next(outcomes))
+
+    out = tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=True
+    )
+    assert out == _nightly_status_path(tmp_path)
 
 
 # --- stale .git lock recovery -----------------------------------------------

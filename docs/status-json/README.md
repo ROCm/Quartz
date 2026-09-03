@@ -71,13 +71,13 @@ below.
 Quartz publishes one `status.json` per release build (nightly/prerelease), plus stable pointers to the
 most recent builds.
 
-| Endpoint                                | Points to                                                                     |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| `release-nightly/<date>/status.json`    | A specific nightly, for example `release-nightly/20260707/status.json`        |
-| `release-nightly/latest.json`           | The most recent nightly (any result, including still in progress)             |
-| `release-nightly/latest_good.json`      | The most recent fully-passing nightly                                         |
+| Endpoint                               | Points to                                                                    |
+| -------------------------------------- | ---------------------------------------------------------------------------- |
+| `release-nightly/<date>/status.json`   | A specific nightly, for example `release-nightly/20260707/status.json`       |
+| `release-nightly/latest.json`          | The most recent nightly (any result, including still in progress)            |
+| `release-nightly/latest_good.json`     | The most recent fully-passing nightly                                        |
 | `prerelease/<base>/<full>/status.json` | A specific prerelease, for example `prerelease/7.14.0/7.14.0rc1/status.json` |
-| `prerelease/latest.json`               | The most recent prerelease                                                    |
+| `prerelease/latest.json`               | The most recent prerelease                                                   |
 
 Each is served as raw content. The raw URL form is:
 

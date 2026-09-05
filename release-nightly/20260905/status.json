@@ -7,7 +7,7 @@
   "trigger_run_attempt": 1,
   "created_at": "2026-09-05T00:01:00Z",
   "status_json_created": "2026-09-05T00:02:31Z",
-  "status_json_last_updated": "2026-09-05T01:19:52Z",
+  "status_json_last_updated": "2026-09-05T01:21:18Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -43,8 +43,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 0,
-          "in_progress": 8,
+          "failure": 1,
+          "in_progress": 7,
           "cancelled": 0,
           "skipped": 0
         }
@@ -193,10 +193,11 @@
             "started_at": "2026-09-05T01:17:10Z"
           },
           "gfx90a": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 33935696157,
             "run_attempt": 1,
-            "started_at": "2026-09-05T01:17:11Z"
+            "started_at": "2026-09-05T01:17:11Z",
+            "completed_at": "2026-09-05T01:20:19Z"
           }
         }
       }

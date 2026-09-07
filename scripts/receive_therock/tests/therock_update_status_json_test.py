@@ -570,7 +570,7 @@ def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
         _event(release), repo_dir=tmp_path, commit_and_push=False
     )
 
-    assert out == tmp_path / "prerelease" / "7.14.0" / "7.14.0rc1" / "status.json"
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
     doc = _load(out)
     assert doc.completed_at is None
     assert doc.summary.overall_status is Status.in_progress
@@ -742,8 +742,8 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
     out = tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    # prerelease/<base>/<full>/status.json
-    assert out == tmp_path / "prerelease" / "7.14.0" / "7.14.0rc1" / "status.json"
+    # prerelease/<major.minor>/<full>/status.json
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
     assert not (tmp_path / "release-nightly").exists()
 
 
@@ -754,7 +754,11 @@ def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
     )
     latest = tmp_path / "prerelease" / "latest.json"
     assert latest.is_symlink()
-    assert latest.readlink() == Path("7.14.0/7.14.0rc1/status.json")
+    assert latest.readlink() == Path("7.14/7.14.0rc1/status.json")
+    # The per-line pointer tracks the newest candidate within one major.minor line.
+    line_latest = tmp_path / "prerelease" / "7.14" / "latest.json"
+    assert line_latest.is_symlink()
+    assert line_latest.readlink() == Path("7.14.0rc1/status.json")
     # prerelease has no notion of latest_good.
     assert not (tmp_path / "prerelease" / "latest_good.json").exists()
 
@@ -773,7 +777,7 @@ def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
         commit_and_push=False,
     )
     latest = tmp_path / "prerelease" / "latest.json"
-    assert latest.readlink() == Path("7.14.0/7.14.0rc2/status.json")
+    assert latest.readlink() == Path("7.14/7.14.0rc2/status.json")
 
 
 def test_prerelease_latest_does_not_regress_to_older_candidate(
@@ -793,7 +797,56 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
         commit_and_push=False,
     )
     latest = tmp_path / "prerelease" / "latest.json"
-    assert latest.readlink() == Path("7.14.0/7.14.0rc10/status.json")
+    assert latest.readlink() == Path("7.14/7.14.0rc10/status.json")
+
+
+def test_prerelease_line_latest_advances_across_patches(tmp_path: Path) -> None:
+    # Patch releases of one line share a major.minor directory; its latest.json
+    # advances from the .0 candidate to the .1 candidate.
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("7.14.0rc2")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.1rc1")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("7.14.1rc1")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    line_latest = tmp_path / "prerelease" / "7.14" / "latest.json"
+    assert line_latest.readlink() == Path("7.14.1rc1/status.json")
+    assert (tmp_path / "prerelease" / "latest.json").readlink() == Path(
+        "7.14/7.14.1rc1/status.json"
+    )
+
+
+def test_prerelease_line_latest_isolated_per_line(tmp_path: Path) -> None:
+    # Two release lines coexist. Each major.minor pointer tracks its own line;
+    # the top-level pointer tracks the highest version overall.
+    _establish_owner(tmp_path, release_type="prerelease", version="10.0.0rc1")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("10.0.0rc1")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc1")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("7.14.0rc1")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    assert (tmp_path / "prerelease" / "7.14" / "latest.json").readlink() == Path(
+        "7.14.0rc1/status.json"
+    )
+    assert (tmp_path / "prerelease" / "10.0" / "latest.json").readlink() == Path(
+        "10.0.0rc1/status.json"
+    )
+    assert (tmp_path / "prerelease" / "latest.json").readlink() == Path(
+        "10.0/10.0.0rc1/status.json"
+    )
 
 
 def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:

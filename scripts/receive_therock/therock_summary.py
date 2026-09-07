@@ -29,11 +29,17 @@ from therock_types import EXPECTED_PIPELINE_TYPES
 _PIPELINE_ENABLE_FLAGS: frozenset[str] = frozenset({"pytorch", "jax"})
 
 
-def _pipeline_enabled(doc: StatusDocument, pipeline_type: str) -> bool:
-    """Whether `pipeline_type` is expected to run this release.
+def _pipeline_enabled(doc: StatusDocument, pipeline_type: str, platform: str) -> bool:
+    """Whether `pipeline_type` is expected to run this release on `platform`.
 
-    rocm/native_packages have no enable-flag, so they are always enabled.
+    jax/native_packages are linux-only and never run on windows, regardless of
+    any enable-flag. rocm/pytorch run on both platforms and have no
+    platform-specific gate. pytorch/jax additionally carry a per-release
+    enable-flag (this release's own `build_pytorch` / `build_jax` dispatch
+    inputs, see `StatusDocument.pytorch_enabled` / `.jax_enabled`).
     """
+    if pipeline_type in ("jax", "native_packages") and platform != "linux":
+        return False
     if pipeline_type == "pytorch":
         return doc.pytorch_enabled
     if pipeline_type == "jax":
@@ -170,7 +176,7 @@ def _build_platform_summary(
             has_data = True
             sibling_statuses.append(rollup_statuses(seen, empty_platform_status))
             continue
-        if not _pipeline_enabled(doc, pipeline_type):
+        if not _pipeline_enabled(doc, pipeline_type, platform):
             placeholder_statuses[pipeline_type] = Status.skipped
             continue
         placeholder_statuses[pipeline_type] = unstarted_status

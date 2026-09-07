@@ -569,7 +569,7 @@ class StatusDocument(BaseModel):
     # distinguishes release from asan/etc builds (the workflow always sends a
     # value, defaulting to `"release"` until an asan variant lands);
     # `therock_commit` is the 40-hex TheRock commit the release was built from,
-    # resolved by the setup checkout. 
+    # resolved by the setup checkout.
     build_variant: str = ""
     therock_commit: str = ""
     trigger_workflow_run_id: int | None = None

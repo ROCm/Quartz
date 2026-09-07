@@ -50,6 +50,17 @@ def _parse_int(value: Any) -> int | None:
         return None
 
 
+def _parse_bool(value: Any) -> bool | None:
+    """Parse a dispatch-input bool, tolerant of arriving as a native `bool`
+    (a typed `workflow_dispatch`/`workflow_call` input serialized via
+    `toJSON`) or as a string. Returns `None` when absent or unparsable."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    return None
+
+
 def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | None]:
     """Split the propagated `quartz_tracking_id` into (owner_run_id, release_type).
 

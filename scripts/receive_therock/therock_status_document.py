@@ -565,6 +565,13 @@ class StatusDocument(BaseModel):
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""
+    # Build metadata carried from the orchestrator's setup run. `build_variant`
+    # distinguishes release from asan/etc builds (the workflow always sends a
+    # value, defaulting to `"release"` until an asan variant lands);
+    # `therock_commit` is the 40-hex TheRock commit the release was built from,
+    # resolved by the setup checkout.
+    build_variant: str = ""
+    therock_commit: str = ""
     trigger_workflow_run_id: int | None = None
     # Attempt number of the owning orchestrator run. Ownership is the pair
     # (trigger_workflow_run_id, trigger_run_attempt): a GitHub re-run keeps the

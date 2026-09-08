@@ -9,7 +9,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-08T00:02:04Z",
-  "status_json_last_updated": "2026-09-08T01:17:05Z",
+  "status_json_last_updated": "2026-09-08T01:17:45Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -44,7 +44,7 @@
         "test": {
           "success": 0,
           "failure": 0,
-          "in_progress": 0,
+          "in_progress": 1,
           "cancelled": 0,
           "skipped": 0
         }
@@ -148,7 +148,16 @@
           "completed_at": "2026-09-08T00:32:27Z"
         }
       },
-      "test": {}
+      "test": {
+        "linux": {
+          "gfx90a": {
+            "status": "in_progress",
+            "run_id": 34176083606,
+            "run_attempt": 1,
+            "started_at": "2026-09-08T01:16:13Z"
+          }
+        }
+      }
     }
   }
 }

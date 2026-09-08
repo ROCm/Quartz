@@ -213,16 +213,8 @@ WORKFLOW_SPECS: dict[str, list[WorkflowSpec]] = {
             pipeline_phase="build",
         ),
     ],
-    # JAX wheel tests (linux-only). JAX has no multi-arch fan-out, so a single
-    # test workflow covers the pipeline (keyed per-arch by `amdgpu_family`).
-    "test_linux_jax_wheels.yml": [
-        WorkflowSpec(
-            platform="linux",
-            pipeline_type="jax",
-            pipeline_phase="test",
-        ),
-    ],
-    "test_linux_jax_wheels_partial.yml": [
+    # JAX wheel tests (linux-only), keyed per-arch by `amdgpu_family`.
+    "test_multi_arch_linux_jax_wheels.yml": [
         WorkflowSpec(
             platform="linux",
             pipeline_type="jax",
@@ -274,17 +266,6 @@ WORKFLOW_SPECS: dict[str, list[WorkflowSpec]] = {
     # tracking; `test_artifacts.yml`'s own report is still the artifact-level
     # source of truth for the `[platform][arch]` leaf.
     "test_component.yml": [
-        WorkflowSpec(
-            platform="",
-            pipeline_type="rocm",
-            pipeline_phase="test",
-            platform_from_test_runs_on=True,
-        ),
-    ],
-    # ROCm wheel tests: CI-only in TheRock (TBD whether this workflow is kept),
-    # kept so a CI event still classifies as rocm/test, keyed per-arch by
-    # `amdgpu_family`.
-    "test_rocm_wheels.yml": [
         WorkflowSpec(
             platform="",
             pipeline_type="rocm",

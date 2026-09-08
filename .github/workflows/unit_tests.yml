@@ -1,0 +1,26 @@
+# Copyright Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: MIT
+
+name: Unit Tests
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit_tests:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.12"
+      - name: Install python deps
+        run: pip install -r requirements.txt pytest
+      # Tests self-bootstrap sys.path (SCRIPT_DIR pattern), so a single pytest
+      # run from the repo root exercises every suite under scripts/ and docs/.
+      - name: Run unit tests
+        run: python -m pytest scripts docs -q -v

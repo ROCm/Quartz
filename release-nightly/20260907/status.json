@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-07T00:02:03Z",
-  "status_json_last_updated": "2026-09-08T03:51:03Z",
+  "status_json_last_updated": "2026-09-08T03:53:35Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -60,8 +60,8 @@
         "test": {
           "success": 106,
           "failure": 195,
-          "in_progress": 8,
-          "cancelled": 11,
+          "in_progress": 3,
+          "cancelled": 16,
           "skipped": 0
         },
         "test_full": {
@@ -287,7 +287,7 @@
               "run_id": 34074314976,
               "run_attempt": 1,
               "started_at": "2026-09-07T01:52:00Z",
-              "completed_at": "2026-09-07T03:51:36Z"
+              "completed_at": "2026-09-08T03:52:46Z"
             },
             {
               "py": "3.10",
@@ -341,7 +341,7 @@
               "run_id": 34074314976,
               "run_attempt": 1,
               "started_at": "2026-09-07T01:52:01Z",
-              "completed_at": "2026-09-07T03:52:06Z"
+              "completed_at": "2026-09-08T03:52:46Z"
             },
             {
               "py": "3.11",
@@ -368,7 +368,7 @@
               "run_id": 34074314976,
               "run_attempt": 1,
               "started_at": "2026-09-07T01:52:00Z",
-              "completed_at": "2026-09-07T03:51:45Z"
+              "completed_at": "2026-09-08T03:52:46Z"
             },
             {
               "py": "3.13",
@@ -386,7 +386,7 @@
               "run_id": 34074314976,
               "run_attempt": 1,
               "started_at": "2026-09-07T01:52:00Z",
-              "completed_at": "2026-09-07T03:52:11Z"
+              "completed_at": "2026-09-08T03:52:44Z"
             },
             {
               "py": "3.10",
@@ -404,7 +404,7 @@
               "run_id": 34074314976,
               "run_attempt": 1,
               "started_at": "2026-09-07T01:51:59Z",
-              "completed_at": "2026-09-07T03:51:49Z"
+              "completed_at": "2026-09-08T03:52:48Z"
             },
             {
               "py": "3.14",
@@ -2836,42 +2836,47 @@
               {
                 "py": "3.10",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "cancelled",
                 "run_id": 34074314976,
                 "run_attempt": 1,
-                "started_at": "2026-09-07T03:51:36Z"
+                "started_at": "2026-09-07T03:51:36Z",
+                "completed_at": "2026-09-08T03:51:36Z"
               },
               {
                 "py": "3.12",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "cancelled",
                 "run_id": 34074314976,
                 "run_attempt": 1,
-                "started_at": "2026-09-07T03:51:39Z"
+                "started_at": "2026-09-07T03:51:39Z",
+                "completed_at": "2026-09-08T03:51:39Z"
               },
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "cancelled",
                 "run_id": 34074314976,
                 "run_attempt": 1,
-                "started_at": "2026-09-07T03:51:45Z"
+                "started_at": "2026-09-07T03:51:45Z",
+                "completed_at": "2026-09-08T03:51:46Z"
               },
               {
                 "py": "3.14",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "cancelled",
                 "run_id": 34074314976,
                 "run_attempt": 1,
-                "started_at": "2026-09-07T03:51:50Z"
+                "started_at": "2026-09-07T03:51:50Z",
+                "completed_at": "2026-09-08T03:51:50Z"
               },
               {
                 "py": "3.13",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "cancelled",
                 "run_id": 34074314976,
                 "run_attempt": 1,
-                "started_at": "2026-09-07T03:52:11Z"
+                "started_at": "2026-09-07T03:52:11Z",
+                "completed_at": "2026-09-08T03:52:11Z"
               },
               {
                 "py": "3.14",

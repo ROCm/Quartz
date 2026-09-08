@@ -212,6 +212,25 @@ def _release_version_suffix(release_version: str) -> str:
     )
 
 
+# --- TEMPORARY: nightly folder-rename bridge (remove after ~2026-09-11) ---
+# The nightly tree moved release-nightly/ -> nightly/ (#93). The nightly already
+# in flight on the cutover day wrote its early events to release-nightly/, so
+# routing its late events (e.g. the pytorch tests that finish hours later) to
+# nightly/ would split one run across two folders. Pin just the cutover date's
+# nightly to the old folder; every later date uses the new one. Keyed on the
+# document's own date suffix, not wall-clock now(), so late or rerun events for
+# the straddling run still land in the old folder. Delete this, `_nightly_root`,
+# and its use in `_status_json_path` once that nightly has aged out of consumers.
+_NIGHTLY_LEGACY_FOLDER_DATE = "20260908"
+
+
+def _nightly_root(date_suffix: str) -> str:
+    """Old vs new nightly root during the folder-rename transition."""
+    if date_suffix == _NIGHTLY_LEGACY_FOLDER_DATE:
+        return "release-nightly"
+    return "nightly"
+
+
 def _status_json_path(
     repo_dir: Path,
     release_type: str,
@@ -226,7 +245,7 @@ def _status_json_path(
         suffix = _release_version_suffix(release_version)
 
     if release_type == "nightly":
-        return repo_dir / "nightly" / suffix / "status.json"
+        return repo_dir / _nightly_root(suffix) / suffix / "status.json"
     if release_type == "prerelease":
         major_minor, full = _prerelease_dirs(release_version)
         return repo_dir / "prerelease" / major_minor / full / "status.json"
@@ -1165,7 +1184,10 @@ def _update_symlinks(
     if release_type != "nightly":
         return []
 
-    latest_dir = repo_dir / "nightly"
+    # Root follows wherever the document was written: nightly/ normally, or the
+    # legacy release-nightly/ during the rename bridge (see `_nightly_root`), so
+    # the pointer never crosses into a different folder than its target.
+    latest_dir = status_path.parent.parent
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
 

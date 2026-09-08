@@ -33,8 +33,10 @@ if str(CONSUMER_DIR) not in sys.path:
     sys.path.insert(0, str(CONSUMER_DIR))
 
 from read_status_json import (  # noqa: E402
+    SUPPORTED_SCHEMA_MAJOR,
     PlatformStatus,
     Status,
+    UnsupportedSchemaError,
     build_tarball_url,
     load_status,
 )
@@ -76,7 +78,7 @@ class StripJsoncCommentsTest(unittest.TestCase):
 
     def test_reference_parses(self):
         data = _load_reference()
-        self.assertEqual(data["schema_version"], "2.0")
+        self.assertEqual(data["schema_version"], "2.1")
 
 
 class StatusEnumTest(unittest.TestCase):
@@ -126,7 +128,21 @@ class StatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.status.rocm_version, "7.13.0a20260408")
         self.assertEqual(self.status.build_date, "20260408")
         self.assertEqual(self.status.release_type, "nightly")
-        self.assertEqual(self.status.schema_version, "2.0")
+        self.assertEqual(self.status.schema_version, "2.1")
+
+    def test_build_provenance(self):
+        self.assertEqual(self.status.build_variant, "release")
+        self.assertEqual(
+            self.status.therock_commit, "db2fd412ed7fcadf306cdcf19f09cdd998544197"
+        )
+
+    def test_pipeline_enable_flags(self):
+        self.assertTrue(self.status.pytorch_enabled)
+        self.assertTrue(self.status.jax_enabled)
+
+    def test_trigger_ownership(self):
+        self.assertEqual(self.status.trigger_workflow_run_id, 12340000)
+        self.assertEqual(self.status.trigger_run_attempt, 1)
 
     def test_completion(self):
         self.assertIsNone(self.status.completed_at)
@@ -147,6 +163,36 @@ class StatusFromReferenceTest(unittest.TestCase):
     def test_pipelines_raw_tree(self):
         run_id = self.status.pipelines["rocm"]["build"]["linux"]["run_id"]
         self.assertEqual(run_id, 12345678)
+
+
+class MissingMetadataFieldsTest(unittest.TestCase):
+    """A pre-2.1 document lacks the build-provenance keys entirely; the accessors
+    must distinguish absent from empty, and honor the disable-only flag default."""
+
+    def setUp(self):
+        from read_status_json import StatusDocument
+
+        self.status = StatusDocument({})
+
+    def test_absent_build_provenance_is_none(self):
+        # None (key absent) is distinct from "" (present, no signal yet).
+        self.assertIsNone(self.status.build_variant)
+        self.assertIsNone(self.status.therock_commit)
+
+    def test_empty_build_provenance_is_not_none(self):
+        from read_status_json import StatusDocument
+
+        status = StatusDocument({"build_variant": "", "therock_commit": ""})
+        self.assertEqual(status.build_variant, "")
+        self.assertEqual(status.therock_commit, "")
+
+    def test_absent_enable_flags_default_to_true(self):
+        self.assertTrue(self.status.pytorch_enabled)
+        self.assertTrue(self.status.jax_enabled)
+
+    def test_absent_trigger_ownership_is_none(self):
+        self.assertIsNone(self.status.trigger_workflow_run_id)
+        self.assertIsNone(self.status.trigger_run_attempt)
 
 
 class PlatformStatusFromReferenceTest(unittest.TestCase):
@@ -300,6 +346,48 @@ class LoadStatusSymlinkTest(unittest.TestCase):
         ):
             with self.assertRaises(json.JSONDecodeError):
                 load_status("https://raw.example/broken.json")
+
+
+class SchemaMajorGateTest(unittest.TestCase):
+    """load_status accepts any minor within the supported major and rejects a
+    different (or missing) major, since a major bump is a breaking layout change.
+    """
+
+    def _load_with_version(self, schema_version):
+        doc = {"rocm_version": "7.0.0"}
+        if schema_version is not None:
+            doc["schema_version"] = schema_version
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(doc, handle)
+            path = handle.name
+        self.addCleanup(lambda: Path(path).unlink(missing_ok=True))
+        return load_status(path)
+
+    def test_accepts_current_minor(self):
+        status = self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR}.1")
+        self.assertEqual(status.rocm_version, "7.0.0")
+
+    def test_accepts_newer_minor(self):
+        # A reader must tolerate a newer minor: it only adds optional fields.
+        status = self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR}.99")
+        self.assertEqual(status.rocm_version, "7.0.0")
+
+    def test_rejects_newer_major(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR + 1}.0")
+
+    def test_rejects_older_major(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR - 1}.0")
+
+    def test_rejects_missing_schema_version(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            self._load_with_version(None)
+
+    def test_error_is_a_value_error(self):
+        # Subclassing ValueError keeps existing `except ValueError` handlers working.
+        with self.assertRaises(ValueError):
+            self._load_with_version("3.0")
 
 
 if __name__ == "__main__":

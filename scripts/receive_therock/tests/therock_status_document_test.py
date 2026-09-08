@@ -15,11 +15,15 @@ silently corrupt the document when they do:
 import sys
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from therock_status_document import (  # noqa: E402
+    SCHEMA_VERSION,
     PipelineRollup,
     PlatformSummary,
     RunLeaf,
@@ -1050,7 +1054,7 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
     # carries an all-zero test rollup and confirm the zeros survive.
     doc = StatusDocument.from_dict(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "rocm_version": "7.0.0",
             "summary": {
                 "linux": {
@@ -1073,13 +1077,68 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
     assert test_counts["skipped"] == 0
 
 
+# --- schema_version migration -----------------------------------------------
+
+
+def test_from_dict_restamps_older_minor_to_current() -> None:
+    # An on-disk doc from an older minor (2.0, written before the current bump)
+    # reads successfully and is restamped to the current version, so the next
+    # write upgrades the file in place. New fields fall back to their defaults.
+    doc = StatusDocument.from_dict({"schema_version": "2.0", "rocm_version": "7.0.0"})
+    assert doc.schema_version == SCHEMA_VERSION
+    assert doc.to_dict()["schema_version"] == SCHEMA_VERSION
+
+
+def test_from_dict_stamps_current_when_schema_version_absent() -> None:
+    doc = StatusDocument.from_dict({"rocm_version": "7.0.0"})
+    assert doc.schema_version == SCHEMA_VERSION
+
+
+def test_from_dict_rejects_different_major() -> None:
+    # A different major is an incompatible layout, not a migration.
+    with pytest.raises(ValidationError):
+        StatusDocument.from_dict({"schema_version": "3.0", "rocm_version": "7.0.0"})
+
+
+def test_from_dict_rejects_newer_minor() -> None:
+    # A newer minor was written by a producer that knows fields/semantics this
+    # code does not; migrating down would silently drop them, so refuse.
+    major, minor = (int(p) for p in SCHEMA_VERSION.split("."))
+    newer = f"{major}.{minor + 1}"
+    with pytest.raises(ValidationError):
+        StatusDocument.from_dict({"schema_version": newer, "rocm_version": "7.0.0"})
+
+
+def test_reads_real_published_older_minor_document() -> None:
+    # Backward compatibility against a real published 2.0 status.json (a full
+    # nightly captured from main, not a hand-built minimal doc). The whole shape
+    # -- every pipeline, variant, native package, and url -- must parse under the
+    # current model, restamp to the current version, and round-trip: to_dict()
+    # output re-parses. Guards against a model change that silently breaks
+    # reading documents already on disk.
+    import json
+
+    fixture = (
+        Path(__file__).with_name("fixtures") / "published_status_v2_0_nightly.json"
+    )
+    data = json.loads(fixture.read_text())
+    assert data["schema_version"] == "2.0"
+
+    doc = StatusDocument.from_dict(data)
+    assert doc.schema_version == SCHEMA_VERSION
+
+    round_tripped = doc.to_dict()
+    assert round_tripped["schema_version"] == SCHEMA_VERSION
+    StatusDocument.from_dict(round_tripped)
+
+
 # --- from_dict / _from_wire round-trip --------------------------------------
 
 
 def test_from_wire_lifts_arch_and_urls_out_of_summary() -> None:
     doc = StatusDocument.from_dict(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "rocm_version": "7.0.0",
             "summary": {
                 "linux": {

@@ -58,17 +58,17 @@ from pathlib import Path
 # and from a downstream project that mirrors the scripts/consumer/ layout.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "scripts" / "consumer"))
 
-from read_status_json import PlatformStatus, StatusDocument, load_status
+from read_status_json import (
+    PlatformStatus,
+    StatusDocument,
+    UnsupportedSchemaError,
+    load_status,
+)
 
 # The build this consumer depends on. Gate on the specific platform + pipeline
 # you actually use, not overall_status.
 PLATFORM = "linux"
 PIPELINE = "rocm"
-
-# The status.json schema major this example understands. A bump to a new major
-# (e.g. "3.") can move or rename the fields the accessors read, so we skip rather
-# than misread a document we were not written for. Minor bumps stay compatible.
-SUPPORTED_SCHEMA_MAJOR = "2."
 
 
 def set_github_outputs(**outputs: str) -> None:
@@ -190,23 +190,23 @@ def main() -> None:
     # momentarily absent or truncated around a release; load_status follows the
     # symlink for us, but a transient fetch/parse failure here should not fail the
     # run. Treat it as "not ready yet" and let the next poll retry.
+    #
+    # An unsupported schema major is different: load_status raises
+    # UnsupportedSchemaError, which is permanent. Retrying will not help, and a
+    # new major can move or rename the fields the accessors read, so continuing
+    # risks silently misreading the document. Catch it first and fail loudly so
+    # the consumer gets updated, rather than reporting a false "nothing to do"
+    # that hides the break on every future poll. (It subclasses ValueError, so it
+    # must be caught before the transient clause below.) A newer minor within the
+    # supported major is accepted by load_status and needs no handling here.
     try:
         status = load_status()  # latest nightly (or pass a URL / path)
+    except UnsupportedSchemaError as error:
+        sys.exit(f"{error} Update the consumer.")
     except (OSError, ValueError) as error:
         not_ready(f"status.json unavailable, will retry next poll: {error}")
         return
     print(f"{status.rocm_version} (overall: {status.overall_status})")
-
-    # An unsupported schema major is permanent, unlike a transient fetch hiccup:
-    # retrying will not help, and a new major can move or rename the fields the
-    # accessors read, so continuing risks silently misreading the document. Fail
-    # loudly so the consumer gets updated, rather than reporting a false "nothing
-    # to do" that hides the break on every future poll.
-    if not status.schema_version.startswith(SUPPORTED_SCHEMA_MAJOR):
-        sys.exit(
-            f"schema_version {status.schema_version} unsupported "
-            f"(this example handles {SUPPORTED_SCHEMA_MAJOR}x); update the consumer."
-        )
 
     platform = ready_platform(status)
     # ready means "this build should be processed": it passed the gate AND we

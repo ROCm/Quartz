@@ -19,14 +19,19 @@
 // - Tarball URLs are not enumerated; consumers use the Quartz Python helper
 //   to construct per-arch tarball filenames from the base URL + version.
 {
-  "schema_version": "2.0",
+  "schema_version": "2.1",
   "release_type": "nightly",                    // "nightly" | "rc" | "dev"
   "rocm_version": "7.13.0a20260408",
   "build_date": "20260408",
+  "build_variant": "release",                   // (schema 2.1) build flavor: "release" | "asan" | ... ; "" when present but no signal yet (before the setup run reports); key absent entirely in pre-2.1 documents
+  "therock_commit": "db2fd412ed7fcadf306cdcf19f09cdd998544197",  // (schema 2.1) 40-hex TheRock commit the release was built from; "" until the setup run resolves it; key absent entirely in pre-2.1 documents
   "trigger_workflow_run_id": 12340000,          // run_id of the orchestrator (multi_arch_ci)
+  "trigger_run_attempt": 1,                     // attempt of the owning orchestrator run; ownership is the (trigger_workflow_run_id, trigger_run_attempt) pair, so a GitHub re-run (same run id, higher attempt) supersedes the run before it
   "created_at":             "2026-04-08T06:00:00Z",
   "completed_at":           null,               // set when orchestrator emits run_phase=completed
   "orchestrator_conclusion": null,              // top-level orchestrator's own terminal conclusion ("success"|"failure"|"cancelled"); folded into summary.overall_status so an aborted/failed release is never reported as success
+  "pytorch_enabled": true,                      // whether this release's dispatch built the PyTorch pipeline. Disable-only: absent means enabled (true)
+  "jax_enabled": true,                          // whether this release's dispatch built the JAX pipeline (linux only). Disable-only: absent means enabled (true)
   "status_json_created":      "2026-04-08T06:05:00Z",
   "status_json_last_updated": "2026-04-08T14:30:00Z",
 

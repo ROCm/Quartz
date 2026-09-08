@@ -24,7 +24,8 @@ A `status.json` has the following shape:
 
 ```text
 status.json
-├─ release metadata        rocm_version, build_date, release_type, timestamps
+├─ release metadata        rocm_version, build_date, release_type, build_variant,
+│                          therock_commit, pytorch_enabled, jax_enabled, timestamps
 ├─ summary                 the at-a-glance rollup
 │  └─ <platform>           linux | windows
 │     ├─ status            worst-of rollup for the platform
@@ -105,7 +106,9 @@ https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json
 Each file has three parts:
 
 1. **Top-level release metadata**: schema version, release type, ROCm version,
-   build date, run id of the triggering workflow, and timestamps.
+   build date, build variant and TheRock commit, which pipelines the release
+   built (`pytorch_enabled` / `jax_enabled`), run id of the triggering workflow,
+   and timestamps.
 1. **`summary`**: a Quartz-computed at-a-glance rollup: overall status,
    per-platform (`linux` / `windows`) status, requested architectures, artifact
    download URLs, and per-pipeline pass/fail counts.
@@ -120,17 +123,20 @@ For a complete, annotated example, see
 
 ### Most-used fields
 
-| Field                              | Meaning                                                                                                          |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `release_type`                     | `nightly`, `rc` (prerelease/release candidate)                                                                   |
-| `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different). |
-| `build_date`                       | `YYYYMMDD` of the build.                                                                                         |
-| `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                  |
-| `summary.overall_status`           | Roll-up status over all platforms and pipelines.                                                                 |
-| `summary.<platform>.status`        | Per-platform roll-up (`linux` / `windows`).                                                                      |
-| `summary.<platform>.architectures` | Requested architectures for the platform.                                                                        |
-| `summary.<platform>.urls`          | Base URLs for tarballs, wheels, packages, and the artifact index.                                                |
-| `summary.<platform>.<pipeline>`    | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters.                       |
+| Field                              | Meaning                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `release_type`                     | `nightly`, `rc` (prerelease/release candidate)                                                                                       |
+| `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different).                     |
+| `build_date`                       | `YYYYMMDD` of the build.                                                                                                             |
+| `build_variant`                    | Build flavor: `release`, or a sanitizer build such as `asan` (schema 2.1). `""` when no signal yet; key absent in pre-2.1 documents. |
+| `therock_commit`                   | The 40-hex TheRock commit the release was built from (schema 2.1). `""` until resolved; key absent in pre-2.1 documents.             |
+| `pytorch_enabled` / `jax_enabled`  | Whether this release's dispatch built the PyTorch / JAX pipeline. Disable-only: absent means enabled (`true`).                       |
+| `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                                      |
+| `summary.overall_status`           | Roll-up status over all platforms and pipelines.                                                                                     |
+| `summary.<platform>.status`        | Per-platform roll-up (`linux` / `windows`).                                                                                          |
+| `summary.<platform>.architectures` | Requested architectures for the platform.                                                                                            |
+| `summary.<platform>.urls`          | Base URLs for tarballs, wheels, packages, and the artifact index.                                                                    |
+| `summary.<platform>.<pipeline>`    | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters.                                           |
 
 In `summary`, while the release is live, an expected-but-unreported pipeline is
 shown as `in_progress`.

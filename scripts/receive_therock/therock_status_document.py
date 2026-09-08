@@ -58,7 +58,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.0"
+SCHEMA_VERSION: Final = "2.1"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -561,7 +561,7 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.0"] = SCHEMA_VERSION
+    schema_version: Literal["2.1"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""
@@ -600,9 +600,35 @@ class StatusDocument(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _from_wire(cls, data: object) -> object:
-        """Lift the arch/url fields out of the nested `summary` block."""
+        """Migrate the schema version and lift arch/url fields out of `summary`.
+
+        A doc read off disk may predate the current minor (e.g. a 2.0 file
+        written before a 2.1 deploy). Any doc sharing our MAJOR version is
+        accepted and restamped to the current `SCHEMA_VERSION`; the producer
+        rewrites the whole document each event, so fields added by a newer minor
+        simply take their model defaults and the file upgrades in place on the
+        next write. A different major is an incompatible layout and is rejected.
+        """
         if not isinstance(data, dict):
             return data
+
+        on_disk_version = data.get("schema_version")
+        if on_disk_version is not None:
+            cur_major, cur_minor = (int(p) for p in SCHEMA_VERSION.split("."))
+            on_disk_major, on_disk_minor = (
+                int(p) for p in str(on_disk_version).split(".")
+            )
+            # Migrate up only. A different major is an incompatible layout; a
+            # newer minor was written by a producer that knows fields/semantics
+            # this code does not, so it must not be silently downgraded. Only an
+            # older-or-equal minor within the same major is safe to adopt.
+            if on_disk_major != cur_major or on_disk_minor > cur_minor:
+                raise ValueError(
+                    f"status.json schema_version {on_disk_version!r} is not "
+                    f"backward-compatible with the supported {SCHEMA_VERSION!r}; "
+                    f"refusing to migrate (need same major, minor <= "
+                    f"{cur_minor})."
+                )
 
         summary_raw = data.get("summary") or {}
         if not isinstance(summary_raw, dict):
@@ -615,6 +641,7 @@ class StatusDocument(BaseModel):
             windows_summary = {}
 
         out = dict(data)
+        out["schema_version"] = SCHEMA_VERSION
         out.setdefault("linux_architectures", linux_summary.get("architectures") or [])
         out.setdefault(
             "windows_architectures", windows_summary.get("architectures") or []

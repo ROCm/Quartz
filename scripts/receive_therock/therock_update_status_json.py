@@ -1189,7 +1189,7 @@ def _update_prerelease_latest(repo_dir: Path, status_path: Path) -> list[Path]:
     """
     prerelease_root = repo_dir / "prerelease"
     major_minor_dir = status_path.parent.parent  # prerelease/<major.minor>
-    new_version = status_path.parent.name        # e.g. 10.0.0rc1
+    new_version = status_path.parent.name  # e.g. 10.0.0rc1
 
     files_written: list[Path] = []
     for latest_dir in (prerelease_root, major_minor_dir):

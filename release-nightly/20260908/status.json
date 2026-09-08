@@ -1,8 +1,10 @@
 {
-  "schema_version": "2.0",
+  "schema_version": "2.1",
   "release_type": "nightly",
   "rocm_version": "10.1.0a20260908",
   "build_date": "20260908",
+  "build_variant": "",
+  "therock_commit": "",
   "trigger_workflow_run_id": 34171922937,
   "trigger_run_attempt": 2,
   "created_at": "2026-09-08T00:00:58Z",
@@ -11,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-08T00:02:04Z",
-  "status_json_last_updated": "2026-09-08T13:28:21Z",
+  "status_json_last_updated": "2026-09-08T13:53:04Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -59,8 +61,8 @@
         },
         "test": {
           "success": 70,
-          "failure": 223,
-          "in_progress": 27,
+          "failure": 224,
+          "in_progress": 26,
           "cancelled": 0,
           "skipped": 0
         },
@@ -2884,7 +2886,7 @@
             "run_id": 34178147394,
             "run_attempt": 1,
             "started_at": "2026-09-08T01:53:12Z",
-            "completed_at": "2026-09-08T13:27:18Z",
+            "completed_at": "2026-09-08T13:52:32Z",
             "variants": [
               {
                 "py": "3.13",
@@ -2934,10 +2936,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 34178147394,
                 "run_attempt": 1,
-                "started_at": "2026-09-08T13:27:37Z"
+                "started_at": "2026-09-08T13:27:37Z",
+                "completed_at": "2026-09-08T13:52:32Z"
               },
               {
                 "py": "3.13",

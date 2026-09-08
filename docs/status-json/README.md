@@ -46,7 +46,7 @@ directly to keys in the document:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                        |
 | **nightly**           | An automatic build produced once a day.                                                                                                                |
-| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                           |
+| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                                                                                   |
 | **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                |
 | **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                      |
 | **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.              |
@@ -128,7 +128,7 @@ For a complete, annotated example, see
 
 | Field                              | Meaning                                                                                                          |
 | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `release_type`                     | `nightly`, `nightly-bkc`, `rc` (prerelease/release candidate)                 |
+| `release_type`                     | `nightly`, `nightly-bkc`, `rc` (prerelease/release candidate)                                                    |
 | `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different). |
 | `build_date`                       | `YYYYMMDD` of the build.                                                                                         |
 | `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                  |

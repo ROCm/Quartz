@@ -228,8 +228,8 @@ def _status_json_path(
     if release_type == "nightly":
         return repo_dir / "release-nightly" / suffix / "status.json"
     if release_type == "prerelease":
-        base, full = _prerelease_dirs(release_version)
-        return repo_dir / "prereleases" / base / full / "status.json"
+        major_minor, full = _prerelease_dirs(release_version)
+        return repo_dir / "prerelease" / major_minor / full / "status.json"
 
     raise ValueError(f"Unexpected release_type: {release_type!r}")
 
@@ -238,18 +238,22 @@ _PRERELEASE_VERSION_KEY_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)rc(\d+)$")
 
 
 def _prerelease_dirs(release_version: str) -> tuple[str, str]:
-    """Split a prerelease version into its (base, full) directory names.
+    """Split a prerelease version into its (major.minor, full) directory names.
 
-    "7.14.0rc2" -> ("7.14.0", "7.14.0rc2")
+    "7.14.0rc2" -> ("7.14", "7.14.0rc2")
+    "7.14.1rc1" -> ("7.14", "7.14.1rc1")
+
+    Grouping on the major.minor keeps every patch of one release line (7.14.0,
+    7.14.1, ...) under a single directory.
     """
-    m = RELEASE_VERSION_PRERELEASE_RE.match(release_version)
+    m = _PRERELEASE_VERSION_KEY_RE.match(release_version)
     if not m:
         raise ValueError(
             f"Cannot route prerelease version {release_version!r}; "
             "expected '<major>.<minor>.<patch>rc<N>'."
         )
-    base = release_version[: m.start(1)]
-    return base, release_version
+    major_minor = f"{m[1]}.{m[2]}"
+    return major_minor, release_version
 
 
 def _prerelease_version_key(version: str) -> tuple[int, int, int, int]:
@@ -890,6 +894,21 @@ def _apply_pipeline_enable_flags(
         doc.jax_enabled = jax_enabled
 
 
+def _apply_build_metadata(doc: StatusDocument, workflow_run: WorkflowRunRecord) -> None:
+    """Stamp build_variant / therock_commit off the owning run's classification.
+
+    Both are surfaced only by the setup run: `build_variant` from its dispatch
+    inputs and `therock_commit` from its checkout's captured `commit` output
+    (see `therock_classify.derive_therock_commit`). Each is written only when
+    non-empty.
+    """
+    c = workflow_run.classification
+    if c.build_variant:
+        doc.build_variant = c.build_variant
+    if c.therock_commit:
+        doc.therock_commit = c.therock_commit
+
+
 def _record_orchestrator_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
@@ -927,21 +946,25 @@ def _record_orchestrator_owner(
         doc.trigger_workflow_run_id = rid
         doc.trigger_run_attempt = attempt
     _apply_pipeline_enable_flags(doc, workflow_run)
+    _apply_build_metadata(doc, workflow_run)
     return True
 
 
 def _reset_document_for_new_owner(doc: StatusDocument) -> None:
     """Clear run-owned detail when a newer top-level orchestrator takes over.
 
-    pytorch_enabled/jax_enabled reset to the default-enabled state;
-    `_apply_pipeline_enable_flags`, called right after this from
-    `_record_orchestrator_owner`, re-derives them from the new owner's inputs.
+    pytorch_enabled/jax_enabled reset to the default-enabled state and
+    build_variant/therock_commit to their defaults; `_apply_pipeline_enable_flags`
+    and `_apply_build_metadata`, called right after this from
+    `_record_orchestrator_owner`, re-derive them from the new owner's run.
     """
     doc.completed_at = None
     doc.orchestrator_conclusion = None
     doc.created_at = None
     doc.pytorch_enabled = True
     doc.jax_enabled = True
+    doc.build_variant = ""
+    doc.therock_commit = ""
     doc.linux_architectures.clear()
     doc.windows_architectures.clear()
     doc.linux_urls.clear()
@@ -1174,26 +1197,37 @@ def _update_symlinks(
 
 
 def _update_prerelease_latest(repo_dir: Path, status_path: Path) -> list[Path]:
-    """Point `prereleases/latest.json` at the newest release candidate."""
-    prerelease_root = repo_dir / "prereleases"
-    new_target_relative = status_path.relative_to(prerelease_root)
-    new_version = new_target_relative.parent.name
+    """Point the prerelease `latest.json` pointers at the newest release candidate.
 
-    latest = prerelease_root / "latest.json"
-    if latest.is_symlink():
-        try:
-            existing_version = latest.readlink().parent.name
-            if _prerelease_version_key(existing_version) > _prerelease_version_key(
-                new_version
-            ):
-                return []  # newer candidate already pointed at; do not regress
-        except (IndexError, OSError):
-            pass
+    Maintains two symlinks, both version-key ordered so they never regress from,
+    e.g., rc10 to rc2:
 
-    if latest.is_symlink() or latest.exists():
-        latest.unlink()
-    latest.symlink_to(new_target_relative)
-    return [latest]
+      - `prerelease/latest.json`               newest candidate for the highest version
+                                               across all lines
+      - `prerelease/<major.minor>/latest.json` newest candidate within one line
+    """
+    prerelease_root = repo_dir / "prerelease"
+    major_minor_dir = status_path.parent.parent  # prerelease/<major.minor>
+    new_version = status_path.parent.name  # e.g. 10.0.0rc1
+
+    files_written: list[Path] = []
+    for latest_dir in (prerelease_root, major_minor_dir):
+        latest = latest_dir / "latest.json"
+        new_target_relative = status_path.relative_to(latest_dir)
+        if latest.is_symlink():
+            try:
+                existing_version = latest.readlink().parent.name
+                if _prerelease_version_key(existing_version) > _prerelease_version_key(
+                    new_version
+                ):
+                    continue  # newer candidate already pointed at; do not regress
+            except (IndexError, OSError):
+                pass
+        if latest.is_symlink() or latest.exists():
+            latest.unlink()
+        latest.symlink_to(new_target_relative)
+        files_written.append(latest)
+    return files_written
 
 
 def _latest_good_should_update(latest_good: Path, new_build_date: str) -> bool:

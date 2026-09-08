@@ -35,8 +35,8 @@
             "stage_reuse_max_age_hours": "72",
             "stage_reuse_commit_history": "50",
             "build_python_packages": true,
-            "build_pytorch": true,
-            "build_jax": true,
+            "build_pytorch": false,
+            "build_jax": false,
             "python_version": "",
             "repository": "ROCm/TheRock",
             "ref": "",
@@ -49,6 +49,7 @@
                     "test_type": "comprehensive",
                     "linux_test_labels": "[]",
                     "windows_test_labels": "[]",
+                    "commit": "0123456789abcdef0123456789abcdef01234567",
                     "rocm_package_version": "7.14.0a20260619",
                     "rocm_deb_package_version": "7.14.0~20260619",
                     "rocm_rpm_package_version": "7.14.0~20260619"

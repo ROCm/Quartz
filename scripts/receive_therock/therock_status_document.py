@@ -58,7 +58,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.0"
+SCHEMA_VERSION: Final = "2.1"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -121,6 +121,24 @@ def rollup_statuses(statuses: Iterable[Status], fallback: Status) -> Status:
     for status in (
         Status.failure,
         Status.in_progress,
+        Status.cancelled,
+        Status.success,
+    ):
+        if status in seen:
+            return status
+    return Status.skipped
+
+
+def rollup_sibling_statuses(statuses: Iterable[Status], fallback: Status) -> Status:
+    """Collapse the statuses of independent sibling pipelines (rocm / pytorch /
+    jax / native_packages) on the same platform into one platform status.
+    """
+    seen = set(statuses)
+    if not seen:
+        return fallback
+    for status in (
+        Status.in_progress,
+        Status.failure,
         Status.cancelled,
         Status.success,
     ):
@@ -543,10 +561,17 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.0"] = SCHEMA_VERSION
+    schema_version: Literal["2.1"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""
+    # Build metadata carried from the orchestrator's setup run. `build_variant`
+    # distinguishes release from asan/etc builds (the workflow always sends a
+    # value, defaulting to `"release"` until an asan variant lands);
+    # `therock_commit` is the 40-hex TheRock commit the release was built from,
+    # resolved by the setup checkout.
+    build_variant: str = ""
+    therock_commit: str = ""
     trigger_workflow_run_id: int | None = None
     # Attempt number of the owning orchestrator run. Ownership is the pair
     # (trigger_workflow_run_id, trigger_run_attempt): a GitHub re-run keeps the
@@ -560,6 +585,12 @@ class StatusDocument(BaseModel):
     # `summary.overall_status` so an aborted or failed release is never reported
     # as `success` just because the leaves that happened to report all passed.
     orchestrator_conclusion: Status | None = None
+    # Whether this release's own dispatch enabled pytorch / jax (rocm and
+    # native_packages have no such flag). Disable-only: defaults to `True`
+    # until an explicit `false` is observed (see
+    # `therock_summary._pipeline_enabled`).
+    pytorch_enabled: bool = True
+    jax_enabled: bool = True
     status_json_created: str = ""
     status_json_last_updated: str = ""
 
@@ -576,9 +607,35 @@ class StatusDocument(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _from_wire(cls, data: object) -> object:
-        """Lift the arch/url fields out of the nested `summary` block."""
+        """Migrate the schema version and lift arch/url fields out of `summary`.
+
+        A doc read off disk may predate the current minor (e.g. a 2.0 file
+        written before a 2.1 deploy). Any doc sharing our MAJOR version is
+        accepted and restamped to the current `SCHEMA_VERSION`; the producer
+        rewrites the whole document each event, so fields added by a newer minor
+        simply take their model defaults and the file upgrades in place on the
+        next write. A different major is an incompatible layout and is rejected.
+        """
         if not isinstance(data, dict):
             return data
+
+        on_disk_version = data.get("schema_version")
+        if on_disk_version is not None:
+            cur_major, cur_minor = (int(p) for p in SCHEMA_VERSION.split("."))
+            on_disk_major, on_disk_minor = (
+                int(p) for p in str(on_disk_version).split(".")
+            )
+            # Migrate up only. A different major is an incompatible layout; a
+            # newer minor was written by a producer that knows fields/semantics
+            # this code does not, so it must not be silently downgraded. Only an
+            # older-or-equal minor within the same major is safe to adopt.
+            if on_disk_major != cur_major or on_disk_minor > cur_minor:
+                raise ValueError(
+                    f"status.json schema_version {on_disk_version!r} is not "
+                    f"backward-compatible with the supported {SCHEMA_VERSION!r}; "
+                    f"refusing to migrate (need same major, minor <= "
+                    f"{cur_minor})."
+                )
 
         summary_raw = data.get("summary") or {}
         if not isinstance(summary_raw, dict):
@@ -591,6 +648,7 @@ class StatusDocument(BaseModel):
             windows_summary = {}
 
         out = dict(data)
+        out["schema_version"] = SCHEMA_VERSION
         out.setdefault("linux_architectures", linux_summary.get("architectures") or [])
         out.setdefault(
             "windows_architectures", windows_summary.get("architectures") or []

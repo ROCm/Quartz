@@ -24,7 +24,8 @@ A `status.json` has the following shape:
 
 ```text
 status.json
-├─ release metadata        rocm_version, build_date, release_type, timestamps
+├─ release metadata        rocm_version, build_date, release_type, build_variant,
+│                          therock_commit, pytorch_enabled, jax_enabled, timestamps
 ├─ summary                 the at-a-glance rollup
 │  └─ <platform>           linux | windows
 │     ├─ status            worst-of rollup for the platform
@@ -71,13 +72,14 @@ below.
 Quartz publishes one `status.json` per release build (nightly/prerelease), plus stable pointers to the
 most recent builds.
 
-| Endpoint                                | Points to                                                                     |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| `nightly/<date>/status.json`            | A specific nightly, for example `nightly/20260707/status.json`                |
-| `nightly/latest.json`                   | The most recent nightly (any result, including still in progress)             |
-| `nightly/latest_good.json`              | The most recent fully-passing nightly                                         |
-| `prereleases/<base>/<full>/status.json` | A specific prerelease, for example `prereleases/7.14.0/7.14.0rc1/status.json` |
-| `prereleases/latest.json`               | The most recent prerelease                                                    |
+| Endpoint                                      | Points to                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `nightly/<date>/status.json`                  | A specific nightly, for example `nightly/20260707/status.json`                                |
+| `nightly/latest.json`                         | The most recent nightly (any result, including still in progress)                             |
+| `nightly/latest_good.json`                    | The most recent fully-passing nightly                                                         |
+| `prerelease/<major.minor>/<full>/status.json` | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                    |
+| `prerelease/latest.json`                      | The highest-versioned prerelease across all release lines (by version number, not build date) |
+| `prerelease/<major.minor>/latest.json`        | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`      |
 
 Each is served as raw content. The raw URL form is:
 
@@ -85,7 +87,7 @@ Each is served as raw content. The raw URL form is:
 https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 ```
 
-> **Note on the `latest.json` pointers:** `latest.json` and `prereleases/latest.json`
+> **Note on the `latest.json` pointers:** `latest.json` and `prerelease/latest.json`
 > are git symlinks to the dated `status.json` they currently point at. Raw GitHub
 > serves a symlink as its target path (a one-line body like `20260707/status.json`),
 > not the file it points to, so a plain fetch of `latest.json` returns that path
@@ -105,7 +107,9 @@ https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 Each file has three parts:
 
 1. **Top-level release metadata**: schema version, release type, ROCm version,
-   build date, run id of the triggering workflow, and timestamps.
+   build date, build variant and TheRock commit, which pipelines the release
+   built (`pytorch_enabled` / `jax_enabled`), run id of the triggering workflow,
+   and timestamps.
 1. **`summary`**: a Quartz-computed at-a-glance rollup: overall status,
    per-platform (`linux` / `windows`) status, requested architectures, artifact
    download URLs, and per-pipeline pass/fail counts.
@@ -120,17 +124,20 @@ For a complete, annotated example, see
 
 ### Most-used fields
 
-| Field                              | Meaning                                                                                                          |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `release_type`                     | `nightly`, `rc` (prerelease/release candidate)                                                                   |
-| `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different). |
-| `build_date`                       | `YYYYMMDD` of the build.                                                                                         |
-| `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                  |
-| `summary.overall_status`           | Roll-up status over all platforms and pipelines.                                                                 |
-| `summary.<platform>.status`        | Per-platform roll-up (`linux` / `windows`).                                                                      |
-| `summary.<platform>.architectures` | Requested architectures for the platform.                                                                        |
-| `summary.<platform>.urls`          | Base URLs for tarballs, wheels, packages, and the artifact index.                                                |
-| `summary.<platform>.<pipeline>`    | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters.                       |
+| Field                              | Meaning                                                                                                                              |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `release_type`                     | `nightly`, `rc` (prerelease/release candidate)                                                                                       |
+| `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different).                     |
+| `build_date`                       | `YYYYMMDD` of the build.                                                                                                             |
+| `build_variant`                    | Build flavor: `release`, or a sanitizer build such as `asan` (schema 2.1). `""` when no signal yet; key absent in pre-2.1 documents. |
+| `therock_commit`                   | The 40-hex TheRock commit the release was built from (schema 2.1). `""` until resolved; key absent in pre-2.1 documents.             |
+| `pytorch_enabled` / `jax_enabled`  | Whether this release's dispatch built the PyTorch / JAX pipeline. Disable-only: absent means enabled (`true`).                       |
+| `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                                      |
+| `summary.overall_status`           | Roll-up status over all platforms and pipelines.                                                                                     |
+| `summary.<platform>.status`        | Per-platform roll-up (`linux` / `windows`).                                                                                          |
+| `summary.<platform>.architectures` | Requested architectures for the platform.                                                                                            |
+| `summary.<platform>.urls`          | Base URLs for tarballs, wheels, packages, and the artifact index.                                                                    |
+| `summary.<platform>.<pipeline>`    | Per-pipeline (`rocm`, `pytorch`, `jax`, `native_packages`) build status and test counters.                                           |
 
 In `summary`, while the release is live, an expected-but-unreported pipeline is
 shown as `in_progress`.

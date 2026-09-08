@@ -80,12 +80,16 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
     assert mid.summary.linux.native_packages.deb.status is Status.success
     assert mid.completed_at is None
     assert mid.summary.overall_status is Status.in_progress
+    assert mid.build_variant == "release"
+    assert mid.therock_commit == "0123456789abcdef0123456789abcdef01234567"
 
     assert _process(_RELEASE, tmp_path) == 0
 
     final = _load(tmp_path)
     assert final.completed_at == "2026-06-19T15:25:00Z"
     assert final.summary.overall_status is Status.success
+    assert final.build_variant == "release"
+    assert final.therock_commit == "0123456789abcdef0123456789abcdef01234567"
 
 
 def test_full_nightly_sequence_writes_symlink_and_latest_good(

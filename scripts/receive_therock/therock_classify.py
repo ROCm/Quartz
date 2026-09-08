@@ -49,6 +49,7 @@ def classify(wr: WorkflowRunRecord | None) -> None:
     wr.release_type = derive_release_type(wr)
     c.test_type = derive_test_type(wr)
     c.build_variant = derive_build_variant(wr)
+    c.therock_commit = derive_therock_commit(wr)
     c.source_run_id = derive_source_run_id(wr)
     wr.tarball_url = derive_tarball_url(wr)
     wr.wheels_url = derive_wheels_url(wr)
@@ -264,6 +265,20 @@ def derive_test_type(wr: WorkflowRunRecord) -> str:
 
 def derive_build_variant(wr: WorkflowRunRecord) -> str:
     return str(wr.inputs.get("build_variant") or "").strip()
+
+
+def derive_therock_commit(wr: WorkflowRunRecord) -> str:
+    """40-hex TheRock commit resolved by the setup run's checkout.
+
+    Surfaced as the `commit` captured step output on the setup completed
+    event. Gated to the setup run so a stray `commit` output on any other
+    workflow can never be mistaken for it. Empty off the setup run, or when
+    the output is absent or not a valid 40-hex SHA.
+    """
+    if wr.classification.pipeline_type != "setup":
+        return ""
+    val = _captured_output_value(wr, "commit")
+    return val if val and _GIT_SHA_RE.fullmatch(val) else ""
 
 
 _ARTIFACTS_BUCKET_BY_RELEASE_TYPE: Final[dict[str, str]] = {

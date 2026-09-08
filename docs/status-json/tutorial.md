@@ -90,6 +90,10 @@ dependency-free read helper do it for you:
   or a local path and exposes typed accessors. `latest.json` is a git symlink and
   raw GitHub serves it as its target path rather than the file; `load_status`
   follows that pointer for you, so pointing it at `latest.json` just works.
+  `load_status` also gates on the schema major: it accepts any newer minor (a
+  minor bump only adds optional fields) but raises `UnsupportedSchemaError` on a
+  different major, since a major bump can move or rename fields the accessors
+  read. Treat that as permanent -- update the consumer rather than retry.
 
 > Want a quick look without writing code? The helper also runs as a script.
 > `python3 read_status_json.py` prints a summary of the latest nightly, or pass a

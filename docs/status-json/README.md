@@ -72,16 +72,17 @@ below.
 Quartz publishes one `status.json` per release build (nightly/nightly-bkc/prerelease), plus stable pointers to the
 most recent builds.
 
-| Endpoint                                | Points to                                                                              |
-| --------------------------------------- | -------------------------------------------------------------------------------------- |
-| `release-nightly/<date>/status.json`    | A specific nightly, for example `release-nightly/20260707/status.json`                 |
-| `release-nightly/latest.json`           | The most recent nightly (any result, including still in progress)                      |
-| `release-nightly/latest_good.json`      | The most recent fully-passing nightly                                                  |
-| `nightly-bkc/<base>/<date>/status.json` | A specific bkc nightly, for example `nightly-bkc/10.1.0a20260825/20260831/status.json` |
-| `nightly-bkc/<base>/latest.json`        | The most recent bkc nightly for that base (any result, including still in progress)    |
-| `nightly-bkc/<base>/latest_good.json`   | The most recent fully-passing bkc nightly for that base                                |
-| `prereleases/<base>/<full>/status.json` | A specific prerelease, for example `prereleases/7.14.0/7.14.0rc1/status.json`          |
-| `prereleases/latest.json`               | The most recent prerelease                                                             |
+| Endpoint                                      | Points to                                                                                     |
+| --------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| `release-nightly/<date>/status.json`          | A specific nightly, for example `release-nightly/20260707/status.json`                        |
+| `release-nightly/latest.json`                 | The most recent nightly (any result, including still in progress)                             |
+| `release-nightly/latest_good.json`            | The most recent fully-passing nightly                                                         |
+| `nightly-bkc/<base>/<date>/status.json`       | A specific bkc nightly, for example `nightly-bkc/10.1.0a20260825/20260831/status.json`        |
+| `nightly-bkc/<base>/latest.json`              | The most recent bkc nightly for that base (any result, including still in progress)           |
+| `nightly-bkc/<base>/latest_good.json`         | The most recent fully-passing bkc nightly for that base                                       |
+| `prerelease/<major.minor>/<full>/status.json` | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                    |
+| `prerelease/latest.json`                      | The highest-versioned prerelease across all release lines (by version number, not build date) |
+| `prerelease/<major.minor>/latest.json`        | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`      |
 
 Each is served as raw content. The raw URL form is:
 
@@ -90,7 +91,7 @@ https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json
 ```
 
 > **Note on the `latest.json` pointers:** `latest.json`, `nightly-bkc/<base>/latest.json`,
-> and `prereleases/latest.json`
+> and `prerelease/latest.json`
 > are git symlinks to the dated `status.json` they currently point at. Raw GitHub
 > serves a symlink as its target path (a one-line body like `20260707/status.json`),
 > not the file it points to, so a plain fetch of `latest.json` returns that path

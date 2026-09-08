@@ -130,6 +130,24 @@ def rollup_statuses(statuses: Iterable[Status], fallback: Status) -> Status:
     return Status.skipped
 
 
+def rollup_sibling_statuses(statuses: Iterable[Status], fallback: Status) -> Status:
+    """Collapse the statuses of independent sibling pipelines (rocm / pytorch /
+    jax / native_packages) on the same platform into one platform status.
+    """
+    seen = set(statuses)
+    if not seen:
+        return fallback
+    for status in (
+        Status.in_progress,
+        Status.failure,
+        Status.cancelled,
+        Status.success,
+    ):
+        if status in seen:
+            return status
+    return Status.skipped
+
+
 class Variant(BaseModel):
     """One matrix cell of a fan-out pipeline (e.g. pytorch py x torch).
 
@@ -561,6 +579,12 @@ class StatusDocument(BaseModel):
     # `summary.overall_status` so an aborted or failed release is never reported
     # as `success` just because the leaves that happened to report all passed.
     orchestrator_conclusion: Status | None = None
+    # Whether this release's own dispatch enabled pytorch / jax (rocm and
+    # native_packages have no such flag). Disable-only: defaults to `True`
+    # until an explicit `false` is observed (see
+    # `therock_summary._pipeline_enabled`).
+    pytorch_enabled: bool = True
+    jax_enabled: bool = True
     status_json_created: str = ""
     status_json_last_updated: str = ""
 

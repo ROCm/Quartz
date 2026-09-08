@@ -25,6 +25,7 @@ from typing import Final
 
 from therock_types import (
     ORCHESTRATOR_SPECS,
+    RELEASE_VERSION_BKC_RE,
     RELEASE_VERSION_NIGHTLY_RE,
     WORKFLOW_SPECS,
     WorkflowRunRecord,
@@ -241,12 +242,24 @@ def _dev_local(wr: WorkflowRunRecord, fallback: str) -> str:
     return ref if _GIT_SHA_RE.fullmatch(ref) else fallback
 
 
+def _canonicalize_bkc_version(v: str) -> str:
+    """Normalize any bkc producer separator to the canonical `+bkc.` form.
+
+    The three producers spell the bkc suffix differently: wheel `+bkc.`,
+    native deb/rpm `.bkc.`, framework `-bkc.`. The canonical `release_version`
+    is the PEP 440 wheel form, so all collapse to `<base>+bkc.<run_date>`.
+    """
+    m = RELEASE_VERSION_BKC_RE.match(v)
+    return f"{m.group(1)}+bkc.{m.group(2)}" if m else v
+
+
 def derive_release_version(wr: WorkflowRunRecord) -> str | None:
     raw = (wr.rocm_version or "").strip()
     if not raw:
         return None
     v = _rocm_version_segment(raw)
-    return _normalize_native_version(v, wr) if "~" in v else v
+    v = _normalize_native_version(v, wr) if "~" in v else v
+    return _canonicalize_bkc_version(v)
 
 
 def derive_release_type(wr: WorkflowRunRecord) -> str:
@@ -269,6 +282,7 @@ def derive_build_variant(wr: WorkflowRunRecord) -> str:
 _ARTIFACTS_BUCKET_BY_RELEASE_TYPE: Final[dict[str, str]] = {
     "dev": "therock-dev-artifacts",
     "nightly": "therock-nightly-artifacts",
+    "nightly-bkc": "therock-bkc-artifacts",
     "prerelease": "therock-prerelease-artifacts",
 }
 
@@ -468,6 +482,8 @@ def _native_package_urls(
 # each stream is served at its own `<stream>.repo.amd.com/rocm/` subdomain.
 # `dev` is intentionally absent: normal dev builds stay in the S3 artifact
 # bucket, and release-triggered devreleases are out of scope for now.
+# `nightly-bkc` is also intentionally absent: its CDN domain is not online yet,
+# so bkc runs keep their per-run S3 artifact URLs (therock-bkc-artifacts).
 _RELEASE_CDN_BASE: Final[dict[str, str]] = {
     "nightly": "https://nightly.repo.amd.com/rocm/",
     "prerelease": "https://rc.repo.amd.com/rocm/",

@@ -133,6 +133,21 @@ class DeriveReleaseVersionTest(unittest.TestCase):
         )
         self.assertEqual(derive_release_version(rec), "7.13.0.dev0+db2fd412")
 
+    def test_bkc_rocm_local_passes_through(self):
+        # rocm wheel form: already the canonical PEP 440 local segment.
+        rec = _make_record(rocm_version="10.1.0a20260825+bkc.20260831")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260825+bkc.20260831")
+
+    def test_bkc_native_normalizes_tilde_base(self):
+        # deb/rpm `~` base becomes `a`; the `.bkc.` separator canonicalizes to `+bkc.`.
+        rec = _make_record(rocm_version="10.1.0~20260825.bkc.20260831")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260825+bkc.20260831")
+
+    def test_bkc_framework_stripped_to_rocm_part(self):
+        # framework `-bkc.` separator canonicalizes to the wheel `+bkc.` form.
+        rec = _make_record(rocm_version="2.12.0+rocm10.1.0a20260811-bkc.20260813")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260811+bkc.20260813")
+
 
 class DeriveReleaseTypeTest(unittest.TestCase):
     def test_returns_declared_type(self):
@@ -375,6 +390,15 @@ class DeriveTarballUrlTest(unittest.TestCase):
         self.assertEqual(
             derive_tarball_url(rec),
             "https://therock-nightly-artifacts.s3.amazonaws.com/"
+            "27797822902-linux/tarballs/",
+        )
+
+    def test_bkc_uses_bkc_artifacts_bucket(self):
+        rec = self._build_record()
+        rec.release_type = "nightly-bkc"
+        self.assertEqual(
+            derive_tarball_url(rec),
+            "https://therock-bkc-artifacts.s3.amazonaws.com/"
             "27797822902-linux/tarballs/",
         )
 

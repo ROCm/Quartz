@@ -183,6 +183,7 @@ def _establish_owner(
     *,
     release_type: str = "nightly",
     version: str = _RELEASE_VERSION,
+    head_branch: str = "main",
 ) -> None:
     """Anchor document ownership the way the real pipeline does.
 
@@ -198,6 +199,7 @@ def _establish_owner(
     orch.status = "in_progress"
     orch.release_type = release_type
     orch.rocm_version = version
+    orch.head_branch = head_branch
     orch.classification.release_version = version
     tusj.update_status_json(
         _event(orch, event_type="workflow_run_in_progress"),
@@ -794,6 +796,120 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
     )
     latest = tmp_path / "prereleases" / "latest.json"
     assert latest.readlink() == Path("7.14.0/7.14.0rc10/status.json")
+
+
+# --- bkc nightly: base/run_date routing, per-base pointers, branch guard -----
+
+_BKC_BRANCH = "release/bkc/therock-10.1-20260825"
+_BKC_BASE = "10.1.0a20260825"
+_BKC_RUN_DATE = "20260831"
+_BKC_VERSION = f"{_BKC_BASE}+bkc.{_BKC_RUN_DATE}"
+
+
+def _bkc_leaf_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
+    run = _leaf_run()
+    run.release_type = "nightly-bkc"
+    run.head_branch = _BKC_BRANCH
+    run.rocm_version = version
+    run.classification.release_version = version
+    return run
+
+
+def _bkc_orchestrator_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
+    run = _orchestrator_run()
+    run.release_type = "nightly-bkc"
+    run.head_branch = _BKC_BRANCH
+    run.rocm_version = version
+    run.classification.release_version = version
+    return run
+
+
+def _bkc_status_path(repo_dir: Path) -> Path:
+    return repo_dir / "nightly-bkc" / _BKC_BASE / _BKC_RUN_DATE / "status.json"
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        f"{_BKC_BASE}+bkc.{_BKC_RUN_DATE}",  # rocm PEP 440 local
+        f"{_BKC_BASE}.bkc.{_BKC_RUN_DATE}",  # native deb/rpm (normalized)
+        f"{_BKC_BASE}-bkc.{_BKC_RUN_DATE}",  # pytorch framework local
+    ],
+)
+def test_bkc_routes_to_base_rundate_tree(tmp_path: Path, version: str) -> None:
+    # All three producer separators normalize to the same (base, run_date) dir.
+    out = tusj.update_status_json(
+        _event(_bkc_leaf_run(version)), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out == _bkc_status_path(tmp_path)
+    assert not (tmp_path / "release-nightly").exists()
+
+
+def test_bkc_leaf_creates_latest_symlink_but_not_latest_good(
+    tmp_path: Path,
+) -> None:
+    _establish_owner(
+        tmp_path,
+        release_type="nightly-bkc",
+        version=_BKC_VERSION,
+        head_branch=_BKC_BRANCH,
+    )
+    out = tusj.update_status_json(
+        _event(_bkc_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out == _bkc_status_path(tmp_path)
+
+    latest = tmp_path / "nightly-bkc" / _BKC_BASE / "latest.json"
+    assert latest.is_symlink()
+    assert latest.readlink() == Path(_BKC_RUN_DATE) / "status.json"
+
+    # A leaf alone keeps the release in_progress, so no good snapshot yet.
+    assert not (tmp_path / "nightly-bkc" / _BKC_BASE / "latest_good.json").exists()
+
+
+def test_bkc_finalized_writes_latest_good_snapshot(tmp_path: Path) -> None:
+    tusj.update_status_json(
+        _event(_bkc_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_bkc_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    latest_good = tmp_path / "nightly-bkc" / _BKC_BASE / "latest_good.json"
+    assert latest_good.exists()
+    assert not latest_good.is_symlink()
+    snapshot = StatusDocument.from_dict(
+        json.loads(latest_good.read_text(encoding="utf-8"))
+    )
+    assert snapshot.summary.overall_status is Status.success
+
+
+def test_nightly_off_main_branch_raises(tmp_path: Path) -> None:
+    run = _leaf_run()
+    run.head_branch = "users/someone/feature"
+    with pytest.raises(ValueError, match="must be built from 'main'"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_bkc_off_release_branch_raises(tmp_path: Path) -> None:
+    run = _bkc_leaf_run()
+    run.head_branch = "main"
+    with pytest.raises(ValueError, match="release/bkc/"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_prerelease_off_disallowed_branch_raises(tmp_path: Path) -> None:
+    run = _prerelease_leaf_run()
+    run.head_branch = "release/bkc/therock-10.1-20260825"
+    with pytest.raises(ValueError, match="release/therock-"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_prerelease_from_release_therock_branch_routes(tmp_path: Path) -> None:
+    run = _prerelease_leaf_run()
+    run.head_branch = "release/therock-7.14"
+    out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+    assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
 
 
 def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:

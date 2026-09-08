@@ -63,6 +63,7 @@ from therock_status_document import (
 )
 from therock_summary import freeze_requested_architectures, rebuild_summary
 from therock_types import (
+    RELEASE_VERSION_BKC_RE,
     RELEASE_VERSION_DEV_RE,
     RELEASE_VERSION_NIGHTLY_RE,
     RELEASE_VERSION_PRERELEASE_RE,
@@ -217,6 +218,14 @@ def _status_json_path(
     workflow_run: WorkflowRunRecord,
 ) -> Path:
     release_version = workflow_run.classification.release_version or ""
+    # bkc carries two dates (base build date + bkc run date) that cannot be
+    # reconstructed from `created_at`, and its version is not one of the
+    # nightly/prerelease forms `_release_version_suffix` accepts, so route it
+    # before that call.
+    if release_type == "nightly-bkc":
+        base, run_date = _bkc_dirs(release_version)
+        return repo_dir / "nightly-bkc" / base / run_date / "status.json"
+
     # Test workflows are dispatched without a version input, so their events
     # carry no release_version.
     if not release_version and release_type == "nightly" and workflow_run.created_at:
@@ -231,6 +240,20 @@ def _status_json_path(
         return repo_dir / "prereleases" / base / full / "status.json"
 
     raise ValueError(f"Unexpected release_type: {release_type!r}")
+
+
+def _bkc_dirs(release_version: str) -> tuple[str, str]:
+    """Split a bkc version into its (base, run_date) directory names.
+
+    "10.1.0a20260825+bkc.20260831" -> ("10.1.0a20260825", "20260831")
+    """
+    m = RELEASE_VERSION_BKC_RE.match(release_version)
+    if not m:
+        raise ValueError(
+            f"Cannot route bkc version {release_version!r}; expected "
+            "'<major>.<minor>.<patch>a<YYYYMMDD>[+.-]bkc.<YYYYMMDD>'."
+        )
+    return m.group(1), m.group(2)
 
 
 _PRERELEASE_VERSION_KEY_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)rc(\d+)$")
@@ -261,7 +284,11 @@ def _prerelease_version_key(version: str) -> tuple[int, int, int, int]:
     return (int(m[1]), int(m[2]), int(m[3]), int(m[4]))
 
 
-_DOC_RELEASE_TYPE = {"nightly": "nightly", "prerelease": "rc"}
+_DOC_RELEASE_TYPE = {
+    "nightly": "nightly",
+    "nightly-bkc": "nightly-bkc",
+    "prerelease": "rc",
+}
 
 
 def _doc_release_type(release_type: str) -> str:
@@ -1103,13 +1130,19 @@ def _update_symlinks(
     release_type: str,
 ) -> list[Path]:
     """Update `latest.json` (symlink) and `latest_good.json` (snapshot file).
-    Only meaningful for the `nightly` release type."""
+    Meaningful for the `nightly` and `nightly-bkc` release types."""
     if release_type == "prerelease":
         return _update_prerelease_latest(repo_dir, status_path)
-    if release_type != "nightly":
+
+    # nightly     -> release-nightly/<date>/status.json,   pointers at release-nightly/
+    # nightly-bkc -> nightly-bkc/<base>/<date>/status.json, pointers at nightly-bkc/<base>/
+    if release_type == "nightly":
+        latest_dir = repo_dir / "release-nightly"
+    elif release_type == "nightly-bkc":
+        latest_dir = status_path.parent.parent
+    else:
         return []
 
-    latest_dir = repo_dir / "release-nightly"
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
 
@@ -1459,7 +1492,9 @@ _TRACKED_EVENT_TYPES: frozenset[str] = frozenset(
     {"workflow_run_in_progress", "workflow_run_completed"}
 )
 
-_TRACKED_RELEASE_TYPES: frozenset[str] = frozenset({"nightly", "prerelease"})
+_TRACKED_RELEASE_TYPES: frozenset[str] = frozenset(
+    {"nightly", "nightly-bkc", "prerelease"}
+)
 
 # status.json is only produced for the release-tracking repository; runs from
 # anywhere else (TheRock itself, forks) never touch it. Matched case-insensitively.
@@ -1467,6 +1502,37 @@ _TRACKED_RELEASE_TYPES: frozenset[str] = frozenset({"nightly", "prerelease"})
 _TRACKED_REPOSITORIES: frozenset[str] = frozenset(
     {"rocm/rockrel", "rocm/quartz-tester-rockrel"}
 )
+
+
+def _assert_branch_matches_release_type(release_type: str, head_branch: str) -> None:
+    """Guard that the triggering ref matches the release tier it claims to be.
+
+    A mismatch means a run was cut from the wrong branch (for example a nightly
+    off a feature branch, or a bkc off `main`); the resulting version and layout
+    would be wrong, so this raises rather than silently publishing.
+
+      nightly      -> `main`
+      nightly-bkc  -> `release/bkc/...`
+      prerelease   -> `main` or `release/therock-...`
+    """
+    branch = head_branch or ""
+    if release_type == "nightly":
+        allowed = branch == "main"
+        expected = "'main'"
+    elif release_type == "nightly-bkc":
+        allowed = branch.startswith("release/bkc/")
+        expected = "'release/bkc/...'"
+    elif release_type == "prerelease":
+        allowed = branch == "main" or branch.startswith("release/therock-")
+        expected = "'main' or 'release/therock-...'"
+    else:
+        return
+
+    if not allowed:
+        raise ValueError(
+            f"release_type={release_type!r} must be built from {expected}, "
+            f"but the run was triggered from head_branch={head_branch!r}."
+        )
 
 
 def _is_release_cdn_url_update(
@@ -1569,6 +1635,8 @@ def update_status_json(
             sorted(_TRACKED_RELEASE_TYPES),
         )
         return None
+
+    _assert_branch_matches_release_type(release_type, workflow_run.head_branch)
 
     finalize = None
     record_owner_only = False

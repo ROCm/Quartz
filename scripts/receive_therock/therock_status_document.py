@@ -101,6 +101,7 @@ class ReleaseType(StrEnum):
     """Release tier as rendered in status.json (v2 schema)."""
 
     nightly = "nightly"
+    nightly_bkc = "nightly-bkc"
     rc = "rc"
     dev = "dev"
 

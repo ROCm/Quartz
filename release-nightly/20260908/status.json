@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-08T00:02:04Z",
-  "status_json_last_updated": "2026-09-08T06:16:43Z",
+  "status_json_last_updated": "2026-09-08T06:45:42Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -66,8 +66,8 @@
         },
         "test_full": {
           "success": 0,
-          "failure": 0,
-          "in_progress": 3,
+          "failure": 1,
+          "in_progress": 2,
           "cancelled": 0,
           "skipped": 0
         }
@@ -3602,18 +3602,20 @@
       "test_full": {
         "linux": {
           "gfx94X-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 34185006914,
             "run_attempt": 1,
             "started_at": "2026-09-08T02:31:34Z",
+            "completed_at": "2026-09-08T06:44:48Z",
             "variants": [
               {
                 "py": "3.12",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 34180352453,
                 "run_attempt": 1,
-                "started_at": "2026-09-08T02:31:34Z"
+                "started_at": "2026-09-08T02:31:34Z",
+                "completed_at": "2026-09-08T06:44:48Z"
               },
               {
                 "py": "3.12",

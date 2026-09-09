@@ -22,7 +22,8 @@ does not qualify (see `update_status_json` for the gate conditions).
 
 When `commit_and_push` is True (production): each attempt fetches and
 hard-resets onto the upstream head, then applies the run, commits, and pushes,
-up to `MAX_RETRIES` times. Resetting to `@{u}` before every attempt drops a
+retrying until a wall-clock deadline (`QUARTZ_STATUS_PUSH_MAX_WAIT_SEC`,
+default 15 minutes) elapses. Resetting to `@{u}` before every attempt drops a
 commit that lost the push race and rebuilds against whatever already landed, so
 each attempt starts from fresh upstream state (back off randomly between
 retries).
@@ -68,42 +69,46 @@ from therock_types import (
     TheRockDispatchEvent,
     WorkflowJobRecord,
     WorkflowRunRecord,
+    _parse_bool,
 )
 
 log = logging.getLogger(__name__)
 
 
-# Push-race retry tuning. A large release fan-out has dozens of runs pushing to
-# the same branch ref within a minute or two, so a losing run must be able to
-# wait out that whole contention window. Each attempt rebuilds against fresh
-# upstream (see the loop in `update_status_json`), so retrying is idempotent and
-# safe -- the only reason to cap attempts is to bound wasted CI time. The cap is
-# the only tuning lever for contention, so it is overridable via the
-# `QUARTZ_STATUS_PUSH_MAX_RETRIES` env var for unusually large fan-outs.
-def _max_retries() -> int:
-    raw = os.environ.get("QUARTZ_STATUS_PUSH_MAX_RETRIES")
+def _max_wait_seconds() -> float:
+    """Push-race retry tuning. A large release fan-out has dozens of runs
+    pushing to the same branch ref within a minute or two, so a losing run
+    must be able to wait out that whole contention window. Each attempt
+    rebuilds against fresh upstream (see the loop in `update_status_json`), so
+    retrying is idempotent and safe. Overridable via
+    `QUARTZ_STATUS_PUSH_MAX_WAIT_SEC` for unusually large fan-outs.
+    """
+    raw = os.environ.get("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC")
     if raw:
         try:
-            parsed = int(raw)
+            parsed = float(raw)
             if parsed > 0:
                 return parsed
             log.warning(
-                "QUARTZ_STATUS_PUSH_MAX_RETRIES=%r is not a positive int; "
-                "falling back to default %s",
+                "QUARTZ_STATUS_PUSH_MAX_WAIT_SEC=%r is not a positive number; "
+                "falling back to default %ss",
                 raw,
-                _DEFAULT_MAX_RETRIES,
+                _DEFAULT_MAX_WAIT_SEC,
             )
         except ValueError:
             log.warning(
-                "QUARTZ_STATUS_PUSH_MAX_RETRIES=%r is not an int; "
-                "falling back to default %s",
+                "QUARTZ_STATUS_PUSH_MAX_WAIT_SEC=%r is not a number; "
+                "falling back to default %ss",
                 raw,
-                _DEFAULT_MAX_RETRIES,
+                _DEFAULT_MAX_WAIT_SEC,
             )
-    return _DEFAULT_MAX_RETRIES
+    return _DEFAULT_MAX_WAIT_SEC
 
 
-_DEFAULT_MAX_RETRIES = 12
+# 15 minutes: comfortably longer than any observed release fan-out burst, so a
+# losing run always gets to retry against fresh upstream until the burst
+# drains rather than exhausting a fixed attempt count mid-contention.
+_DEFAULT_MAX_WAIT_SEC = 900.0
 # Exponential backoff with full jitter (AWS-style): attempt N (1-indexed) waits a
 # random duration in [0, min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * 2**(N-1))]. Full
 # jitter de-synchronizes runs that started together so they stop colliding.
@@ -207,6 +212,25 @@ def _release_version_suffix(release_version: str) -> str:
     )
 
 
+# --- TEMPORARY: nightly folder-rename bridge (remove after ~2026-09-11) ---
+# The nightly tree moved release-nightly/ -> nightly/ (#93). The nightly already
+# in flight on the cutover day wrote its early events to release-nightly/, so
+# routing its late events (e.g. the pytorch tests that finish hours later) to
+# nightly/ would split one run across two folders. Pin just the cutover date's
+# nightly to the old folder; every later date uses the new one. Keyed on the
+# document's own date suffix, not wall-clock now(), so late or rerun events for
+# the straddling run still land in the old folder. Delete this, `_nightly_root`,
+# and its use in `_status_json_path` once that nightly has aged out of consumers.
+_NIGHTLY_LEGACY_FOLDER_DATE = "20260908"
+
+
+def _nightly_root(date_suffix: str) -> str:
+    """Old vs new nightly root during the folder-rename transition."""
+    if date_suffix == _NIGHTLY_LEGACY_FOLDER_DATE:
+        return "release-nightly"
+    return "nightly"
+
+
 def _status_json_path(
     repo_dir: Path,
     release_type: str,
@@ -221,10 +245,10 @@ def _status_json_path(
         suffix = _release_version_suffix(release_version)
 
     if release_type == "nightly":
-        return repo_dir / "release-nightly" / suffix / "status.json"
+        return repo_dir / _nightly_root(suffix) / suffix / "status.json"
     if release_type == "prerelease":
-        base, full = _prerelease_dirs(release_version)
-        return repo_dir / "prereleases" / base / full / "status.json"
+        major_minor, full = _prerelease_dirs(release_version)
+        return repo_dir / "prerelease" / major_minor / full / "status.json"
 
     raise ValueError(f"Unexpected release_type: {release_type!r}")
 
@@ -233,18 +257,22 @@ _PRERELEASE_VERSION_KEY_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)rc(\d+)$")
 
 
 def _prerelease_dirs(release_version: str) -> tuple[str, str]:
-    """Split a prerelease version into its (base, full) directory names.
+    """Split a prerelease version into its (major.minor, full) directory names.
 
-    "7.14.0rc2" -> ("7.14.0", "7.14.0rc2")
+    "7.14.0rc2" -> ("7.14", "7.14.0rc2")
+    "7.14.1rc1" -> ("7.14", "7.14.1rc1")
+
+    Grouping on the major.minor keeps every patch of one release line (7.14.0,
+    7.14.1, ...) under a single directory.
     """
-    m = RELEASE_VERSION_PRERELEASE_RE.match(release_version)
+    m = _PRERELEASE_VERSION_KEY_RE.match(release_version)
     if not m:
         raise ValueError(
             f"Cannot route prerelease version {release_version!r}; "
             "expected '<major>.<minor>.<patch>rc<N>'."
         )
-    base = release_version[: m.start(1)]
-    return base, release_version
+    major_minor = f"{m[1]}.{m[2]}"
+    return major_minor, release_version
 
 
 def _prerelease_version_key(version: str) -> tuple[int, int, int, int]:
@@ -861,6 +889,45 @@ def _update_release_cdn_urls(
         urls["deb"] = next(iter(workflow_run.deb_urls.values()))
 
 
+def _apply_pipeline_enable_flags(
+    doc: StatusDocument, workflow_run: WorkflowRunRecord
+) -> None:
+    """Capture this release's pytorch/jax enable-flags off the owning run's
+    dispatch inputs (`build_pytorch` / `build_jax`), so the rollup can tell an
+    explicitly disabled pipeline apart from one that is merely dispatched but
+    has not reported yet (issue #57, see `therock_summary._pipeline_enabled`).
+
+    Both `multi_arch_release.yml` (the top-level orchestrator) and
+    `setup_multi_arch.yml` (its `workflow_call` child, which can also
+    establish ownership -- see `_record_orchestrator_owner`) carry these as
+    top-level dispatch inputs, so this is safe to call from either. Leaves the
+    existing (default-enabled) value untouched when an input is absent, e.g.
+    an older orchestrator run that predates it.
+    """
+    inputs = workflow_run.inputs or {}
+    pytorch_enabled = _parse_bool(inputs.get("build_pytorch"))
+    if pytorch_enabled is not None:
+        doc.pytorch_enabled = pytorch_enabled
+    jax_enabled = _parse_bool(inputs.get("build_jax"))
+    if jax_enabled is not None:
+        doc.jax_enabled = jax_enabled
+
+
+def _apply_build_metadata(doc: StatusDocument, workflow_run: WorkflowRunRecord) -> None:
+    """Stamp build_variant / therock_commit off the owning run's classification.
+
+    Both are surfaced only by the setup run: `build_variant` from its dispatch
+    inputs and `therock_commit` from its checkout's captured `commit` output
+    (see `therock_classify.derive_therock_commit`). Each is written only when
+    non-empty.
+    """
+    c = workflow_run.classification
+    if c.build_variant:
+        doc.build_variant = c.build_variant
+    if c.therock_commit:
+        doc.therock_commit = c.therock_commit
+
+
 def _record_orchestrator_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
@@ -897,14 +964,26 @@ def _record_orchestrator_owner(
             _reset_finalization_for_rerun(doc)
         doc.trigger_workflow_run_id = rid
         doc.trigger_run_attempt = attempt
+    _apply_pipeline_enable_flags(doc, workflow_run)
+    _apply_build_metadata(doc, workflow_run)
     return True
 
 
 def _reset_document_for_new_owner(doc: StatusDocument) -> None:
-    """Clear run-owned detail when a newer top-level orchestrator takes over."""
+    """Clear run-owned detail when a newer top-level orchestrator takes over.
+
+    pytorch_enabled/jax_enabled reset to the default-enabled state and
+    build_variant/therock_commit to their defaults; `_apply_pipeline_enable_flags`
+    and `_apply_build_metadata`, called right after this from
+    `_record_orchestrator_owner`, re-derive them from the new owner's run.
+    """
     doc.completed_at = None
     doc.orchestrator_conclusion = None
     doc.created_at = None
+    doc.pytorch_enabled = True
+    doc.jax_enabled = True
+    doc.build_variant = ""
+    doc.therock_commit = ""
     doc.linux_architectures.clear()
     doc.windows_architectures.clear()
     doc.linux_urls.clear()
@@ -1105,7 +1184,10 @@ def _update_symlinks(
     if release_type != "nightly":
         return []
 
-    latest_dir = repo_dir / "release-nightly"
+    # Root follows wherever the document was written: nightly/ normally, or the
+    # legacy release-nightly/ during the rename bridge (see `_nightly_root`), so
+    # the pointer never crosses into a different folder than its target.
+    latest_dir = status_path.parent.parent
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
 
@@ -1137,26 +1219,37 @@ def _update_symlinks(
 
 
 def _update_prerelease_latest(repo_dir: Path, status_path: Path) -> list[Path]:
-    """Point `prereleases/latest.json` at the newest release candidate."""
-    prerelease_root = repo_dir / "prereleases"
-    new_target_relative = status_path.relative_to(prerelease_root)
-    new_version = new_target_relative.parent.name
+    """Point the prerelease `latest.json` pointers at the newest release candidate.
 
-    latest = prerelease_root / "latest.json"
-    if latest.is_symlink():
-        try:
-            existing_version = latest.readlink().parent.name
-            if _prerelease_version_key(existing_version) > _prerelease_version_key(
-                new_version
-            ):
-                return []  # newer candidate already pointed at; do not regress
-        except (IndexError, OSError):
-            pass
+    Maintains two symlinks, both version-key ordered so they never regress from,
+    e.g., rc10 to rc2:
 
-    if latest.is_symlink() or latest.exists():
-        latest.unlink()
-    latest.symlink_to(new_target_relative)
-    return [latest]
+      - `prerelease/latest.json`               newest candidate for the highest version
+                                               across all lines
+      - `prerelease/<major.minor>/latest.json` newest candidate within one line
+    """
+    prerelease_root = repo_dir / "prerelease"
+    major_minor_dir = status_path.parent.parent  # prerelease/<major.minor>
+    new_version = status_path.parent.name  # e.g. 10.0.0rc1
+
+    files_written: list[Path] = []
+    for latest_dir in (prerelease_root, major_minor_dir):
+        latest = latest_dir / "latest.json"
+        new_target_relative = status_path.relative_to(latest_dir)
+        if latest.is_symlink():
+            try:
+                existing_version = latest.readlink().parent.name
+                if _prerelease_version_key(existing_version) > _prerelease_version_key(
+                    new_version
+                ):
+                    continue  # newer candidate already pointed at; do not regress
+            except (IndexError, OSError):
+                pass
+        if latest.is_symlink() or latest.exists():
+            latest.unlink()
+        latest.symlink_to(new_target_relative)
+        files_written.append(latest)
+    return files_written
 
 
 def _latest_good_should_update(latest_good: Path, new_build_date: str) -> bool:
@@ -1672,23 +1765,28 @@ def update_status_json(
         return status_path
 
     doc: StatusDocument | None = None
-    max_retries = _max_retries()
+    max_wait_seconds = _max_wait_seconds()
+    start = time.monotonic()
+    deadline = start + max_wait_seconds
     # Spread simultaneously-started runs so they do not all contend the ref at
     # once on the first attempt.
     time.sleep(random.uniform(0, INITIAL_JITTER_SEC))
-    for attempt in range(max_retries):
-        if attempt > 0:
+    attempt = 0
+    while time.monotonic() < deadline:
+        attempt += 1
+        if attempt > 1:
             # Exponential backoff with full jitter, capped at BACKOFF_CAP_SEC.
-            ceiling = min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * (2 ** (attempt - 1)))
+            ceiling = min(BACKOFF_CAP_SEC, BACKOFF_BASE_SEC * (2 ** (attempt - 2)))
             backoff = random.uniform(0, ceiling)
             log.warning(
-                "Update attempt %s/%s failed (lost race or transient git "
+                "Update attempt %s failed (lost race or transient git "
                 "error), retrying in %.1fs...",
                 attempt,
-                max_retries - 1,
                 backoff,
             )
             time.sleep(backoff)
+            if time.monotonic() >= deadline:
+                break
 
         # Clear any stale `.git/*.lock` left by a killed prior git before
         # touching the index/refs, so a wedged lock does not fail every attempt
@@ -1718,10 +1816,10 @@ def update_status_json(
         outcome = _commit_and_push(repo_dir, files_to_commit, commit_message)
         if outcome is _PushOutcome.DONE:
             log.info(
-                "status.json updated: %s (attempt %s/%s)",
+                "status.json updated: %s (attempt %s, %.1fs elapsed)",
                 status_path.relative_to(repo_dir),
-                attempt + 1,
-                max_retries,
+                attempt,
+                time.monotonic() - start,
             )
             log.debug("%s", doc.to_json())
             return status_path
@@ -1738,7 +1836,10 @@ def update_status_json(
         # _PushOutcome.RETRY: lost the race; loop and rebuild against upstream.
 
     log.error(
-        "Failed to push after %s attempts. Final status.json content:", max_retries
+        "Failed to push after %s attempts over %.0fs (deadline exceeded). "
+        "Final status.json content:",
+        attempt,
+        max_wait_seconds,
     )
     if doc:
         log.error("%s", doc.to_json())
@@ -1746,7 +1847,8 @@ def update_status_json(
         log.error("No status.json content generated.")
     cls = workflow_run.classification
     raise RuntimeError(
-        f"Failed to push status.json after {max_retries} attempts "
+        f"Failed to push status.json after {attempt} attempts over "
+        f"{max_wait_seconds:.0f}s (deadline exceeded) "
         f"(workflow_run_id={workflow_run.workflow_run_id}, "
         f"{cls.platform}/{cls.pipeline_type}."
         f"{cls.pipeline_phase})."

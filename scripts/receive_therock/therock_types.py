@@ -50,6 +50,17 @@ def _parse_int(value: Any) -> int | None:
         return None
 
 
+def _parse_bool(value: Any) -> bool | None:
+    """Parse a dispatch-input bool, tolerant of arriving as a native `bool`
+    (a typed `workflow_dispatch`/`workflow_call` input serialized via
+    `toJSON`) or as a string. Returns `None` when absent or unparsable."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in ("true", "false"):
+        return value.strip().lower() == "true"
+    return None
+
+
 def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | None]:
     """Split the propagated `quartz_tracking_id` into (owner_run_id, release_type).
 
@@ -605,6 +616,11 @@ class Classification:
     # `inputs.variant` (e.g. `"release"` | `"debug"` | `"asan"`),
     # accepted verbatim. Empty = no value / not a build workflow.
     build_variant: str = ""
+
+    # 40-hex TheRock commit the release was built from, resolved by the
+    # setup run's checkout and surfaced as a captured step output. Present
+    # only on the setup run; empty elsewhere.
+    therock_commit: str = ""
 
     # Wheel-style release id (always wheel form, unlike the
     # package-flavored `rocm_version`); routes status.json output and is

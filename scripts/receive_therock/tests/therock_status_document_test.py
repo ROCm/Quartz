@@ -15,11 +15,15 @@ silently corrupt the document when they do:
 import sys
 from pathlib import Path
 
+import pytest
+from pydantic import ValidationError
+
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 from therock_status_document import (  # noqa: E402
+    SCHEMA_VERSION,
     PipelineRollup,
     PlatformSummary,
     RunLeaf,
@@ -28,6 +32,7 @@ from therock_status_document import (  # noqa: E402
     Variant,
     _merge_variant_leaf,
     merge_matrix_test_leaf,
+    rollup_sibling_statuses,
 )
 
 
@@ -228,6 +233,45 @@ def test_rollup_all_success_is_success() -> None:
 def test_rollup_all_skipped_is_skipped() -> None:
     variants = [_variant(status=Status.skipped), _variant(status=Status.skipped)]
     assert Variant.rollup_status(variants, Status.success) is Status.skipped
+
+
+# --- rollup_sibling_statuses (cross-pipeline priority ordering) -------------
+#
+# Deliberately the opposite precedence from rollup_statuses above: a sibling
+# pipeline is a separate, independently-dispatched unit of work, so one having
+# already failed says nothing about whether another, still-running one is
+# done -- in_progress must not be masked by a terminal failure/cancelled here.
+
+
+def test_rollup_sibling_empty_returns_fallback() -> None:
+    assert rollup_sibling_statuses([], Status.skipped) is Status.skipped
+
+
+def test_rollup_sibling_in_progress_beats_failure() -> None:
+    statuses = [Status.failure, Status.in_progress, Status.success]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.in_progress
+
+
+def test_rollup_sibling_failure_beats_cancelled_and_success() -> None:
+    # Also covers the all-terminal case: with no in_progress present, the
+    # worst-of applies -- same terminal ordering as rollup_statuses.
+    statuses = [Status.success, Status.cancelled, Status.failure]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.failure
+
+
+def test_rollup_sibling_cancelled_beats_success() -> None:
+    statuses = [Status.success, Status.cancelled]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.cancelled
+
+
+def test_rollup_sibling_all_success_is_success() -> None:
+    statuses = [Status.success, Status.success]
+    assert rollup_sibling_statuses(statuses, Status.in_progress) is Status.success
+
+
+def test_rollup_sibling_all_skipped_is_skipped() -> None:
+    statuses = [Status.skipped, Status.skipped]
+    assert rollup_sibling_statuses(statuses, Status.success) is Status.skipped
 
 
 # --- is_terminal ------------------------------------------------------------
@@ -1010,7 +1054,7 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
     # carries an all-zero test rollup and confirm the zeros survive.
     doc = StatusDocument.from_dict(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "rocm_version": "7.0.0",
             "summary": {
                 "linux": {
@@ -1033,13 +1077,68 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
     assert test_counts["skipped"] == 0
 
 
+# --- schema_version migration -----------------------------------------------
+
+
+def test_from_dict_restamps_older_minor_to_current() -> None:
+    # An on-disk doc from an older minor (2.0, written before the current bump)
+    # reads successfully and is restamped to the current version, so the next
+    # write upgrades the file in place. New fields fall back to their defaults.
+    doc = StatusDocument.from_dict({"schema_version": "2.0", "rocm_version": "7.0.0"})
+    assert doc.schema_version == SCHEMA_VERSION
+    assert doc.to_dict()["schema_version"] == SCHEMA_VERSION
+
+
+def test_from_dict_stamps_current_when_schema_version_absent() -> None:
+    doc = StatusDocument.from_dict({"rocm_version": "7.0.0"})
+    assert doc.schema_version == SCHEMA_VERSION
+
+
+def test_from_dict_rejects_different_major() -> None:
+    # A different major is an incompatible layout, not a migration.
+    with pytest.raises(ValidationError):
+        StatusDocument.from_dict({"schema_version": "3.0", "rocm_version": "7.0.0"})
+
+
+def test_from_dict_rejects_newer_minor() -> None:
+    # A newer minor was written by a producer that knows fields/semantics this
+    # code does not; migrating down would silently drop them, so refuse.
+    major, minor = (int(p) for p in SCHEMA_VERSION.split("."))
+    newer = f"{major}.{minor + 1}"
+    with pytest.raises(ValidationError):
+        StatusDocument.from_dict({"schema_version": newer, "rocm_version": "7.0.0"})
+
+
+def test_reads_real_published_older_minor_document() -> None:
+    # Backward compatibility against a real published 2.0 status.json (a full
+    # nightly captured from main, not a hand-built minimal doc). The whole shape
+    # -- every pipeline, variant, native package, and url -- must parse under the
+    # current model, restamp to the current version, and round-trip: to_dict()
+    # output re-parses. Guards against a model change that silently breaks
+    # reading documents already on disk.
+    import json
+
+    fixture = (
+        Path(__file__).with_name("fixtures") / "published_status_v2_0_nightly.json"
+    )
+    data = json.loads(fixture.read_text())
+    assert data["schema_version"] == "2.0"
+
+    doc = StatusDocument.from_dict(data)
+    assert doc.schema_version == SCHEMA_VERSION
+
+    round_tripped = doc.to_dict()
+    assert round_tripped["schema_version"] == SCHEMA_VERSION
+    StatusDocument.from_dict(round_tripped)
+
+
 # --- from_dict / _from_wire round-trip --------------------------------------
 
 
 def test_from_wire_lifts_arch_and_urls_out_of_summary() -> None:
     doc = StatusDocument.from_dict(
         {
-            "schema_version": "2.0",
+            "schema_version": "2.1",
             "rocm_version": "7.0.0",
             "summary": {
                 "linux": {

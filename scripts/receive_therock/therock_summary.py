@@ -16,9 +16,35 @@ from therock_status_document import (
     StatusDocument,
     Summary,
     TestRollup,
+    rollup_sibling_statuses,
     rollup_statuses,
 )
 from therock_types import EXPECTED_PIPELINE_TYPES
+
+# pytorch/jax are the only pipelines with a per-release enable-flag (this
+# release's own `build_pytorch` / `build_jax` dispatch inputs, see
+# `StatusDocument.pytorch_enabled` / `.jax_enabled`). rocm and native_packages
+# have none: both are unconditional `workflow_call` builds the orchestrator
+# always dispatches and waits on.
+_PIPELINE_ENABLE_FLAGS: frozenset[str] = frozenset({"pytorch", "jax"})
+
+
+def _pipeline_enabled(doc: StatusDocument, pipeline_type: str, platform: str) -> bool:
+    """Whether `pipeline_type` is expected to run this release on `platform`.
+
+    jax/native_packages are linux-only and never run on windows, regardless of
+    any enable-flag. rocm/pytorch run on both platforms and have no
+    platform-specific gate. pytorch/jax additionally carry a per-release
+    enable-flag (this release's own `build_pytorch` / `build_jax` dispatch
+    inputs, see `StatusDocument.pytorch_enabled` / `.jax_enabled`).
+    """
+    if pipeline_type in ("jax", "native_packages") and platform != "linux":
+        return False
+    if pipeline_type == "pytorch":
+        return doc.pytorch_enabled
+    if pipeline_type == "jax":
+        return doc.jax_enabled
+    return True
 
 
 def freeze_requested_architectures(
@@ -111,57 +137,79 @@ def _build_platform_summary(
         cancelled      cancelled                     cancelled
         failure        failure                       skipped
 
-    A cancelled/failed rocm *test* gates nothing downstream, so the children stay
-    `in_progress` and the platform stays `in_progress` (in_progress outranks
-    cancelled in the worst-of).
+    Each pipeline (rocm, pytorch, jax, native_packages) first rolls its own
+    leaves up to a single status with `rollup_statuses`. Those per-pipeline
+    statuses, plus a placeholder for any pipeline that has not reported,
+    then combine into the platform status with `rollup_sibling_statuses`: if
+    any pipeline is still in_progress, the platform stays in_progress.
     """
     architectures = (
         doc.linux_architectures if platform == "linux" else doc.windows_architectures
     )
     urls = doc.linux_urls if platform == "linux" else doc.windows_urls
 
-    seen_statuses: list[Status] = []
-    rocm = _pipeline_rollup(doc.pipelines.rocm, platform, seen_statuses)
-    pytorch = _pipeline_rollup(doc.pipelines.pytorch, platform, seen_statuses)
-    jax = _pipeline_rollup(doc.pipelines.jax, platform, seen_statuses)
-    native_packages = _native_rollup(doc, platform, seen_statuses)
+    rocm_seen: list[Status] = []
+    pytorch_seen: list[Status] = []
+    jax_seen: list[Status] = []
+    native_seen: list[Status] = []
+    rocm = _pipeline_rollup(doc.pipelines.rocm, platform, rocm_seen)
+    pytorch = _pipeline_rollup(doc.pipelines.pytorch, platform, pytorch_seen)
+    jax = _pipeline_rollup(doc.pipelines.jax, platform, jax_seen)
+    native_packages = _native_rollup(doc, platform, native_seen)
 
     empty_platform_status = Status.in_progress if architectures else Status.skipped
-
     unstarted_status = _unstarted_pipeline_status(doc, platform, empty_platform_status)
-    placeholder = PipelineRollup(build=BuildRollup(status=unstarted_status))
-    native_placeholder = NativePackagesRollup(
-        rpm=BuildRollup(status=unstarted_status),
-        deb=BuildRollup(status=unstarted_status),
-    )
 
     rollups = {
-        "rocm": rocm,
-        "pytorch": pytorch,
-        "jax": jax,
-        "native_packages": native_packages,
+        "rocm": (rocm, rocm_seen),
+        "pytorch": (pytorch, pytorch_seen),
+        "jax": (jax, jax_seen),
+        "native_packages": (native_packages, native_seen),
     }
-    status_inputs = list(seen_statuses)
-    if doc.completed_at is None and any(
-        rollups[pipeline_type] is None
-        for pipeline_type in EXPECTED_PIPELINE_TYPES[platform]
-    ):
-        status_inputs.append(unstarted_status)
 
-    fields: dict[str, object] = {
-        "status": rollup_statuses(status_inputs, empty_platform_status),
-        "architectures": list(architectures),
-        "urls": dict(urls),
-        "rocm": rocm or placeholder,
-        "pytorch": pytorch or placeholder,
-    }
-    if platform == "linux":
-        fields["jax"] = jax if jax is not None else placeholder
-        fields["native_packages"] = (
-            native_packages if native_packages is not None else native_placeholder
+    sibling_statuses: list[Status] = []
+    placeholder_statuses: dict[str, Status] = {}
+    has_data = bool(architectures)
+    for pipeline_type in EXPECTED_PIPELINE_TYPES[platform]:
+        rollup_obj, seen = rollups[pipeline_type]
+        if rollup_obj is not None:
+            has_data = True
+            sibling_statuses.append(rollup_statuses(seen, empty_platform_status))
+            continue
+        if not _pipeline_enabled(doc, pipeline_type, platform):
+            placeholder_statuses[pipeline_type] = Status.skipped
+            continue
+        placeholder_statuses[pipeline_type] = unstarted_status
+        if pipeline_type in _PIPELINE_ENABLE_FLAGS or doc.completed_at is None:
+            sibling_statuses.append(unstarted_status)
+
+    def _placeholder(pipeline_type: str) -> PipelineRollup:
+        return PipelineRollup(
+            build=BuildRollup(
+                status=placeholder_statuses.get(pipeline_type, unstarted_status)
+            )
         )
 
-    has_data = bool(architectures) or bool(seen_statuses)
+    fields: dict[str, object] = {
+        "status": rollup_sibling_statuses(sibling_statuses, empty_platform_status),
+        "architectures": list(architectures),
+        "urls": dict(urls),
+        "rocm": rocm or _placeholder("rocm"),
+        "pytorch": pytorch or _placeholder("pytorch"),
+    }
+    if platform == "linux":
+        fields["jax"] = jax if jax is not None else _placeholder("jax")
+        if native_packages is not None:
+            fields["native_packages"] = native_packages
+        else:
+            native_status = placeholder_statuses.get(
+                "native_packages", unstarted_status
+            )
+            fields["native_packages"] = NativePackagesRollup(
+                rpm=BuildRollup(status=native_status),
+                deb=BuildRollup(status=native_status),
+            )
+
     return PlatformSummary.for_platform(platform, **fields), has_data
 
 

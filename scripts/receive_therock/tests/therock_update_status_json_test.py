@@ -174,7 +174,7 @@ def _load(status_path: Path) -> StatusDocument:
 
 
 def _nightly_status_path(repo_dir: Path) -> Path:
-    return repo_dir / "release-nightly" / _NIGHTLY_DATE / "status.json"
+    return repo_dir / "nightly" / _NIGHTLY_DATE / "status.json"
 
 
 def _establish_owner(
@@ -210,6 +210,7 @@ def _setup_run(
     run_id: int,
     *,
     build_variant: str = "release",
+    therock_commit: str = "",
     release_type: str = "nightly",
     version: str = _RELEASE_VERSION,
 ) -> WorkflowRunRecord:
@@ -229,6 +230,7 @@ def _setup_run(
     run.rocm_version = version
     run.classification.release_version = version
     run.classification.build_variant = build_variant
+    run.classification.therock_commit = therock_commit
     return run
 
 
@@ -422,6 +424,126 @@ def test_leaf_does_not_stamp_orchestrator_owner(tmp_path: Path) -> None:
     assert "linux" not in doc.pipelines.rocm.build
 
 
+def test_orchestrator_start_captures_pytorch_jax_enable_flags(tmp_path: Path) -> None:
+    # The orchestrator's own `workflow_run_in_progress` (start) event is
+    # enough to capture build_pytorch/build_jax, before any leaf reports.
+    orch = _orchestrator_run()
+    orch.workflow_run_id = 29079513704
+    orch.conclusion = None
+    orch.status = "in_progress"
+    orch.inputs = {"build_pytorch": False, "build_jax": True}
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is False
+    assert doc.jax_enabled is True
+
+
+def test_setup_run_captures_pytorch_jax_enable_flags(tmp_path: Path) -> None:
+    # setup_multi_arch.yml executes via workflow_call and can anchor ownership
+    # before the top-level orchestrator's own start event; its inputs carry
+    # the same build_pytorch/build_jax flags and must be captured too.
+    setup = _setup_run(27797822902)
+    setup.inputs = {"build_pytorch": True, "build_jax": False}
+    tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is True
+    assert doc.jax_enabled is False
+
+
+def test_missing_enable_flag_inputs_leave_default_enabled(tmp_path: Path) -> None:
+    # An orchestrator run that carries no build_pytorch/build_jax inputs (e.g.
+    # an older workflow version) must not clobber the default-enabled state.
+    _establish_owner(tmp_path)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is True
+    assert doc.jax_enabled is True
+
+
+def test_string_enable_flag_inputs_are_parsed(tmp_path: Path) -> None:
+    # Tolerate build_pytorch/build_jax arriving as the string "false"/"true"
+    # rather than a native JSON bool.
+    orch = _orchestrator_run()
+    orch.workflow_run_id = 29079513704
+    orch.conclusion = None
+    orch.status = "in_progress"
+    orch.inputs = {"build_pytorch": "false", "build_jax": "true"}
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is False
+    assert doc.jax_enabled is True
+
+
+def test_newer_owner_resets_enable_flags_and_build_metadata_to_default(
+    tmp_path: Path,
+) -> None:
+    # A newer owner (re-dispatched release) must not inherit the previous run's
+    # disabled pytorch/jax or its stamped build metadata -- it gets a fresh
+    # default until its own setup run restamps. Seed the older owner via a setup
+    # run, the only event that stamps both the enable-flags and build metadata.
+    older = _setup_run(
+        100,
+        therock_commit="0123456789abcdef0123456789abcdef01234567",
+    )
+    older.inputs = {"build_pytorch": False, "build_jax": False}
+    tusj.update_status_json(_event(older), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pytorch_enabled is False
+    assert doc.jax_enabled is False
+    assert doc.build_variant == "release"
+    assert doc.therock_commit == "0123456789abcdef0123456789abcdef01234567"
+
+    newer = _orchestrator_run()
+    newer.workflow_run_id = 200
+    tusj.update_status_json(
+        _event(newer, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 200
+    assert doc.pytorch_enabled is True
+    assert doc.jax_enabled is True
+    assert doc.build_variant == ""
+    assert doc.therock_commit == ""
+
+
+def test_setup_fills_build_metadata_after_orchestrator_owns(tmp_path: Path) -> None:
+    # The top-level orchestrator's in-progress event can record ownership before
+    # the setup run completes; it carries no build metadata, so the document
+    # stays at its "no signal" default until the later setup completion (which
+    # shares the orchestrator's run id via workflow_call, so it is never
+    # superseded) fills build_variant/therock_commit in.
+    orch = _orchestrator_run()
+    orch.workflow_run_id = 27797822902
+    orch.conclusion = None
+    orch.status = "in_progress"
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.build_variant == ""
+    assert doc.therock_commit == ""
+
+    setup = _setup_run(
+        27797822902,
+        therock_commit="0123456789abcdef0123456789abcdef01234567",
+    )
+    tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.build_variant == "release"
+    assert doc.therock_commit == "0123456789abcdef0123456789abcdef01234567"
+
+
 def test_older_orchestrator_start_does_not_override_newer_owner(
     tmp_path: Path,
 ) -> None:
@@ -570,7 +692,7 @@ def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
         _event(release), repo_dir=tmp_path, commit_and_push=False
     )
 
-    assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
     doc = _load(out)
     assert doc.completed_at is None
     assert doc.summary.overall_status is Status.in_progress
@@ -704,13 +826,13 @@ def test_nightly_leaf_creates_latest_symlink_but_not_latest_good(
     )
     assert out == _nightly_status_path(tmp_path)
 
-    latest = tmp_path / "release-nightly" / "latest.json"
+    latest = tmp_path / "nightly" / "latest.json"
     assert latest.is_symlink()
     assert latest.readlink().parts[0] == _NIGHTLY_DATE
 
     # latest_good only tracks a successful release; the leaf alone keeps the
     # release capped at in_progress, so no snapshot yet.
-    assert not (tmp_path / "release-nightly" / "latest_good.json").exists()
+    assert not (tmp_path / "nightly" / "latest_good.json").exists()
 
 
 def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
@@ -721,7 +843,7 @@ def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
         _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
     )
 
-    latest_good = tmp_path / "release-nightly" / "latest_good.json"
+    latest_good = tmp_path / "nightly" / "latest_good.json"
     assert latest_good.exists()
     assert not latest_good.is_symlink()  # snapshot file, not a symlink
     snapshot = StatusDocument.from_dict(
@@ -742,9 +864,9 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
     out = tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    # prereleases/<base>/<full>/status.json
-    assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
-    assert not (tmp_path / "release-nightly").exists()
+    # prerelease/<major.minor>/<full>/status.json
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
+    assert not (tmp_path / "nightly").exists()
 
 
 def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
@@ -752,11 +874,15 @@ def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
     tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    latest = tmp_path / "prereleases" / "latest.json"
+    latest = tmp_path / "prerelease" / "latest.json"
     assert latest.is_symlink()
-    assert latest.readlink() == Path("7.14.0/7.14.0rc1/status.json")
+    assert latest.readlink() == Path("7.14/7.14.0rc1/status.json")
+    # The per-line pointer tracks the newest candidate within one major.minor line.
+    line_latest = tmp_path / "prerelease" / "7.14" / "latest.json"
+    assert line_latest.is_symlink()
+    assert line_latest.readlink() == Path("7.14.0rc1/status.json")
     # prerelease has no notion of latest_good.
-    assert not (tmp_path / "prereleases" / "latest_good.json").exists()
+    assert not (tmp_path / "prerelease" / "latest_good.json").exists()
 
 
 def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
@@ -772,8 +898,8 @@ def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    latest = tmp_path / "prereleases" / "latest.json"
-    assert latest.readlink() == Path("7.14.0/7.14.0rc2/status.json")
+    latest = tmp_path / "prerelease" / "latest.json"
+    assert latest.readlink() == Path("7.14/7.14.0rc2/status.json")
 
 
 def test_prerelease_latest_does_not_regress_to_older_candidate(
@@ -792,8 +918,57 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    latest = tmp_path / "prereleases" / "latest.json"
-    assert latest.readlink() == Path("7.14.0/7.14.0rc10/status.json")
+    latest = tmp_path / "prerelease" / "latest.json"
+    assert latest.readlink() == Path("7.14/7.14.0rc10/status.json")
+
+
+def test_prerelease_line_latest_advances_across_patches(tmp_path: Path) -> None:
+    # Patch releases of one line share a major.minor directory; its latest.json
+    # advances from the .0 candidate to the .1 candidate.
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("7.14.0rc2")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.1rc1")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("7.14.1rc1")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    line_latest = tmp_path / "prerelease" / "7.14" / "latest.json"
+    assert line_latest.readlink() == Path("7.14.1rc1/status.json")
+    assert (tmp_path / "prerelease" / "latest.json").readlink() == Path(
+        "7.14/7.14.1rc1/status.json"
+    )
+
+
+def test_prerelease_line_latest_isolated_per_line(tmp_path: Path) -> None:
+    # Two release lines coexist. Each major.minor pointer tracks its own line;
+    # the top-level pointer tracks the highest version overall.
+    _establish_owner(tmp_path, release_type="prerelease", version="10.0.0rc1")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("10.0.0rc1")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc1")
+    tusj.update_status_json(
+        _event(_prerelease_leaf_run_version("7.14.0rc1")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    assert (tmp_path / "prerelease" / "7.14" / "latest.json").readlink() == Path(
+        "7.14.0rc1/status.json"
+    )
+    assert (tmp_path / "prerelease" / "10.0" / "latest.json").readlink() == Path(
+        "10.0.0rc1/status.json"
+    )
+    assert (tmp_path / "prerelease" / "latest.json").readlink() == Path(
+        "10.0/10.0.0rc1/status.json"
+    )
 
 
 def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:
@@ -1066,16 +1241,62 @@ def test_sync_to_upstream_true_on_success(monkeypatch: pytest.MonkeyPatch) -> No
     assert tusj._sync_to_upstream(Path("/x")) is True
 
 
-def test_max_retries_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_RETRIES", "25")
-    assert tusj._max_retries() == 25
+def test_max_wait_seconds_env_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC", "120")
+    assert tusj._max_wait_seconds() == 120.0
 
 
-def test_max_retries_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_RETRIES", "nonsense")
-    assert tusj._max_retries() == tusj._DEFAULT_MAX_RETRIES
-    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_RETRIES", "-3")
-    assert tusj._max_retries() == tusj._DEFAULT_MAX_RETRIES
+def test_max_wait_seconds_invalid_env_falls_back(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC", "nonsense")
+    assert tusj._max_wait_seconds() == tusj._DEFAULT_MAX_WAIT_SEC
+    monkeypatch.setenv("QUARTZ_STATUS_PUSH_MAX_WAIT_SEC", "-3")
+    assert tusj._max_wait_seconds() == tusj._DEFAULT_MAX_WAIT_SEC
+
+
+# --- deadline-based retry -----------------------------------------------------
+
+
+def test_update_status_json_retries_until_deadline_then_raises(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # A push that always loses the race must keep retrying until the
+    # wall-clock deadline elapses (not a fixed attempt count), then raise.
+    monkeypatch.setattr(tusj, "INITIAL_JITTER_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_BASE_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_CAP_SEC", 0.0)
+    monkeypatch.setattr(tusj, "_max_wait_seconds", lambda: 0.05)
+    monkeypatch.setattr(tusj, "_clear_stale_git_locks", lambda repo_dir: None)
+    monkeypatch.setattr(tusj, "_sync_to_upstream", lambda repo_dir: True)
+    monkeypatch.setattr(
+        tusj, "_commit_and_push", lambda *a, **k: tusj._PushOutcome.RETRY
+    )
+
+    with pytest.raises(RuntimeError, match="deadline exceeded"):
+        tusj.update_status_json(
+            _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=True
+        )
+
+
+def test_update_status_json_succeeds_after_transient_retries(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(tusj, "INITIAL_JITTER_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_BASE_SEC", 0.0)
+    monkeypatch.setattr(tusj, "BACKOFF_CAP_SEC", 0.0)
+    monkeypatch.setattr(tusj, "_clear_stale_git_locks", lambda repo_dir: None)
+    monkeypatch.setattr(tusj, "_sync_to_upstream", lambda repo_dir: True)
+
+    outcomes = iter(
+        [tusj._PushOutcome.RETRY, tusj._PushOutcome.RETRY, tusj._PushOutcome.DONE]
+    )
+    monkeypatch.setattr(tusj, "_commit_and_push", lambda *a, **k: next(outcomes))
+
+    out = tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=True
+    )
+    assert out == _nightly_status_path(tmp_path)
 
 
 # --- stale .git lock recovery -----------------------------------------------

@@ -67,6 +67,19 @@ full GitHub API captures (and so are not in the size report above). Replayed in
 order, the three leaves leave the release `in_progress` (capped) and the
 orchestrator event finalizes it to `success`.
 
+## Published-document fixtures
+
+Distinct from the `DISPATCH_PAYLOAD` envelopes above: these are full
+`status.json` **documents** as published by Quartz, not input events.
+
+- `published_status_v2_0_nightly.json` — a real schema-`2.0` nightly document
+  captured verbatim from `ROCm/Quartz` `main`
+  (`release-nightly/20260905/status.json`). Frozen snapshot; do not edit. Used
+  by `test_reads_real_published_older_minor_document` as a backward-compatibility
+  guard: the current model must still parse the whole document, restamp its
+  `schema_version` to the current value, and round-trip it. It is a full-shape
+  document (~220 KB), so it is intentionally larger than the envelope fixtures.
+
 ## Note on log masking
 
 Payloads were recovered from Actions logs, where GitHub redacts any byte

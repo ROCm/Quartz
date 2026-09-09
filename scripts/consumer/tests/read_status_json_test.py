@@ -18,20 +18,25 @@ or directly:
     python3 scripts/consumer/tests/read_status_json_test.py
 """
 
+import io
 import json
+import os
 import re
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 CONSUMER_DIR = Path(__file__).resolve().parent.parent
 if str(CONSUMER_DIR) not in sys.path:
     sys.path.insert(0, str(CONSUMER_DIR))
 
 from read_status_json import (  # noqa: E402
+    SUPPORTED_SCHEMA_MAJOR,
     PlatformStatus,
     Status,
+    UnsupportedSchemaError,
     build_tarball_url,
     load_status,
 )
@@ -73,7 +78,7 @@ class StripJsoncCommentsTest(unittest.TestCase):
 
     def test_reference_parses(self):
         data = _load_reference()
-        self.assertEqual(data["schema_version"], "2.0")
+        self.assertEqual(data["schema_version"], "2.1")
 
 
 class StatusEnumTest(unittest.TestCase):
@@ -123,7 +128,21 @@ class StatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.status.rocm_version, "7.13.0a20260408")
         self.assertEqual(self.status.build_date, "20260408")
         self.assertEqual(self.status.release_type, "nightly")
-        self.assertEqual(self.status.schema_version, "2.0")
+        self.assertEqual(self.status.schema_version, "2.1")
+
+    def test_build_provenance(self):
+        self.assertEqual(self.status.build_variant, "release")
+        self.assertEqual(
+            self.status.therock_commit, "db2fd412ed7fcadf306cdcf19f09cdd998544197"
+        )
+
+    def test_pipeline_enable_flags(self):
+        self.assertTrue(self.status.pytorch_enabled)
+        self.assertTrue(self.status.jax_enabled)
+
+    def test_trigger_ownership(self):
+        self.assertEqual(self.status.trigger_workflow_run_id, 12340000)
+        self.assertEqual(self.status.trigger_run_attempt, 1)
 
     def test_completion(self):
         self.assertIsNone(self.status.completed_at)
@@ -144,6 +163,36 @@ class StatusFromReferenceTest(unittest.TestCase):
     def test_pipelines_raw_tree(self):
         run_id = self.status.pipelines["rocm"]["build"]["linux"]["run_id"]
         self.assertEqual(run_id, 12345678)
+
+
+class MissingMetadataFieldsTest(unittest.TestCase):
+    """A pre-2.1 document lacks the build-provenance keys entirely; the accessors
+    must distinguish absent from empty, and honor the disable-only flag default."""
+
+    def setUp(self):
+        from read_status_json import StatusDocument
+
+        self.status = StatusDocument({})
+
+    def test_absent_build_provenance_is_none(self):
+        # None (key absent) is distinct from "" (present, no signal yet).
+        self.assertIsNone(self.status.build_variant)
+        self.assertIsNone(self.status.therock_commit)
+
+    def test_empty_build_provenance_is_not_none(self):
+        from read_status_json import StatusDocument
+
+        status = StatusDocument({"build_variant": "", "therock_commit": ""})
+        self.assertEqual(status.build_variant, "")
+        self.assertEqual(status.therock_commit, "")
+
+    def test_absent_enable_flags_default_to_true(self):
+        self.assertTrue(self.status.pytorch_enabled)
+        self.assertTrue(self.status.jax_enabled)
+
+    def test_absent_trigger_ownership_is_none(self):
+        self.assertIsNone(self.status.trigger_workflow_run_id)
+        self.assertIsNone(self.status.trigger_run_attempt)
 
 
 class PlatformStatusFromReferenceTest(unittest.TestCase):
@@ -223,6 +272,122 @@ class LoadStatusTest(unittest.TestCase):
             self.assertEqual(status.rocm_version, "7.13.0a20260408")
         finally:
             Path(path).unlink()
+
+    def test_local_pointer_file_is_not_followed(self):
+        # A local file whose body looks like a "<date>/status.json" pointer must
+        # raise JSONDecodeError, not silently load a sibling. The pointer
+        # fallback is for raw GitHub symlinks only; local paths follow symlinks
+        # natively and never reach it.
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp)
+            (base / "real.json").write_text(json.dumps(_load_reference()))
+            pointer = base / "latest.json"
+            pointer.write_text("real.json")
+            with self.assertRaises(json.JSONDecodeError):
+                load_status(str(pointer))
+
+
+def _fake_raw_urlopen(base_dir: Path):
+    """A urlopen stand-in that emulates raw.githubusercontent.com over base_dir.
+
+    The URL host is ignored; the path after it is resolved as a file under
+    base_dir. A symlink is served the way raw does it -- as its target path text,
+    not the file it points to -- so the reader's pointer-following fallback is
+    exercised end to end.
+    """
+
+    def fake_urlopen(url, timeout=None):
+        rel = url.split("://", 1)[1].split("/", 1)[1]
+        path = base_dir / rel
+        if path.is_symlink():
+            return io.BytesIO(os.readlink(path).encode("utf-8"))
+        return io.BytesIO(path.read_bytes())
+
+    return fake_urlopen
+
+
+class LoadStatusSymlinkTest(unittest.TestCase):
+    """Back to front: a published symlink layout served the raw way resolves.
+
+    Mirrors what the producer writes (a dated status.json plus a latest.json
+    symlink whose target is "<date>/status.json") and what raw serves for that
+    symlink (the bare target path), then checks load_status follows it.
+    """
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name)
+        self.addCleanup(self._tmp.cleanup)
+
+        dated_dir = self.base / "20260408"
+        dated_dir.mkdir()
+        (dated_dir / "status.json").write_text(json.dumps(_load_reference()))
+        # Same relative target the producer's _update_symlinks writes.
+        (self.base / "latest.json").symlink_to("20260408/status.json")
+
+    def test_follows_symlink_pointer(self):
+        with mock.patch(
+            "read_status_json.urllib.request.urlopen", _fake_raw_urlopen(self.base)
+        ):
+            status = load_status("https://raw.example/latest.json")
+        self.assertEqual(status.rocm_version, "7.13.0a20260408")
+
+    def test_direct_dated_document_needs_no_fallback(self):
+        with mock.patch(
+            "read_status_json.urllib.request.urlopen", _fake_raw_urlopen(self.base)
+        ):
+            status = load_status("https://raw.example/20260408/status.json")
+        self.assertEqual(status.rocm_version, "7.13.0a20260408")
+
+    def test_malformed_json_is_not_treated_as_pointer(self):
+        (self.base / "broken.json").write_text("{ not valid json")
+        with mock.patch(
+            "read_status_json.urllib.request.urlopen", _fake_raw_urlopen(self.base)
+        ):
+            with self.assertRaises(json.JSONDecodeError):
+                load_status("https://raw.example/broken.json")
+
+
+class SchemaMajorGateTest(unittest.TestCase):
+    """load_status accepts any minor within the supported major and rejects a
+    different (or missing) major, since a major bump is a breaking layout change.
+    """
+
+    def _load_with_version(self, schema_version):
+        doc = {"rocm_version": "7.0.0"}
+        if schema_version is not None:
+            doc["schema_version"] = schema_version
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as handle:
+            json.dump(doc, handle)
+            path = handle.name
+        self.addCleanup(lambda: Path(path).unlink(missing_ok=True))
+        return load_status(path)
+
+    def test_accepts_current_minor(self):
+        status = self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR}.1")
+        self.assertEqual(status.rocm_version, "7.0.0")
+
+    def test_accepts_newer_minor(self):
+        # A reader must tolerate a newer minor: it only adds optional fields.
+        status = self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR}.99")
+        self.assertEqual(status.rocm_version, "7.0.0")
+
+    def test_rejects_newer_major(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR + 1}.0")
+
+    def test_rejects_older_major(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            self._load_with_version(f"{SUPPORTED_SCHEMA_MAJOR - 1}.0")
+
+    def test_rejects_missing_schema_version(self):
+        with self.assertRaises(UnsupportedSchemaError):
+            self._load_with_version(None)
+
+    def test_error_is_a_value_error(self):
+        # Subclassing ValueError keeps existing `except ValueError` handlers working.
+        with self.assertRaises(ValueError):
+            self._load_with_version("3.0")
 
 
 if __name__ == "__main__":

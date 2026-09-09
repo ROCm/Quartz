@@ -52,6 +52,11 @@ def _variant(*, matrix: dict[str, str], status: Status = Status.success) -> Vari
     return Variant(matrix=matrix, status=status, run_attempt=1)
 
 
+def _disable_pytorch_and_jax(doc: StatusDocument) -> None:
+    doc.pytorch_enabled = False
+    doc.jax_enabled = False
+
+
 def _freeze(doc: StatusDocument, platform: str, arches: list[str]) -> None:
     # Arches are only frozen off a rocm/build event; go through the public path
     # rather than poking the field so the test exercises the real contract.
@@ -80,6 +85,9 @@ def test_overall_takes_worst_of_platforms() -> None:
     # overall_status is only computed once the release is finalized; set
     # completed_at so the worst-of rollup is exercised rather than the cap.
     doc.completed_at = "2026-04-08T02:00:00Z"
+    # Isolate the worst-of-platforms behavior from pipeline-expectation
+    # tracking (issue #57): this release reports rocm only.
+    _disable_pytorch_and_jax(doc)
     _freeze(doc, "linux", ["gfx942"])
     _freeze(doc, "windows", ["gfx1100"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
@@ -96,6 +104,7 @@ def test_cancelled_orchestrator_overrides_leaf_successes() -> None:
     doc = StatusDocument()
     doc.completed_at = "2026-04-08T02:00:00Z"
     doc.orchestrator_conclusion = Status.cancelled
+    _disable_pytorch_and_jax(doc)
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
     rebuild_summary(doc)
@@ -218,12 +227,26 @@ def test_in_progress_dominates_cancelled_and_success_on_platform() -> None:
     assert doc.summary.linux.status is Status.in_progress
 
 
-def test_failure_beats_cancelled_and_success() -> None:
+def test_failure_beats_cancelled_and_success_within_one_pipeline() -> None:
+    # Within one pipeline (matrix cells / build+test), a terminal failure
+    # still outranks a terminal cancelled and a terminal success -- that
+    # precedence is unaffected by the cross-pipeline sibling rule (see the
+    # rollup_sibling_statuses unit tests). completed_at is set so the
+    # unreported native_packages sibling is dropped from the platform rollup
+    # instead of injecting in_progress (see the finalized-drops-unstarted-
+    # siblings comment in _build_platform_summary). pytorch/jax must still
+    # report terminally: as enable-flag pipelines they keep injecting
+    # in_progress even once completed_at is set (see _pipeline_enabled /
+    # issue #57), since they are fire-and-forget dispatches the orchestrator
+    # never awaits, so completion does not mean they are done.
     doc = StatusDocument()
+    doc.completed_at = "2026-04-08T02:00:00Z"
     _freeze(doc, "linux", ["gfx942", "gfx1100"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
     doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.cancelled))
     doc.upsert_leaf("linux", "gfx1100", "rocm", "test", _leaf(status=Status.failure))
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
     rebuild_summary(doc)
     assert doc.summary.linux.status is Status.failure
 
@@ -357,6 +380,7 @@ def test_all_skipped_rolls_up_to_skipped() -> None:
     # is only dispatched if a workflow is not skipped.
     doc = StatusDocument()
     doc.completed_at = "2026-04-08T02:00:00Z"
+    _disable_pytorch_and_jax(doc)
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.skipped))
     doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.skipped))
@@ -383,6 +407,7 @@ def test_unused_platform_reads_skipped_but_does_not_drag_overall() -> None:
     # overall reflects only linux.
     doc = StatusDocument()
     doc.completed_at = "2026-04-08T02:00:00Z"
+    _disable_pytorch_and_jax(doc)
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
     doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
@@ -431,7 +456,25 @@ def test_native_packages_counts_rpm_and_deb_into_platform_status() -> None:
     assert native is not None
     assert native.rpm.status is Status.success
     assert native.deb.status is Status.failure
-    # deb failure drags the platform rollup.
+    # deb failure sets native_packages' own status to failure, but rocm/
+    # pytorch/jax are still pending (never reported) on this platform, so the
+    # platform itself must not crystallize to failure yet.
+    assert doc.summary.linux.status is Status.in_progress
+
+
+def test_native_packages_failure_drags_platform_once_siblings_are_terminal() -> None:
+    # Same deb failure, but every sibling pipeline has also reported
+    # terminally: nothing is left pending, so the worst-of (native's failure)
+    # now applies.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.failure))
+    rebuild_summary(doc)
     assert doc.summary.linux.status is Status.failure
 
 
@@ -474,6 +517,99 @@ def test_native_packages_single_side_does_not_wedge_finalized_release() -> None:
     assert native.rpm.status is Status.success
     assert native.deb.status is Status.skipped
     assert doc.summary.linux.status is Status.success
+
+
+# --- pipeline enable-flags: pytorch/jax expected-set tracking (issue #57) --
+
+
+def test_disabled_jax_renders_skipped_and_does_not_hold_platform_live() -> None:
+    # build_jax: false on this release's own dispatch: jax will never run, so
+    # it must render `skipped` immediately -- even while the release is live,
+    # well before `completed_at` -- rather than the old wedging in_progress
+    # placeholder, and must not hold the platform below success once every
+    # other expected pipeline has actually reported.
+    doc = StatusDocument()
+    doc.jax_enabled = False
+    doc.pytorch_enabled = False
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    assert doc.completed_at is None
+    assert doc.summary.linux.jax.build.status is Status.skipped
+    assert doc.summary.linux.pytorch.build.status is Status.skipped
+    assert doc.summary.linux.status is Status.success
+
+
+def test_enabled_jax_holds_platform_pending_past_completed_at() -> None:
+    # build_jax defaults to enabled (True): a still-undispatched-or-silent jax
+    # must keep holding the platform (and therefore overall_status) pending
+    # even once the top-level orchestrator itself has finished
+    # (`completed_at` set) -- the orchestrator's own completion says nothing
+    # about a fire-and-forget dispatch it never awaited (issue #57).
+    doc = StatusDocument()
+    doc.pytorch_enabled = False
+    doc.completed_at = "2026-04-08T02:00:00Z"
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    assert doc.summary.linux.jax.build.status is Status.in_progress
+    assert doc.summary.linux.status is Status.in_progress
+    assert doc.summary.overall_status is Status.in_progress
+
+
+def test_enabled_pytorch_resolves_once_it_finally_reports() -> None:
+    # Continuation of the above: pytorch was enabled, pending, and held the
+    # (already-finalized) platform at in_progress. Once it actually reports,
+    # the platform resolves without needing another orchestrator event.
+    doc = StatusDocument()
+    doc.jax_enabled = False
+    doc.completed_at = "2026-04-08T02:00:00Z"
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    assert doc.summary.linux.status is Status.in_progress
+
+    doc.upsert_leaf("linux", "", "pytorch", "build", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    assert doc.summary.linux.status is Status.success
+    assert doc.summary.overall_status is Status.success
+
+
+def test_disabled_jax_never_holds_platform_even_while_live() -> None:
+    # Mirrors test_disabled_jax_renders_skipped_and_does_not_hold_platform_live
+    # but before this release's rocm build has even reported: a disabled jax
+    # must not be the thing keeping the platform in_progress (rocm itself,
+    # still pending, is the only reason it should).
+    doc = StatusDocument()
+    doc.jax_enabled = False
+    _freeze(doc, "linux", ["gfx942"])
+    rebuild_summary(doc)
+    assert doc.summary.linux.jax.build.status is Status.skipped
+    assert doc.summary.linux.status is Status.in_progress  # rocm itself pending
+
+
+def test_disabled_rocm_test_still_gates_jax_placeholder() -> None:
+    # A failed rocm build still gates everything downstream via the
+    # cancelled/failure gate (see _unstarted_pipeline_status) -- but an
+    # explicit disable takes priority over the gate for pytorch/jax: it
+    # renders `skipped` regardless of what the gate would have said, since
+    # this release's own dispatch already means it will never run.
+    doc = StatusDocument()
+    doc.jax_enabled = False
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.cancelled))
+    rebuild_summary(doc)
+    assert doc.summary.linux.jax.build.status is Status.skipped
+    assert doc.summary.linux.status is Status.cancelled
 
 
 # --- freeze / urls projection -----------------------------------------------
@@ -560,8 +696,10 @@ def test_running_test_leaf_not_masked_by_terminal_cells() -> None:
 
 def test_test_full_phase_rolls_up_separately_and_feeds_platform() -> None:
     # The full-suite `test-full` phase renders as its own counts block and its
-    # status still feeds the platform worst-of (a failing full suite fails the
-    # platform even when the smoke `test` passed).
+    # status still feeds pytorch's own rollup (a failing full suite fails
+    # pytorch even when the smoke `test` passed). jax/native_packages are
+    # still pending on this platform, so the platform itself stays
+    # in_progress until they report too.
     doc = StatusDocument()
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
@@ -574,6 +712,24 @@ def test_test_full_phase_rolls_up_separately_and_feeds_platform() -> None:
     assert pytorch.test.success == 1
     assert pytorch.test_full is not None
     assert pytorch.test_full.failure == 1
+    assert doc.summary.linux.status is Status.in_progress
+
+
+def test_test_full_phase_failure_drags_platform_once_siblings_are_terminal() -> None:
+    # Same failing full suite, but jax/native_packages have also reported
+    # terminally: nothing is left pending, so the worst-of (pytorch's
+    # test-full failure) now applies.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "gfx942", "pytorch", "test", _leaf(status=Status.success))
+    doc.upsert_leaf(
+        "linux", "gfx942", "pytorch", "test-full", _leaf(status=Status.failure)
+    )
+    doc.upsert_leaf("linux", "", "jax", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "rpm", _leaf(status=Status.success))
+    doc.upsert_leaf("linux", "", "native_packages", "deb", _leaf(status=Status.success))
+    rebuild_summary(doc)
     assert doc.summary.linux.status is Status.failure
 
 
@@ -695,9 +851,12 @@ def test_test_only_pipeline_rollup_does_not_leave_build_in_progress() -> None:
 
 
 def test_multiple_pipelines_aggregate_into_platform_status() -> None:
-    # rocm and pytorch both run on linux. The platform status is worst-of across
-    # pipelines, not within one: rocm all-success + pytorch build failure -> the
-    # platform rolls up to failure while each pipeline keeps its own status.
+    # rocm and pytorch both run on linux, but jax/native_packages are
+    # independent sibling pipelines that have not reported anything yet.
+    # rocm succeeds and pytorch's build fails -- each pipeline keeps its own
+    # status -- but jax/native_packages might still succeed or fail, so the
+    # platform must not crystallize to failure while they are still pending:
+    # it stays in_progress (see rollup_sibling_statuses).
     doc = StatusDocument()
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
@@ -707,7 +866,7 @@ def test_multiple_pipelines_aggregate_into_platform_status() -> None:
     assert doc.summary.linux.rocm.build.status is Status.success
     assert doc.summary.linux.rocm.test.success == 1
     assert doc.summary.linux.pytorch.build.status is Status.failure
-    assert doc.summary.linux.status is Status.failure
+    assert doc.summary.linux.status is Status.in_progress
 
 
 def test_overall_capped_in_progress_until_completed_at() -> None:
@@ -730,6 +889,7 @@ def test_overall_uncapped_once_completed_at_is_set() -> None:
     # stands and overall_status reflects the real result.
     doc = StatusDocument()
     doc.completed_at = "2026-04-08T02:00:00Z"
+    _disable_pytorch_and_jax(doc)
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
     doc.upsert_leaf("linux", "gfx942", "rocm", "test", _leaf(status=Status.success))

@@ -65,7 +65,7 @@ def _process(fixture: str, status_repo: Path) -> int:
 
 
 def _load(status_repo: Path) -> StatusDocument:
-    path = status_repo / "release-nightly" / _NIGHTLY_DATE / "status.json"
+    path = status_repo / "nightly" / _NIGHTLY_DATE / "status.json"
     return StatusDocument.from_dict(json.loads(path.read_text(encoding="utf-8")))
 
 
@@ -80,12 +80,16 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
     assert mid.summary.linux.native_packages.deb.status is Status.success
     assert mid.completed_at is None
     assert mid.summary.overall_status is Status.in_progress
+    assert mid.build_variant == "release"
+    assert mid.therock_commit == "0123456789abcdef0123456789abcdef01234567"
 
     assert _process(_RELEASE, tmp_path) == 0
 
     final = _load(tmp_path)
     assert final.completed_at == "2026-06-19T15:25:00Z"
     assert final.summary.overall_status is Status.success
+    assert final.build_variant == "release"
+    assert final.therock_commit == "0123456789abcdef0123456789abcdef01234567"
 
 
 def test_full_nightly_sequence_writes_symlink_and_latest_good(
@@ -94,7 +98,7 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
     for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
         assert _process(fixture, tmp_path) == 0
 
-    nightly_dir = tmp_path / "release-nightly"
+    nightly_dir = tmp_path / "nightly"
     latest_good = nightly_dir / "latest_good.json"
 
     # latest_good is a success-only snapshot and must not exist until

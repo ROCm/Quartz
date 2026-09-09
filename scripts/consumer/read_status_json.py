@@ -8,11 +8,15 @@ A small, dependency-free API for downstream projects that consume the
 status.json files Quartz publishes for TheRock releases. It wraps the parsed
 JSON with typed accessors so consumers do not hand-navigate nested dicts.
 
-This module is read-only. It does not validate the document against the schema
-and does not write it back; the canonical shape is defined in
-docs/status-json/status_json_reference.jsonc. Missing keys are treated the same
-as absent (an unreported pipeline or platform simply returns None or an empty
-collection), matching how Quartz omits anything not yet reported.
+This module is read-only and does not write the document back. It does not
+validate the full document against the schema, but load_status does enforce
+schema-version compatibility: it rejects a document whose major version this
+reader does not understand (a different major means a breaking layout change)
+while accepting any newer minor within the supported major. The canonical shape
+is defined in docs/status-json/status_json_reference.jsonc. Missing keys are
+treated the same as absent (an unreported pipeline or platform simply returns
+None or an empty collection), matching how Quartz omits anything not yet
+reported.
 
 Only the Python standard library is used.
 
@@ -22,6 +26,9 @@ API overview:
 
     StatusDocument
     |- rocm_version, build_date, release_type    release metadata
+    |- build_variant, therock_commit             build provenance (2.1; None if absent)
+    |- pytorch_enabled, jax_enabled              which pipelines this release built
+    |- trigger_workflow_run_id, trigger_run_attempt  owning orchestrator run (id, attempt)
     |- schema_version, created_at, completed_at   more metadata
     |- overall_status                            worst-of rollup across platforms
     |- is_complete                               True once the build has finished
@@ -76,10 +83,11 @@ import json
 import urllib.request
 from enum import StrEnum
 from pathlib import Path
+from urllib.parse import urljoin
 
 # latest nightly status.json published by Quartz for TheRock releases.
 DEFAULT_SOURCE = (
-    "https://raw.githubusercontent.com/ROCm/quartz/main/release-nightly/latest.json"
+    "https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json"
 )
 
 # Seconds to wait on a URL fetch before giving up. Without a timeout urlopen can
@@ -89,6 +97,21 @@ DEFAULT_TIMEOUT = 30
 # Pipelines that may appear under a platform in the summary block. The set is
 # stable across releases (see the schema reference).
 PIPELINES = ("rocm", "pytorch", "jax", "native_packages")
+
+# Major schema version this reader understands. A minor bump within this major
+# stays backward-compatible (only new optional fields), so newer minors are
+# accepted; a different major signals a breaking layout change and is rejected by
+# load_status. See docs/status-json/status_json_reference.jsonc.
+SUPPORTED_SCHEMA_MAJOR = 2
+
+
+class UnsupportedSchemaError(ValueError):
+    """Raised by load_status when a document's schema major is not supported.
+
+    Subclasses ValueError, so existing `except ValueError` handlers still catch
+    it; catch it by name to distinguish an incompatible schema from a malformed
+    document.
+    """
 
 
 # Copied verbatim from the Quartz producer (therock_status_document.Status) so
@@ -274,6 +297,63 @@ class StatusDocument:
         return self._data.get("release_type", "")
 
     @property
+    def build_variant(self) -> str | None:
+        """Build flavor this release was produced with: "release", or a
+        sanitizer build such as "asan" (added in schema 2.1).
+
+        Three states, deliberately distinct: None means the key is absent -- a
+        pre-2.1 document that predates the field, so the producer cannot tell
+        you the variant; "" means present but carrying no signal yet (e.g. the
+        release's setup run has not reported); any other value is the resolved
+        variant.
+        """
+        return self._data.get("build_variant")
+
+    @property
+    def therock_commit(self) -> str | None:
+        """The 40-hex TheRock commit this release was built from (added in
+        schema 2.1).
+
+        Same three states as build_variant: None when the key is absent (a
+        pre-2.1 document); "" when present but not yet resolved (before the
+        setup run reports); otherwise the SHA.
+        """
+        return self._data.get("therock_commit")
+
+    @property
+    def pytorch_enabled(self) -> bool:
+        """Whether this release's dispatch built the PyTorch pipeline.
+
+        Disable-only: defaults to True when the key is absent, so a document
+        that never carried the flag reads as enabled.
+        """
+        return self._data.get("pytorch_enabled", True)
+
+    @property
+    def jax_enabled(self) -> bool:
+        """Whether this release's dispatch built the JAX pipeline (linux only).
+
+        Disable-only: defaults to True when the key is absent.
+        """
+        return self._data.get("jax_enabled", True)
+
+    @property
+    def trigger_workflow_run_id(self) -> int | None:
+        """run_id of the orchestrator workflow that owns this release, or None
+        if absent. Pairs with trigger_run_attempt to identify the exact GitHub
+        run -- useful to correlate a status.json back to its Actions run (e.g.
+        to fetch logs)."""
+        return self._data.get("trigger_workflow_run_id")
+
+    @property
+    def trigger_run_attempt(self) -> int | None:
+        """Attempt number of the owning orchestrator run, or None if absent. A
+        GitHub re-run keeps the same trigger_workflow_run_id but bumps this, so
+        the (run_id, attempt) pair distinguishes a re-run from the run it
+        supersedes."""
+        return self._data.get("trigger_run_attempt")
+
+    @property
     def created_at(self) -> str | None:
         return self._data.get("created_at")
 
@@ -319,6 +399,33 @@ class StatusDocument:
         return (self.rocm_version, self.build_date)
 
 
+def _read_source(source: str, timeout: float) -> str:
+    """Return the raw body of a URL or local path (no parsing)."""
+    if source.startswith(("http://", "https://")):
+        with urllib.request.urlopen(source, timeout=timeout) as response:
+            return response.read().decode("utf-8")
+    return Path(source).read_text()
+
+
+def _check_schema_version(document: StatusDocument) -> None:
+    """Reject a document whose schema major this reader does not understand.
+
+    A minor bump within the supported major only adds optional fields, so a
+    newer minor is accepted unchanged. A different major (or a missing/malformed
+    schema_version, which we cannot vouch for) is a breaking layout change and
+    raises UnsupportedSchemaError.
+    """
+    version = document.schema_version
+    major = version.split(".", 1)[0] if version else ""
+    if major != str(SUPPORTED_SCHEMA_MAJOR):
+        raise UnsupportedSchemaError(
+            f"status.json schema_version {version!r} is not supported by this "
+            f"reader, which understands major {SUPPORTED_SCHEMA_MAJOR}; a "
+            f"different major version indicates a breaking layout change. Newer "
+            f"minor versions within major {SUPPORTED_SCHEMA_MAJOR} are accepted."
+        )
+
+
 def load_status(
     source: str = DEFAULT_SOURCE, timeout: float = DEFAULT_TIMEOUT
 ) -> StatusDocument:
@@ -329,16 +436,45 @@ def load_status(
     timeout is the per-fetch deadline in seconds for URL sources (ignored for
     local paths).
 
+    The published latest.json / prerelease/latest.json endpoints are symlinks.
+    Over raw.githubusercontent.com a symlink is served as its target path rather
+    than the file it points to, so when the body is such a pointer this follows
+    it once, resolving the target against source, and fetches the real document.
+    Local paths follow symlinks natively and never take this fallback.
+
     Raises:
         urllib.error.URLError: If a URL source cannot be fetched (a socket
             timeout raises URLError wrapping a socket.timeout).
         OSError: If a local path cannot be read.
-        json.JSONDecodeError: If the content is not valid JSON.
+        json.JSONDecodeError: If the content is neither valid JSON nor a symlink
+            pointer to a JSON document.
+        UnsupportedSchemaError: If the document's schema major is not one this
+            reader understands (a newer minor within the supported major is
+            accepted).
     """
-    if source.startswith(("http://", "https://")):
-        with urllib.request.urlopen(source, timeout=timeout) as response:
-            return StatusDocument(json.load(response))
-    return StatusDocument(json.loads(Path(source).read_text()))
+    body = _read_source(source, timeout)
+    try:
+        document = StatusDocument(json.loads(body))
+    except json.JSONDecodeError:
+        # raw serves a latest.json symlink as its target path, not the file, so
+        # the body may be a bare "<date>/status.json" pointer rather than JSON.
+        # This only happens over raw GitHub; local paths follow symlinks natively,
+        # so restrict the fallback to URLs and never resolve a pointer off disk.
+        # Follow it once; anything not clearly a pointer re-raises the real error.
+        pointer = body.strip()
+        is_url = source.startswith(("http://", "https://"))
+        if (
+            not is_url
+            or "\n" in pointer
+            or "{" in pointer
+            or not pointer.endswith(".json")
+        ):
+            raise
+        document = StatusDocument(
+            json.loads(_read_source(urljoin(source, pointer), timeout))
+        )
+    _check_schema_version(document)
+    return document
 
 
 def _print_summary(status: StatusDocument) -> None:

@@ -19,8 +19,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install python deps
-        run: pip install -r requirements.txt pytest
+        run: pip install -r requirements.txt -r requirements-test.txt
       # Tests self-bootstrap sys.path (SCRIPT_DIR pattern), so a single pytest
       # run from the repo root exercises every suite under scripts/ and docs/.
       - name: Run unit tests
-        run: python -m pytest scripts docs -q -v
+        run: python -m pytest scripts docs

@@ -96,6 +96,10 @@ runs:
         client-id: ${{ inputs.gh_app_client_id }}
         private-key: ${{ inputs.gh_app_private_key }}
         repositories: ${{ inputs.quartz_repo }}
+        # Scoped to quartz_repo above; the only call this token makes there
+        # is the workflow_dispatch to trigger ingestion, so cap it to that
+        # instead of inheriting the app installation's full permission set.
+        permission-actions: write
 
     - name: Notify Quartz
       if: steps.app-token.outputs.token != ''

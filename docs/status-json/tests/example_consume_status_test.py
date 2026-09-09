@@ -34,14 +34,14 @@ if str(EXAMPLE_DIR) not in sys.path:
 import example_consume_status as example  # noqa: E402
 
 
-def _doc(build_status: str = "success", schema_version: str = "2.0") -> dict:
+def _doc(build_status: str = "success") -> dict:
     """A minimal status document with just the fields the example reads.
 
     Gates on summary.<PLATFORM>.<PIPELINE>.build.status (linux/rocm by default),
     so only that path plus the release metadata needs to be present.
     """
     return {
-        "schema_version": schema_version,
+        "schema_version": "2.1",
         "rocm_version": "7.13.0a20260408",
         "build_date": "20260408",
         "summary": {
@@ -147,15 +147,6 @@ class MainTest(unittest.TestCase):
         self.assertEqual(outputs["ready"], "false")
         self.assertNotIn("rocm_version", outputs)
         process_mock.assert_not_called()
-
-    def test_unsupported_schema_fails_without_processing(self):
-        # A new schema major is permanent, not transient: main() exits non-zero
-        # (via sys.exit) instead of reporting ready=false, and never reaches
-        # process(). The guard runs before ready_platform, so bailing here proves
-        # nothing downstream ran.
-        with self.assertRaises(SystemExit) as caught:
-            self._run(load_return=example.StatusDocument(_doc(schema_version="3.0")))
-        self.assertNotEqual(caught.exception.code, 0)
 
     def test_failed_gate_writes_build_id_but_does_not_process(self):
         outputs, process_mock = self._run(

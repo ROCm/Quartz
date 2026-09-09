@@ -22,6 +22,7 @@ from therock_classify import (
     derive_release_version,
     derive_rpm_urls,
     derive_tarball_url,
+    derive_therock_commit,
 )
 from therock_types import ORCHESTRATOR_SPECS, WorkflowJobRecord, WorkflowRunRecord
 
@@ -160,6 +161,37 @@ class DeriveReleaseTypeTest(unittest.TestCase):
         # A bare release-looking version can still be a dev publish.
         rec = _make_record(rocm_version="7.13.0", release_type="dev")
         self.assertEqual(derive_release_type(rec), "dev")
+
+
+_THEROCK_SHA = "0123456789abcdef0123456789abcdef01234567"
+
+
+class DeriveTheRockCommitTest(unittest.TestCase):
+    def _with_captured(
+        self, outputs: dict, *, pipeline_type: str = "setup"
+    ) -> WorkflowRunRecord:
+        rec = _make_record()
+        rec.classification.pipeline_type = pipeline_type
+        rec.captured_outputs = {"setup": {"result": "success", "outputs": outputs}}
+        return rec
+
+    def test_reads_commit_step_output(self):
+        rec = self._with_captured({"commit": _THEROCK_SHA})
+        self.assertEqual(derive_therock_commit(rec), _THEROCK_SHA)
+
+    def test_missing_commit_returns_empty(self):
+        rec = self._with_captured({"rocm_package_version": "7.14.0a20260619"})
+        self.assertEqual(derive_therock_commit(rec), "")
+
+    def test_non_sha_commit_is_rejected(self):
+        # A short sha or a branch name must not pass the 40-hex guard.
+        rec = self._with_captured({"commit": "main"})
+        self.assertEqual(derive_therock_commit(rec), "")
+
+    def test_non_setup_run_is_ignored(self):
+        # A stray `commit` output on a non-setup run must never be picked up.
+        rec = self._with_captured({"commit": _THEROCK_SHA}, pipeline_type="rocm")
+        self.assertEqual(derive_therock_commit(rec), "")
 
 
 def _publish_outputs(result: str = "success") -> dict:

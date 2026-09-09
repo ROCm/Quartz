@@ -627,6 +627,11 @@ class Classification:
     # accepted verbatim. Empty = no value / not a build workflow.
     build_variant: str = ""
 
+    # 40-hex TheRock commit the release was built from, resolved by the
+    # setup run's checkout and surfaced as a captured step output. Present
+    # only on the setup run; empty elsewhere.
+    therock_commit: str = ""
+
     # Wheel-style release id (always wheel form, unlike the
     # package-flavored `rocm_version`); routes status.json output and is
     # parsed by `RELEASE_VERSION_*_RE`.

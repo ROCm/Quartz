@@ -10,7 +10,7 @@
 # What it does:
 #   - Runs hourly during the UTC window when the ROCm release lands (and can be
 #     triggered manually from the Actions tab).
-#   - Runs example_consume_status.py, which fetches release-nightly/latest.json,
+#   - Runs example_consume_status.py, which fetches nightly/latest.json,
 #     gates on the Linux ROCm build, and reports the wheels and a tarball for it.
 #     The script sets step outputs (ready / rocm_version / build_date).
 #   - Deduplicates with actions/cache keyed on (rocm_version, build_date), so the

@@ -174,7 +174,7 @@ def _load(status_path: Path) -> StatusDocument:
 
 
 def _nightly_status_path(repo_dir: Path) -> Path:
-    return repo_dir / "release-nightly" / _NIGHTLY_DATE / "status.json"
+    return repo_dir / "nightly" / _NIGHTLY_DATE / "status.json"
 
 
 def _establish_owner(
@@ -212,6 +212,7 @@ def _setup_run(
     run_id: int,
     *,
     build_variant: str = "release",
+    therock_commit: str = "",
     release_type: str = "nightly",
     version: str = _RELEASE_VERSION,
 ) -> WorkflowRunRecord:
@@ -231,6 +232,7 @@ def _setup_run(
     run.rocm_version = version
     run.classification.release_version = version
     run.classification.build_variant = build_variant
+    run.classification.therock_commit = therock_commit
     return run
 
 
@@ -481,23 +483,24 @@ def test_string_enable_flag_inputs_are_parsed(tmp_path: Path) -> None:
     assert doc.jax_enabled is True
 
 
-def test_newer_orchestrator_owner_resets_enable_flags_to_default(
+def test_newer_owner_resets_enable_flags_and_build_metadata_to_default(
     tmp_path: Path,
 ) -> None:
-    # A newer owner (re-dispatched release) must not inherit the previous
-    # run's disabled pytorch/jax -- it gets its own fresh default until its
-    # own inputs (absent here) say otherwise.
-    older = _orchestrator_run()
-    older.workflow_run_id = 100
-    older.inputs = {"build_pytorch": False, "build_jax": False}
-    tusj.update_status_json(
-        _event(older, event_type="workflow_run_in_progress"),
-        repo_dir=tmp_path,
-        commit_and_push=False,
+    # A newer owner (re-dispatched release) must not inherit the previous run's
+    # disabled pytorch/jax or its stamped build metadata -- it gets a fresh
+    # default until its own setup run restamps. Seed the older owner via a setup
+    # run, the only event that stamps both the enable-flags and build metadata.
+    older = _setup_run(
+        100,
+        therock_commit="0123456789abcdef0123456789abcdef01234567",
     )
+    older.inputs = {"build_pytorch": False, "build_jax": False}
+    tusj.update_status_json(_event(older), repo_dir=tmp_path, commit_and_push=False)
     doc = _load(_nightly_status_path(tmp_path))
     assert doc.pytorch_enabled is False
     assert doc.jax_enabled is False
+    assert doc.build_variant == "release"
+    assert doc.therock_commit == "0123456789abcdef0123456789abcdef01234567"
 
     newer = _orchestrator_run()
     newer.workflow_run_id = 200
@@ -510,6 +513,37 @@ def test_newer_orchestrator_owner_resets_enable_flags_to_default(
     assert doc.trigger_workflow_run_id == 200
     assert doc.pytorch_enabled is True
     assert doc.jax_enabled is True
+    assert doc.build_variant == ""
+    assert doc.therock_commit == ""
+
+
+def test_setup_fills_build_metadata_after_orchestrator_owns(tmp_path: Path) -> None:
+    # The top-level orchestrator's in-progress event can record ownership before
+    # the setup run completes; it carries no build metadata, so the document
+    # stays at its "no signal" default until the later setup completion (which
+    # shares the orchestrator's run id via workflow_call, so it is never
+    # superseded) fills build_variant/therock_commit in.
+    orch = _orchestrator_run()
+    orch.workflow_run_id = 27797822902
+    orch.conclusion = None
+    orch.status = "in_progress"
+    tusj.update_status_json(
+        _event(orch, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.build_variant == ""
+    assert doc.therock_commit == ""
+
+    setup = _setup_run(
+        27797822902,
+        therock_commit="0123456789abcdef0123456789abcdef01234567",
+    )
+    tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.build_variant == "release"
+    assert doc.therock_commit == "0123456789abcdef0123456789abcdef01234567"
 
 
 def test_older_orchestrator_start_does_not_override_newer_owner(
@@ -794,13 +828,13 @@ def test_nightly_leaf_creates_latest_symlink_but_not_latest_good(
     )
     assert out == _nightly_status_path(tmp_path)
 
-    latest = tmp_path / "release-nightly" / "latest.json"
+    latest = tmp_path / "nightly" / "latest.json"
     assert latest.is_symlink()
     assert latest.readlink().parts[0] == _NIGHTLY_DATE
 
     # latest_good only tracks a successful release; the leaf alone keeps the
     # release capped at in_progress, so no snapshot yet.
-    assert not (tmp_path / "release-nightly" / "latest_good.json").exists()
+    assert not (tmp_path / "nightly" / "latest_good.json").exists()
 
 
 def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
@@ -811,7 +845,7 @@ def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
         _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
     )
 
-    latest_good = tmp_path / "release-nightly" / "latest_good.json"
+    latest_good = tmp_path / "nightly" / "latest_good.json"
     assert latest_good.exists()
     assert not latest_good.is_symlink()  # snapshot file, not a symlink
     snapshot = StatusDocument.from_dict(
@@ -834,7 +868,7 @@ def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
     )
     # prerelease/<major.minor>/<full>/status.json
     assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
-    assert not (tmp_path / "release-nightly").exists()
+    assert not (tmp_path / "nightly").exists()
 
 
 def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:

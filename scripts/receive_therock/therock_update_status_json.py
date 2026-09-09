@@ -213,6 +213,25 @@ def _release_version_suffix(release_version: str) -> str:
     )
 
 
+# --- TEMPORARY: nightly folder-rename bridge (remove after ~2026-09-11) ---
+# The nightly tree moved release-nightly/ -> nightly/ (#93). The nightly already
+# in flight on the cutover day wrote its early events to release-nightly/, so
+# routing its late events (e.g. the pytorch tests that finish hours later) to
+# nightly/ would split one run across two folders. Pin just the cutover date's
+# nightly to the old folder; every later date uses the new one. Keyed on the
+# document's own date suffix, not wall-clock now(), so late or rerun events for
+# the straddling run still land in the old folder. Delete this, `_nightly_root`,
+# and its use in `_status_json_path` once that nightly has aged out of consumers.
+_NIGHTLY_LEGACY_FOLDER_DATE = "20260908"
+
+
+def _nightly_root(date_suffix: str) -> str:
+    """Old vs new nightly root during the folder-rename transition."""
+    if date_suffix == _NIGHTLY_LEGACY_FOLDER_DATE:
+        return "release-nightly"
+    return "nightly"
+
+
 def _status_json_path(
     repo_dir: Path,
     release_type: str,
@@ -235,7 +254,7 @@ def _status_json_path(
         suffix = _release_version_suffix(release_version)
 
     if release_type == "nightly":
-        return repo_dir / "release-nightly" / suffix / "status.json"
+        return repo_dir / _nightly_root(suffix) / suffix / "status.json"
     if release_type == "prerelease":
         major_minor, full = _prerelease_dirs(release_version)
         return repo_dir / "prerelease" / major_minor / full / "status.json"
@@ -921,6 +940,21 @@ def _apply_pipeline_enable_flags(
         doc.jax_enabled = jax_enabled
 
 
+def _apply_build_metadata(doc: StatusDocument, workflow_run: WorkflowRunRecord) -> None:
+    """Stamp build_variant / therock_commit off the owning run's classification.
+
+    Both are surfaced only by the setup run: `build_variant` from its dispatch
+    inputs and `therock_commit` from its checkout's captured `commit` output
+    (see `therock_classify.derive_therock_commit`). Each is written only when
+    non-empty.
+    """
+    c = workflow_run.classification
+    if c.build_variant:
+        doc.build_variant = c.build_variant
+    if c.therock_commit:
+        doc.therock_commit = c.therock_commit
+
+
 def _record_orchestrator_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
@@ -958,21 +992,25 @@ def _record_orchestrator_owner(
         doc.trigger_workflow_run_id = rid
         doc.trigger_run_attempt = attempt
     _apply_pipeline_enable_flags(doc, workflow_run)
+    _apply_build_metadata(doc, workflow_run)
     return True
 
 
 def _reset_document_for_new_owner(doc: StatusDocument) -> None:
     """Clear run-owned detail when a newer top-level orchestrator takes over.
 
-    pytorch_enabled/jax_enabled reset to the default-enabled state;
-    `_apply_pipeline_enable_flags`, called right after this from
-    `_record_orchestrator_owner`, re-derives them from the new owner's inputs.
+    pytorch_enabled/jax_enabled reset to the default-enabled state and
+    build_variant/therock_commit to their defaults; `_apply_pipeline_enable_flags`
+    and `_apply_build_metadata`, called right after this from
+    `_record_orchestrator_owner`, re-derive them from the new owner's run.
     """
     doc.completed_at = None
     doc.orchestrator_conclusion = None
     doc.created_at = None
     doc.pytorch_enabled = True
     doc.jax_enabled = True
+    doc.build_variant = ""
+    doc.therock_commit = ""
     doc.linux_architectures.clear()
     doc.windows_architectures.clear()
     doc.linux_urls.clear()
@@ -1170,16 +1208,14 @@ def _update_symlinks(
     Meaningful for the `nightly` and `nightly-bkc` release types."""
     if release_type == "prerelease":
         return _update_prerelease_latest(repo_dir, status_path)
-
-    # nightly     -> release-nightly/<date>/status.json,   pointers at release-nightly/
-    # nightly-bkc -> nightly-bkc/<base>/<date>/status.json, pointers at nightly-bkc/<base>/
-    if release_type == "nightly":
-        latest_dir = repo_dir / "release-nightly"
-    elif release_type == "nightly-bkc":
-        latest_dir = status_path.parent.parent
-    else:
+    if release_type not in ("nightly", "nightly-bkc"):
         return []
 
+    # Root follows wherever the document was written, two levels up from the
+    # dated status.json: nightly/<date>/ (or the legacy release-nightly/<date>/
+    # during the #93 rename bridge), and nightly-bkc/<base>/<date>/. Deriving it
+    # from the target keeps the pointer in the same folder as its target.
+    latest_dir = status_path.parent.parent
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
 

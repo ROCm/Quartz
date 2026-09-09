@@ -1,6 +1,6 @@
 {
   "_comment": "Source-of-truth snapshot of workflow filenames and their notify_quartz calls in the rock repos. Refresh with: python scripts/receive_therock/tests/fixtures/refresh_rock_workflow_inventory.py",
-  "_generated_at": "2026-07-20T18:48:46Z",
+  "_generated_at": "2026-09-07T16:08:45Z",
   "repos": {
     "ROCm/TheRock": [
       "build_portable_linux_python_packages.yml",
@@ -36,7 +36,6 @@
       "multi_arch_release_linux_pytorch_wheels.yml",
       "multi_arch_release_windows.yml",
       "multi_arch_release_windows_pytorch_wheels.yml",
-      "notify_quartz.yml",
       "pre-commit.yml",
       "pre_commit_security.yml",
       "publish_build_manylinux_x86_64.yml",
@@ -49,9 +48,10 @@
       "test_artifacts.yml",
       "test_artifacts_structure.yml",
       "test_component.yml",
+      "test_consumer_graph_drift.yml",
       "test_jax_dockerfile.yml",
       "test_linux_jax_wheels.yml",
-      "test_linux_jax_wheels_partial.yml",
+      "test_multi_arch_linux_jax_wheels.yml",
       "test_native_linux_packages_install.yml",
       "test_pytorch_wheels.yml",
       "test_pytorch_wheels_full.yml",
@@ -71,11 +71,569 @@
       "pre-commit.yml",
       "test_artifacts.yml",
       "test_native_linux_packages_install.yml",
-      "test_pytorch_wheels_full.yml"
+      "test_pytorch_wheels_full.yml",
+      "unit_tests.yml"
     ]
   },
   "notify_quartz_calls": {
-    "ROCm/TheRock": {},
-    "ROCm/rockrel": {}
+    "ROCm/TheRock": {
+      "build_portable_linux_python_packages.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "build_portable_linux_python_packages.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "build_portable_linux_python_packages.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "build_windows_python_packages.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "build_windows_python_packages.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "build_windows_python_packages.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_linux_jax_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_build_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_native_linux_packages.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_native_linux_packages.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "multi_arch_build_native_linux_packages.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_portable_linux.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_portable_linux.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_build_portable_linux.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_portable_linux_artifacts.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_portable_linux_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "multi_arch_build_portable_linux_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_portable_linux_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_portable_linux_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_build_portable_linux_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_tarballs.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_tarballs.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "multi_arch_build_tarballs.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_windows.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_windows.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_build_windows.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_windows_artifacts.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_windows_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "multi_arch_build_windows_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_windows_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_windows_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_build_windows_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_build_wsl_rocdxg_artifacts.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_build_wsl_rocdxg_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "multi_arch_build_wsl_rocdxg_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_linux.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_linux.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_linux.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_linux_jax_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_linux_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_linux_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_linux_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_windows.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_windows.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_windows.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_windows_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_windows_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_windows_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "setup_multi_arch.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "setup_multi_arch.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "setup_multi_arch.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_artifacts.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "test_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_component.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_component.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "test_component.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_multi_arch_linux_jax_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_multi_arch_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "test_multi_arch_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_native_linux_packages_install.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_native_linux_packages_install.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "test_native_linux_packages_install.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "run_conclusion": "${{ job.status }}",
+          "reporting_workflow": "test_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_step_outputs": "${{ toJSON(steps) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_pytorch_wheels_full.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_pytorch_wheels_full.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "test_pytorch_wheels_full.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ]
+    },
+    "ROCm/rockrel": {
+      "multi_arch_release.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_linux_jax_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_linux_jax_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_linux_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_linux_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_linux_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "multi_arch_release_windows_pytorch_wheels.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "multi_arch_release_windows_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "multi_arch_release_windows_pytorch_wheels.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_artifacts.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "test_artifacts.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_native_linux_packages_install.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_native_linux_packages_install.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "test_native_linux_packages_install.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ],
+      "test_pytorch_wheels_full.yml": [
+        {
+          "run_phase": "started",
+          "reporting_workflow": "test_pytorch_wheels_full.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        },
+        {
+          "run_phase": "completed",
+          "reporting_workflow": "test_pytorch_wheels_full.yml",
+          "workflow_inputs": "${{ toJSON(inputs) }}",
+          "workflow_captured_outputs": "${{ toJSON(needs) }}",
+          "gh_app_client_id": "${{ secrets.GH_APP_HAULY_CID }}",
+          "gh_app_private_key": "${{ secrets.GH_APP_HAULY_PRIVATE_KEY }}"
+        }
+      ]
+    }
   }
 }

@@ -837,7 +837,7 @@ def test_nightly_leaf_creates_latest_symlink_but_not_latest_good(
     assert not (tmp_path / "nightly" / "latest_good.json").exists()
 
 
-def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
+def test_finalized_release_points_latest_good_at_status(tmp_path: Path) -> None:
     tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -846,13 +846,13 @@ def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
     )
 
     latest_good = tmp_path / "nightly" / "latest_good.json"
-    assert latest_good.exists()
-    assert not latest_good.is_symlink()  # snapshot file, not a symlink
-    snapshot = StatusDocument.from_dict(
-        json.loads(latest_good.read_text(encoding="utf-8"))
+    assert latest_good.is_symlink()  # single-hop symlink to the dated status.json
+    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+    resolved = StatusDocument.from_dict(
+        json.loads((latest_good.parent / latest_good.readlink()).read_text("utf-8"))
     )
-    assert snapshot.summary.overall_status is Status.success
-    assert snapshot.build_date == _NIGHTLY_DATE
+    assert resolved.summary.overall_status is Status.success
+    assert resolved.build_date == _NIGHTLY_DATE
 
 
 def _prerelease_leaf_run_version(version: str) -> WorkflowRunRecord:
@@ -1003,6 +1003,37 @@ def _bkc_status_path(repo_dir: Path) -> Path:
     return repo_dir / "nightly-bkc" / _BKC_BASE / _BKC_RUN_DATE / "status.json"
 
 
+def _run_bkc_leaf(repo_dir: Path, base: str, run_date: str) -> None:
+    """Establish ownership then emit a leaf for one bkc (base, run_date) build,
+    writing its status.json and refreshing every latest.json pointer.
+
+    The branch guard only checks the `release/bkc/` prefix, so one branch drives
+    every base here.
+    """
+    version = f"{base}+bkc.{run_date}"
+    _establish_owner(
+        repo_dir,
+        release_type="nightly-bkc",
+        version=version,
+        head_branch=_BKC_BRANCH,
+    )
+    tusj.update_status_json(
+        _event(_bkc_leaf_run(version)), repo_dir=repo_dir, commit_and_push=False
+    )
+
+
+def _run_bkc_build_good(repo_dir: Path, base: str, run_date: str) -> None:
+    """Emit a full leaf+orchestrator bkc build that finalizes all-green, so the
+    top-level `latest_good.json` gate fires."""
+    version = f"{base}+bkc.{run_date}"
+    tusj.update_status_json(
+        _event(_bkc_leaf_run(version)), repo_dir=repo_dir, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_bkc_orchestrator_run(version)), repo_dir=repo_dir, commit_and_push=False
+    )
+
+
 @pytest.mark.parametrize(
     "version",
     [
@@ -1042,7 +1073,7 @@ def test_bkc_leaf_creates_latest_symlink_but_not_latest_good(
     assert not (tmp_path / "nightly-bkc" / _BKC_BASE / "latest_good.json").exists()
 
 
-def test_bkc_finalized_writes_latest_good_snapshot(tmp_path: Path) -> None:
+def test_bkc_finalized_points_latest_good_at_status(tmp_path: Path) -> None:
     tusj.update_status_json(
         _event(_bkc_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -1051,12 +1082,102 @@ def test_bkc_finalized_writes_latest_good_snapshot(tmp_path: Path) -> None:
     )
 
     latest_good = tmp_path / "nightly-bkc" / _BKC_BASE / "latest_good.json"
-    assert latest_good.exists()
-    assert not latest_good.is_symlink()
-    snapshot = StatusDocument.from_dict(
-        json.loads(latest_good.read_text(encoding="utf-8"))
+    assert latest_good.is_symlink()
+    assert latest_good.readlink() == Path(f"{_BKC_RUN_DATE}/status.json")
+    resolved = StatusDocument.from_dict(
+        json.loads((latest_good.parent / latest_good.readlink()).read_text("utf-8"))
     )
-    assert snapshot.summary.overall_status is Status.success
+    assert resolved.summary.overall_status is Status.success
+
+
+def test_bkc_top_latest_points_at_concrete_status(tmp_path: Path) -> None:
+    _run_bkc_leaf(tmp_path, _BKC_BASE, _BKC_RUN_DATE)
+
+    top = tmp_path / "nightly-bkc" / "latest.json"
+    assert top.is_symlink()
+    # Single-hop straight to the dated status.json, never a symlink-to-symlink.
+    assert top.readlink() == Path(_BKC_BASE) / _BKC_RUN_DATE / "status.json"
+    assert (top.parent / top.readlink()).is_file()
+    # Top-level latest_good is deferred, matching prerelease.
+    assert not (tmp_path / "nightly-bkc" / "latest_good.json").exists()
+
+
+def test_bkc_top_latest_highest_base_wins_regardless_of_order(tmp_path: Path) -> None:
+    high = Path("10.1.0a20260825") / "20260831" / "status.json"
+
+    # A lower base with a NEWER build date arrives first...
+    _run_bkc_leaf(tmp_path, "7.14.2a20260826", "20260905")
+    # ...then the higher base takes over even though its build is a day older.
+    _run_bkc_leaf(tmp_path, "10.1.0a20260825", "20260831")
+    top = tmp_path / "nightly-bkc" / "latest.json"
+    assert top.readlink() == high
+
+    # A later lower-base build must not regress the top-level pointer.
+    _run_bkc_leaf(tmp_path, "7.14.2a20260826", "20260910")
+    assert top.readlink() == high
+
+
+def test_bkc_top_latest_advances_within_same_base(tmp_path: Path) -> None:
+    # Within one base the newer run_date is the newer build and wins the tiebreak.
+    _run_bkc_leaf(tmp_path, _BKC_BASE, "20260831")
+    _run_bkc_leaf(tmp_path, _BKC_BASE, "20260905")
+
+    top = tmp_path / "nightly-bkc" / "latest.json"
+    assert top.readlink() == Path(_BKC_BASE) / "20260905" / "status.json"
+
+
+def test_bkc_top_latest_good_absent_while_in_progress(tmp_path: Path) -> None:
+    # A leaf alone leaves the top build in_progress: latest.json advances, but the
+    # good pointer is withheld until it finishes all-green.
+    _run_bkc_leaf(tmp_path, _BKC_BASE, _BKC_RUN_DATE)
+
+    assert (tmp_path / "nightly-bkc" / "latest.json").is_symlink()
+    assert not (tmp_path / "nightly-bkc" / "latest_good.json").exists()
+
+
+def test_bkc_top_latest_good_does_not_regress_to_lower_base(tmp_path: Path) -> None:
+    high = Path("10.1.0a20260825") / "20260831" / "status.json"
+    _run_bkc_build_good(tmp_path, "10.1.0a20260825", "20260831")
+    good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert good.is_symlink()
+    assert good.readlink() == high
+    assert (good.parent / good.readlink()).is_file()  # single-hop, resolves to a file
+
+    # A newer, all-green lower base must not overwrite the top-level good pointer.
+    _run_bkc_build_good(tmp_path, "7.14.2a20260826", "20260905")
+    assert good.readlink() == high
+
+
+def test_bkc_top_latest_good_advances_to_higher_good_base(tmp_path: Path) -> None:
+    _run_bkc_build_good(tmp_path, "7.14.2a20260826", "20260905")
+    good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert good.readlink() == Path("7.14.2a20260826") / "20260905" / "status.json"
+
+    # A higher base finishing good takes over the top-level good pointer.
+    _run_bkc_build_good(tmp_path, "10.1.0a20260825", "20260831")
+    assert good.readlink() == Path("10.1.0a20260825") / "20260831" / "status.json"
+
+
+def test_bkc_top_latest_good_advances_below_in_progress_latest(tmp_path: Path) -> None:
+    # The good pointer tracks the highest all-green build independently of
+    # latest.json. Even when latest.json sits on a higher base that never went
+    # green, a lower base finishing good must still advance the good pointer.
+    good = tmp_path / "nightly-bkc" / "latest_good.json"
+    latest = tmp_path / "nightly-bkc" / "latest.json"
+
+    _run_bkc_build_good(tmp_path, "7.13.0a20260801", "20260810")
+    assert good.readlink() == Path("7.13.0a20260801") / "20260810" / "status.json"
+
+    # A higher base is only in progress: it owns latest.json but not latest_good.
+    _run_bkc_leaf(tmp_path, "10.0.1a20260701", "20260905")
+    assert latest.readlink() == Path("10.0.1a20260701") / "20260905" / "status.json"
+    assert good.readlink() == Path("7.13.0a20260801") / "20260810" / "status.json"
+
+    # A middle base finishes all-green: below latest.json but above the current
+    # good target, so the good pointer advances while latest.json stays put.
+    _run_bkc_build_good(tmp_path, "7.14.0a20260901", "20260910")
+    assert latest.readlink() == Path("10.0.1a20260701") / "20260905" / "status.json"
+    assert good.readlink() == Path("7.14.0a20260901") / "20260910" / "status.json"
 
 
 def test_nightly_off_main_branch_raises(tmp_path: Path) -> None:
@@ -1084,7 +1205,7 @@ def test_prerelease_from_release_therock_branch_routes(tmp_path: Path) -> None:
     run = _prerelease_leaf_run()
     run.head_branch = "release/therock-7.14"
     out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
-    assert out == tmp_path / "prereleases" / "7.14.0" / "7.14.0rc1" / "status.json"
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
 
 
 def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:

@@ -23,7 +23,7 @@ jobs:
     permissions:
       contents: read
       security-events: write
-    uses: $/.github/workflows/security-baseline.yml
+    uses: ROCm/rocm-security-gh/.github/workflows/security-baseline.yml@31ec6f8dd59194dc8a94436865342fd00dea73fd # v1.0.0
     with:
       scan_mode: all
       report_formats: sarif

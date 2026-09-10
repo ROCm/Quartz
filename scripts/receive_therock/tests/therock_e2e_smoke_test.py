@@ -4,7 +4,7 @@
 """End-to-end smoke test for the full receive pipeline.
 
 Drives `therock_process_data.main` (parse -> enrich -> classify ->
-update_status_json) over real-shaped `DISPATCH_PAYLOAD` fixtures, exercising
+update_status_json) over real-shaped `DISPATCH_PAYLOAD` test data, exercising
 the whole nightly sequence: build/native leaves land the release in a capped
 `in_progress` state, then the top-level `multi_arch_release` completed event
 finalizes the document to `success`.
@@ -13,7 +13,7 @@ Offline + deterministic:
   - `--no-fetch-jobs` so enrichment never touches the GitHub API,
   - `--status-repo <tmp>` with dry-run (no `--commit-and-push`), so the only
     side effects are files written under the temp tree,
-  - `_utc_now` frozen past the fixture timestamps so the clock-drift guard
+  - `_utc_now` frozen past the test-data timestamps so the clock-drift guard
     passes without NTP.
 """
 
@@ -32,7 +32,7 @@ import therock_process_data as tpd  # noqa: E402
 import therock_update_status_json as tusj  # noqa: E402
 from therock_status_document import Status, StatusDocument  # noqa: E402
 
-FIXTURES = Path(__file__).resolve().parent / "fixtures"
+THEROCK_DATA = Path(__file__).resolve().parent / "therock_data"
 _NIGHTLY_DATE = "20260619"
 
 _SETUP = "nightly_setup_completed.json"
@@ -51,12 +51,12 @@ def _frozen_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def _process(fixture: str, status_repo: Path) -> int:
-    """Run the full pipeline for one fixture as a dry-run on-disk update."""
+def _process(data_file: str, status_repo: Path) -> int:
+    """Run the full pipeline for one test-data file as a dry-run update."""
     return tpd.main(
         [
             "--payload-file",
-            str(FIXTURES / fixture),
+            str(THEROCK_DATA / data_file),
             "--no-fetch-jobs",
             "--status-repo",
             str(status_repo),
@@ -70,8 +70,8 @@ def _load(status_repo: Path) -> StatusDocument:
 
 
 def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
-    for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
-        assert _process(fixture, tmp_path) == 0
+    for data_file in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
+        assert _process(data_file, tmp_path) == 0
 
     mid = _load(tmp_path)
     # All three leaves are terminal-success in their rollups...
@@ -95,8 +95,8 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
 def test_full_nightly_sequence_writes_symlink_and_latest_good(
     tmp_path: Path,
 ) -> None:
-    for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
-        assert _process(fixture, tmp_path) == 0
+    for data_file in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
+        assert _process(data_file, tmp_path) == 0
 
     nightly_dir = tmp_path / "nightly"
     latest_good = nightly_dir / "latest_good.json"
@@ -120,7 +120,7 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
     assert snapshot.build_date == _NIGHTLY_DATE
 
 
-def test_dev_capture_fixture_is_gated_out(tmp_path: Path) -> None:
+def test_dev_capture_is_gated_out(tmp_path: Path) -> None:
     rc = _process("multi_arch_build_portable_linux_completed.json", tmp_path)
     assert rc == 0
     # The candidacy gate rejects dev builds before any routing, so no status

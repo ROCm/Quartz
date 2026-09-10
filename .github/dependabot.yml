@@ -7,6 +7,7 @@
 version: 2
 updates:
   - package-ecosystem: "github-actions"
+    target-branch: "develop"
     # "/" covers .github/workflows; composite actions keep their own `uses:`
     # pins, so .github/actions has to be listed separately to get bumped.
     directories:
@@ -14,6 +15,13 @@ updates:
       - "/.github/actions/*"
     schedule:
       interval: "weekly"
+    # Follow the repository's required users/<username>/<description>
+    # branch-naming convention.
+    pull-request-branch-name:
+      prefix: "users/dependabot"
+      template: "{prefix}/{name}"
+      word-separator: "-"
+      branch-name-case: "lowercase"
     commit-message:
       prefix: "chore"
       include: "scope"

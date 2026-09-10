@@ -67,11 +67,11 @@ which is faster than pushing a commit to see what CI says. The
 configurations live at the repo root:
 
 ```bash
-# Secrets, over the full git history (installed separately, see gitleaks docs).
-gitleaks detect --source . --config gitleaks.toml --redact --verbose --no-banner
-
-# Secrets, working tree only. Much faster, and usually what you want locally.
+# Secrets, working tree only. Recommended much faster, and usually what you want locally.
 gitleaks detect --source . --config gitleaks.toml --redact --no-banner --no-git
+
+# Secrets, over the full git history. Takes longer than the working tree one above.
+gitleaks detect --source . --config gitleaks.toml --redact --verbose --no-banner
 
 # Unsafe patterns in Python (pip install bandit).
 bandit --configfile bandit.yml --severity-level low --recursive .

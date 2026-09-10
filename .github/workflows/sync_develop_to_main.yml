@@ -7,9 +7,12 @@ on:
   push:
     branches:
       - develop
+  workflow_dispatch:
 
 concurrency:
   group: sync-develop-to-main
+  # just in case previous run is stuck
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -47,6 +50,6 @@ jobs:
           git fetch origin develop
           message="$(git log -1 \
             --format="Merge develop (%h) into main%n%n%h, %s, %aN (%ae), %ad" \
-            "${GITHUB_SHA}")"
-          git merge --no-ff "${GITHUB_SHA}" -m "${message}"
+            origin/develop)"
+          git merge --no-ff origin/develop -m "${message}"
           git push origin HEAD:main

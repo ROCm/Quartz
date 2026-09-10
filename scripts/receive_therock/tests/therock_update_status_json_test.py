@@ -1362,7 +1362,7 @@ def test_clear_stale_git_locks_noop_without_git_dir(tmp_path: Path) -> None:
 # Deriving the effective owner run id itself is classify()'s job now (see
 # DeriveEffectiveOwnerRunIdTest in therock_classify_test.py); by the time a
 # WorkflowRunRecord reaches update_status_json, trigger_workflow_run_id is
-# already the resolved owner, so these fixtures set it directly.
+# already the resolved owner, so this test data sets it directly.
 
 
 def _linux_build(

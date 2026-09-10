@@ -29,12 +29,14 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, os.fspath(Path(__file__).parent.parent))
-sys.path.insert(0, os.fspath(Path(__file__).parent / "fixtures"))
+sys.path.insert(0, os.fspath(Path(__file__).parent / "therock_data"))
 
 from refresh_rock_workflow_inventory import notify_quartz_calls
 from therock_types import ORCHESTRATOR_SPECS, WORKFLOW_SPECS
 
-_INVENTORY_PATH = Path(__file__).with_name("fixtures") / "rock_workflow_inventory.json"
+_INVENTORY_PATH = (
+    Path(__file__).with_name("therock_data") / "rock_workflow_inventory.json"
+)
 
 _ALLOWED_PIPELINE_TYPES = frozenset(
     {"rocm", "pytorch", "jax", "native_packages", "setup", "orchestrator"}
@@ -188,12 +190,12 @@ def _notify_quartz_offenders(
     return problems
 
 
-class RockInventoryFixtureTest(unittest.TestCase):
-    def test_inventory_fixture_is_present_and_populated(self):
+class RockInventoryDataTest(unittest.TestCase):
+    def test_inventory_data_is_present_and_populated(self):
         self.assertTrue(
             _INVENTORY_PATH.is_file(),
             f"missing rock inventory snapshot at {_INVENTORY_PATH}; regenerate "
-            "with fixtures/refresh_rock_workflow_inventory.py",
+            "with therock_data/refresh_rock_workflow_inventory.py",
         )
         inv = _load_inventory()
         self.assertTrue(inv, "inventory has no repos")
@@ -272,7 +274,7 @@ class NotifyQuartzWiringTest(unittest.TestCase):
 
     The local repo is parsed live from `.github/workflows`; upstream repos
     (ROCm/TheRock, ROCm/rockrel) come from the hermetic snapshot -- refresh it
-    via `fixtures/refresh_rock_workflow_inventory.py`. Both feed the same
+    via `therock_data/refresh_rock_workflow_inventory.py`. Both feed the same
     `_notify_quartz_offenders` check. Registered workflows that upstream has not
     yet wired (or wires with a stale name) are tracked in `_UNWIRED_UPSTREAM` and
     skipped here; drop them from that set as upstream lands each fix.

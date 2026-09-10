@@ -27,6 +27,7 @@ jobs:
           client-id: ${{ secrets.GH_APP_QUARTZ_SYNC_CID }}
           private-key: ${{ secrets.GH_APP_QUARTZ_SYNC_PRIVATE_KEY }}
           repositories: Quartz
+          permission-contents: write
 
       - name: Checkout main
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

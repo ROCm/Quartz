@@ -89,6 +89,8 @@ _EXCLUDED_WORKFLOWS = frozenset(
         "bender.yml",
         "sync_develop_to_main.yml",
         "pre_commit.yml",
+        "security_scan_pr.yml",
+        "security_scan_weekly.yml",
     }
 )
 

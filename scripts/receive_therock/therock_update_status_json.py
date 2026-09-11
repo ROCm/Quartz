@@ -238,13 +238,13 @@ def _status_json_path(
     workflow_run: WorkflowRunRecord,
 ) -> Path:
     release_version = workflow_run.classification.release_version or ""
-    # bkc carries two dates (base build date + bkc run date) that cannot be
-    # reconstructed from `created_at`, and its version is not one of the
+    # bkc carries two dates (the nightly base build date + the bkc run date) that
+    # cannot be reconstructed from `created_at`, and its version is not one of the
     # nightly/prerelease forms `_release_version_suffix` accepts, so route it
     # before that call.
     if release_type == "nightly-bkc":
-        base, run_date = _bkc_dirs(release_version)
-        return repo_dir / "nightly-bkc" / base / run_date / "status.json"
+        nightly_version, bkc_date = _bkc_dirs(release_version)
+        return repo_dir / "nightly-bkc" / nightly_version / bkc_date / "status.json"
 
     # Test workflows are dispatched without a version input, so their events
     # carry no release_version.
@@ -263,7 +263,7 @@ def _status_json_path(
 
 
 def _bkc_dirs(release_version: str) -> tuple[str, str]:
-    """Split a bkc version into its (base, run_date) directory names.
+    """Split a bkc version into its (nightly_version, bkc_date) directory names.
 
     "10.1.0a20260825+bkc.20260831" -> ("10.1.0a20260825", "20260831")
     """
@@ -276,20 +276,20 @@ def _bkc_dirs(release_version: str) -> tuple[str, str]:
     return m.group(1), m.group(2)
 
 
-_BKC_BASE_KEY_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)a(\d{8})$")
+_BKC_NIGHTLY_VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)a(\d{8})$")
 
 
-def _bkc_top_key(base: str, run_date: str) -> tuple[int, int, int, int, int]:
+def _bkc_top_key(nightly_version: str, bkc_date: str) -> tuple[int, int, int, int, int]:
     """Order bkc builds for the top-level `nightly-bkc/latest.json`.
 
-    Like prerelease, the largest base version wins; the run_date only breaks
-    ties within the same base. So base "10.1.0a20260825" outranks
+    Like prerelease, the largest nightly version wins; the bkc_date only breaks
+    ties within the same nightly version. So "10.1.0a20260825" outranks
     "7.14.2a20260826" (10 > 7) even though the latter's build is a day newer.
     """
-    m = _BKC_BASE_KEY_RE.match(base)
+    m = _BKC_NIGHTLY_VERSION_RE.match(nightly_version)
     if not m:
         return (0, 0, 0, 0, 0)
-    return (int(m[1]), int(m[2]), int(m[3]), int(m[4]), int(run_date))
+    return (int(m[1]), int(m[2]), int(m[3]), int(m[4]), int(bkc_date))
 
 
 _PRERELEASE_VERSION_KEY_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)rc(\d+)$")
@@ -1226,7 +1226,7 @@ def _update_symlinks(
     single-hop symlink to the concrete dated `status.json`: `latest.json` follows
     the newest build, `latest_good.json` follows the newest all-green build. The
     version-ordered top-level `nightly-bkc/latest.json`/`latest_good.json` (for the
-    highest base) are maintained by `_update_bkc_top_latest`."""
+    highest nightly version) are maintained by `_update_bkc_top_latest`."""
     if release_type == "prerelease":
         return _update_prerelease_latest(repo_dir, doc, status_path)
     if release_type not in ("nightly", "nightly-bkc"):
@@ -1234,7 +1234,7 @@ def _update_symlinks(
 
     # Root follows wherever the document was written, two levels up from the
     # dated status.json: nightly/<date>/ (or the legacy release-nightly/<date>/
-    # during the #93 rename bridge), and nightly-bkc/<base>/<date>/. Deriving it
+    # during the #93 rename bridge), and nightly-bkc/<nightly-version>/<bkc-date>/. Deriving it
     # from the target keeps the pointer in the same folder as its target.
     latest_dir = status_path.parent.parent
     new_target_relative = status_path.relative_to(latest_dir)
@@ -1324,22 +1324,24 @@ def _update_bkc_top_latest(
 ) -> list[Path]:
     """Update the top-level `nightly-bkc/latest.json` and `latest_good.json`.
 
-    Both are single-hop symlinks to a concrete `<base>/<run_date>/status.json`,
-    ordered by `_bkc_top_key`: the largest base version wins across bases, and the
-    newest build only breaks ties within one base. The two pointers move
-    independently, each with its own no-regress guard:
+    Both are single-hop symlinks to a concrete
+    `<nightly-version>/<bkc-date>/status.json`, ordered by `_bkc_top_key`: the
+    largest nightly version wins across nightly versions, and the newest build only
+    breaks ties within one nightly version. The two pointers move independently,
+    each with its own no-regress guard:
 
       - `latest.json`      tracks the highest build regardless of status.
       - `latest_good.json` tracks the highest all-green build. It is NOT tied to
-                           `latest.json`: when the highest base is still in progress
-                           or failed, a lower base finishing all-green still advances
-                           the good pointer, as long as it outranks the current good
-                           target. Neither pointer regresses to a lower key.
+                           `latest.json`: when the highest nightly version is still
+                           in progress or failed, a lower nightly version finishing
+                           all-green still advances the good pointer, as long as it
+                           outranks the current good target. Neither pointer
+                           regresses to a lower key.
     """
     bkc_root = repo_dir / "nightly-bkc"
     new_target_relative = status_path.relative_to(
         bkc_root
-    )  # <base>/<run_date>/status.json
+    )  # <nightly-version>/<bkc-date>/status.json
     new_key = _bkc_top_key(new_target_relative.parts[0], new_target_relative.parts[1])
 
     files_written: list[Path] = []
@@ -1366,12 +1368,12 @@ def _bkc_top_should_update(
 ) -> bool:
     """True unless the top-level bkc `pointer` already targets a higher-ranked
     build. Absent or unreadable pointers count as "nothing to regress from". The
-    target is `<base>/<run_date>/status.json`, so its `_bkc_top_key` is read from
-    the first two path components."""
+    target is `<nightly-version>/<bkc-date>/status.json`, so its `_bkc_top_key` is
+    read from the first two path components."""
     if not pointer.is_symlink():
         return True
     try:
-        existing = pointer.readlink()  # <base>/<run_date>/status.json
+        existing = pointer.readlink()  # <nightly-version>/<bkc-date>/status.json
         return _bkc_top_key(existing.parts[0], existing.parts[1]) <= new_key
     except (IndexError, OSError):
         return True
@@ -1381,10 +1383,10 @@ def _latest_good_should_update(latest_good: Path, new_build_date: str) -> bool:
     """True unless the existing `latest_good.json` symlink already points at a
     newer build.
 
-    Shared by the nightly and bkc per-date/per-base pointers. The pointer is a
+    Shared by the nightly and bkc per-date pointers. The pointer is a
     single-hop symlink to `<date>/status.json` (nightly) or
-    `<base>/<run_date>/status.json` (bkc); either way the build date is the first
-    path component, read straight off the link target. A legacy snapshot file
+    `<nightly-version>/<bkc-date>/status.json` (bkc); either way the build date is
+    the first path component, read straight off the link target. A legacy snapshot file
     (non-symlink) or an unreadable link is treated as "no newer build" and gets
     replaced on the next successful write.
     """
@@ -1696,7 +1698,7 @@ def _assert_branch_matches_release_type(release_type: str, head_branch: str) -> 
 
       nightly      -> `main`
       nightly-bkc  -> `release/bkc/...`
-      prerelease   -> `main` or `release/therock-...`
+      prerelease   -> `release/therock-...`
     """
     branch = head_branch or ""
     if release_type == "nightly":
@@ -1706,8 +1708,8 @@ def _assert_branch_matches_release_type(release_type: str, head_branch: str) -> 
         allowed = branch.startswith("release/bkc/")
         expected = "'release/bkc/...'"
     elif release_type == "prerelease":
-        allowed = branch == "main" or branch.startswith("release/therock-")
-        expected = "'main' or 'release/therock-...'"
+        allowed = branch.startswith("release/therock-")
+        expected = "'release/therock-...'"
     else:
         return
 

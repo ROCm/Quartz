@@ -245,6 +245,20 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
         self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
         self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
 
+    def test_bkc_linux_has_no_dated_segment(self):
+        rec = _release_record(
+            path=".github/workflows/multi_arch_release_linux.yml",
+            release_type="nightly-bkc",
+            release_version="10.1.0a20260825+bkc.20260831",
+            source_run_id="27797822902",
+        )
+        urls = derive_release_cdn_urls(rec)
+        base = "https://d2f0ijhovwa9ap.cloudfront.net/rocm/"
+        self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
+        self.assertEqual(urls.wheels_url, f"{base}whl-next/")
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
+
     def test_windows_has_no_native_package_urls(self):
         rec = _release_record(
             path=".github/workflows/multi_arch_release_windows.yml",

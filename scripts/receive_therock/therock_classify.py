@@ -248,7 +248,7 @@ def _canonicalize_bkc_version(v: str) -> str:
 
     The three producers spell the bkc suffix differently: wheel `+bkc.`,
     native deb/rpm `.bkc.`, framework `-bkc.`. The canonical `release_version`
-    is the PEP 440 wheel form, so all collapse to `<base>+bkc.<run_date>`.
+    is the PEP 440 wheel form, so all collapse to `<nightly-version>+bkc.<bkc-date>`.
     """
     m = RELEASE_VERSION_BKC_RE.match(v)
     return f"{m.group(1)}+bkc.{m.group(2)}" if m else v
@@ -497,10 +497,9 @@ def _native_package_urls(
 # each stream is served at its own `<stream>.repo.amd.com/rocm/` subdomain.
 # `dev` is intentionally absent: normal dev builds stay in the S3 artifact
 # bucket, and release-triggered devreleases are out of scope for now.
-# `nightly-bkc` is also intentionally absent: its CDN domain is not online yet,
-# so bkc runs keep their per-run S3 artifact URLs (therock-bkc-artifacts).
 _RELEASE_CDN_BASE: Final[dict[str, str]] = {
     "nightly": "https://nightly.repo.amd.com/rocm/",
+    "nightly-bkc": "https://d2f0ijhovwa9ap.cloudfront.net/rocm/",
     "prerelease": "https://rc.repo.amd.com/rocm/",
 }
 
@@ -528,7 +527,7 @@ def derive_release_cdn_urls(wr: WorkflowRunRecord) -> ReleaseCdnUrls | None:
 
     Returns None (leave the per-run S3 URLs untouched) unless all hold:
       - the workflow is a per-platform release orchestrator,
-      - `release_type` is nightly or prerelease,
+      - `release_type` is nightly, nightly-bkc, or prerelease,
       - the `Publish to Release Buckets` job succeeded.
 
     nightly URLs carry a `<date>-<run_id>` segment for the native packages;

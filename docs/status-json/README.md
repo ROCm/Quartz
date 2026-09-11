@@ -73,19 +73,19 @@ below.
 Quartz publishes one `status.json` per release build (nightly/nightly-bkc/prerelease), plus stable pointers to the
 most recent builds.
 
-| Endpoint                                      | Points to                                                                                                  |
-| --------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `nightly/<date>/status.json`                  | A specific nightly, for example `nightly/20260707/status.json`                                             |
-| `nightly/latest.json`                         | The most recent nightly (any result, including still in progress)                                          |
-| `nightly/latest_good.json`                    | The most recent fully-passing nightly                                                                      |
-| `nightly-bkc/<base>/<date>/status.json`       | A specific bkc nightly, for example `nightly-bkc/10.1.0a20260825/20260831/status.json`                     |
-| `nightly-bkc/<base>/latest.json`              | The most recent bkc nightly for that base (any result, including still in progress)                        |
-| `nightly-bkc/<base>/latest_good.json`         | The most recent fully-passing bkc nightly for that base                                                    |
-| `nightly-bkc/latest.json`                     | The most recent build of the highest bkc base version (by version number, not build date)                  |
-| `nightly-bkc/latest_good.json`                | The highest-versioned fully-passing bkc build (may trail `latest.json` when the highest base is not green) |
-| `prerelease/<major.minor>/<full>/status.json` | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                                 |
-| `prerelease/latest.json`                      | The highest-versioned prerelease across all release lines (by version number, not build date)              |
-| `prerelease/<major.minor>/latest.json`        | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`                   |
+| Endpoint                                               | Points to                                                                                                             |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `nightly/<date>/status.json`                           | A specific nightly, for example `nightly/20260707/status.json`                                                        |
+| `nightly/latest.json`                                  | The most recent nightly (any result, including still in progress)                                                     |
+| `nightly/latest_good.json`                             | The most recent fully-passing nightly                                                                                 |
+| `nightly-bkc/<nightly-version>/<bkc-date>/status.json` | A specific bkc nightly, for example `nightly-bkc/10.1.0a20260825/20260831/status.json`                                |
+| `nightly-bkc/<nightly-version>/latest.json`            | The most recent bkc nightly for that nightly version (any result, including still in progress)                        |
+| `nightly-bkc/<nightly-version>/latest_good.json`       | The most recent fully-passing bkc nightly for that nightly version                                                    |
+| `nightly-bkc/latest.json`                              | The most recent build of the highest bkc nightly version (by version number, not build date)                          |
+| `nightly-bkc/latest_good.json`                         | The highest-versioned fully-passing bkc build (may trail `latest.json` when the highest nightly version is not green) |
+| `prerelease/<major.minor>/<full>/status.json`          | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                                            |
+| `prerelease/latest.json`                               | The highest-versioned prerelease across all release lines (by version number, not build date)                         |
+| `prerelease/<major.minor>/latest.json`                 | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`                              |
 
 Each is served as raw content. The raw URL form is:
 

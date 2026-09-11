@@ -47,6 +47,7 @@ directly to keys in the document:
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                        |
 | **nightly**           | An automatic build produced once a day.                                                                                                                |
+| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                                                                                   |
 | **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                |
 | **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                      |
 | **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.              |
@@ -69,17 +70,22 @@ below.
 
 ## Endpoints
 
-Quartz publishes one `status.json` per release build (nightly/prerelease), plus stable pointers to the
+Quartz publishes one `status.json` per release build (nightly/nightly-bkc/prerelease), plus stable pointers to the
 most recent builds.
 
-| Endpoint                                      | Points to                                                                                     |
-| --------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `nightly/<date>/status.json`                  | A specific nightly, for example `nightly/20260707/status.json`                                |
-| `nightly/latest.json`                         | The most recent nightly (any result, including still in progress)                             |
-| `nightly/latest_good.json`                    | The most recent fully-passing nightly                                                         |
-| `prerelease/<major.minor>/<full>/status.json` | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                    |
-| `prerelease/latest.json`                      | The highest-versioned prerelease across all release lines (by version number, not build date) |
-| `prerelease/<major.minor>/latest.json`        | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`      |
+| Endpoint                                               | Points to                                                                                                             |
+| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
+| `nightly/<date>/status.json`                           | A specific nightly, for example `nightly/20260707/status.json`                                                        |
+| `nightly/latest.json`                                  | The most recent nightly (any result, including still in progress)                                                     |
+| `nightly/latest_good.json`                             | The most recent fully-passing nightly                                                                                 |
+| `nightly-bkc/<nightly-version>/<bkc-date>/status.json` | A specific bkc nightly, for example `nightly-bkc/10.1.0a20260825/20260831/status.json`                                |
+| `nightly-bkc/<nightly-version>/latest.json`            | The most recent bkc nightly for that nightly version (any result, including still in progress)                        |
+| `nightly-bkc/<nightly-version>/latest_good.json`       | The most recent fully-passing bkc nightly for that nightly version                                                    |
+| `nightly-bkc/latest.json`                              | The most recent build of the highest bkc nightly version (by version number, not build date)                          |
+| `nightly-bkc/latest_good.json`                         | The highest-versioned fully-passing bkc build (may trail `latest.json` when the highest nightly version is not green) |
+| `prerelease/<major.minor>/<full>/status.json`          | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                                            |
+| `prerelease/latest.json`                               | The highest-versioned prerelease across all release lines (by version number, not build date)                         |
+| `prerelease/<major.minor>/latest.json`                 | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`                              |
 
 Each is served as raw content. The raw URL form is:
 
@@ -87,16 +93,20 @@ Each is served as raw content. The raw URL form is:
 https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 ```
 
-> **Note on the `latest.json` pointers:** `latest.json` and `prerelease/latest.json`
-> are git symlinks to the dated `status.json` they currently point at. Raw GitHub
+> **Note on the pointer files:** Every `latest.json` and `latest_good.json` pointer
+> is a git symlink to the dated `status.json` it currently points at. Raw GitHub
 > serves a symlink as its target path (a one-line body like `20260707/status.json`),
-> not the file it points to, so a plain fetch of `latest.json` returns that path
-> rather than JSON. The Python helper `load_status` follows this pointer for you
-> transparently; if you fetch it yourself, resolve the returned path against the
-> `latest.json` URL and fetch again.
+> not the file it points to, so a plain fetch returns that path rather than JSON. The
+> Python helper `load_status` follows this pointer for you transparently; if you
+> fetch it yourself, resolve the returned path against the pointer URL and fetch
+> again.
 
-> **Note on `latest_good.json`:** Is currently unavailable, as the definition of "fully passing"
-> still needs to be determined.
+> **Note on `latest_good.json`:** "Fully passing" means the build's
+> `summary.overall_status` is `success` (a worst-of rollup, so this implies the
+> build finished and every reported pipeline was green). A `latest_good.json`
+> pointer only advances to a build once that build reaches `success`, so it never
+> regresses to an in-progress or failed build. Prerelease has no `latest_good.json`
+> pointer yet.
 
 > These endpoints go live as TheRock release workflows are instrumented to report
 > to Quartz. Until a given release type is instrumented, its files may be absent.
@@ -126,7 +136,7 @@ For a complete, annotated example, see
 
 | Field                              | Meaning                                                                                                                              |
 | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `release_type`                     | `nightly`, `rc` (prerelease/release candidate)                                                                                       |
+| `release_type`                     | `nightly`, `nightly-bkc`, `rc` (prerelease/release candidate)                                                                        |
 | `rocm_version`                     | The ROCm version string for this build. Normalized to use the representation for wheels (rpm/deb are different).                     |
 | `build_date`                       | `YYYYMMDD` of the build.                                                                                                             |
 | `build_variant`                    | Build flavor: `release`, or a sanitizer build such as `asan` (schema 2.1). `""` when no signal yet; key absent in pre-2.1 documents. |

@@ -8,16 +8,16 @@ on:
     branches:
       - develop
   workflow_dispatch:
-  inputs:
-    force_execute:
-      description: Cancel any running sync before starting this one
-      type: boolean
-      required: false
-      default: false
+    inputs:
+      force_execute:
+        description: Cancel any running sync before starting this one
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: sync-develop-to-main
-  # just in case previous run is stuck
+  # Only a forced manual run may cancel the active sync.
   cancel-in-progress: >-
     ${{ github.event_name == 'workflow_dispatch' && inputs.force_execute }}
 

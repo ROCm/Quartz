@@ -89,7 +89,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Path to a local clone of the status-data repository. When "
             "provided, nightly / nightly-bkc / prerelease runs trigger a status.json "
             "update under the appropriate "
-            "nightly/<date>/, nightly-bkc/<base>/<date>/, or prerelease/<major.minor>/<full>/ "
+            "nightly/<date>/, nightly-bkc/<nightly-date>/<bkc-date>/, or prerelease/<major.minor>/<full>/ "
             "tree. When "
             "omitted, the status.json update step is skipped entirely "
             "(useful for ingest-only runs and unit replay)."

@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-11T00:02:49Z",
-  "status_json_last_updated": "2026-09-11T04:28:04Z",
+  "status_json_last_updated": "2026-09-11T04:28:42Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -96,7 +96,7 @@
       }
     },
     "windows": {
-      "status": "failure",
+      "status": "in_progress",
       "architectures": [
         "gfx110X-all",
         "gfx1151",
@@ -119,7 +119,7 @@
       },
       "rocm": {
         "build": {
-          "status": "failure"
+          "status": "in_progress"
         },
         "test": {
           "success": 0,
@@ -131,7 +131,7 @@
       },
       "pytorch": {
         "build": {
-          "status": "skipped"
+          "status": "in_progress"
         },
         "test": {
           "success": 0,
@@ -147,11 +147,10 @@
     "rocm": {
       "build": {
         "windows": {
-          "status": "failure",
+          "status": "in_progress",
           "run_id": 34544660239,
-          "run_attempt": 1,
-          "started_at": "2026-09-11T00:01:00Z",
-          "completed_at": "2026-09-11T02:59:53Z"
+          "run_attempt": 2,
+          "started_at": "2026-09-11T04:23:12Z"
         },
         "linux": {
           "status": "success",

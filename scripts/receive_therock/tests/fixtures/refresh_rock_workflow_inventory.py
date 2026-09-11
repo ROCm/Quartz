@@ -11,8 +11,8 @@ Snapshots two things from ROCm/TheRock and ROCm/rockrel:
    WORKFLOW_SPECS / ORCHESTRATOR_SPECS tables against, so a spec can't
    reference a workflow that no longer exists in either repo.
 
-2. `notify_quartz_calls`: for every workflow that calls the reusable
-   `notify_quartz.yml`, the `with:` parameters of each call (run_phase,
+2. `notify_quartz_calls`: for every workflow that calls the `notify_quartz`
+   composite action, the `with:` parameters of each call (run_phase,
    reporting_workflow, ...). This script only *records* the wiring; the
    consistency check (each `reporting_workflow` equals its own filename)
    lives in `therock_workflow_registry_test.py`, which reads this snapshot
@@ -28,13 +28,32 @@ Usage:
 import base64
 import datetime
 import json
+import re
 import subprocess
 from pathlib import Path
 
 import yaml
 
 _REPOS = ("ROCm/TheRock", "ROCm/rockrel")
-_NOTIFY_QUARTZ = "notify_quartz.yml"
+_NOTIFY_QUARTZ_ACTION = "actions/notify_quartz"
+
+_ENV_REF = re.compile(r"\$\{\{\s*env\.([A-Za-z_][A-Za-z0-9_]*)\s*\}\}")
+
+
+def _resolve_env_refs(value: str, env_map: dict) -> str:
+    """Substitute `${{ env.NAME }}` refs using the workflow's env mapping.
+
+    TheRock passes `reporting_workflow: ${{ env.QUARTZ_REPORTING_WORKFLOW }}`,
+    with the concrete filename set once in the job's `env:`. Resolve it so the
+    snapshot records the filename, not the raw expression. Unresolved refs (no
+    matching env key) are left as-is so the registry test surfaces them.
+    """
+
+    def repl(match: re.Match) -> str:
+        resolved = env_map.get(match.group(1))
+        return str(resolved) if resolved is not None else match.group(0)
+
+    return _ENV_REF.sub(repl, value)
 
 
 def _workflow_names(repo: str) -> list[str]:
@@ -59,20 +78,39 @@ def _workflow_text(repo: str, name: str) -> str:
     return base64.b64decode(encoded).decode("utf-8")
 
 
-def _notify_quartz_calls(workflow_text: str) -> list[dict[str, str]]:
-    """`with:` params of every job that calls the reusable notify_quartz.yml."""
+def notify_quartz_calls(workflow_text: str) -> list[dict[str, str]]:
+    """`with:` params of every step that calls the notify_quartz composite action.
+
+    TheRock/rockrel invoke notify_quartz as a step-level composite action
+    (`uses: ROCm/Quartz/.github/actions/notify_quartz@<sha>`), not as a reusable
+    workflow. Each reporting workflow calls it twice (started + completed).
+    """
     doc = yaml.safe_load(workflow_text)
     if not isinstance(doc, dict):
         return []
+    top_env = doc.get("env") if isinstance(doc.get("env"), dict) else {}
     calls: list[dict[str, str]] = []
     for job in doc.get("jobs", {}).values():
         if not isinstance(job, dict):
             continue
-        uses = job.get("uses", "")
-        if isinstance(uses, str) and uses.endswith(_NOTIFY_QUARTZ):
-            with_params = job.get("with", {})
-            if isinstance(with_params, dict):
-                calls.append({str(k): str(v) for k, v in with_params.items()})
+        job_env = job.get("env") if isinstance(job.get("env"), dict) else {}
+        for step in job.get("steps", []) or []:
+            if not isinstance(step, dict):
+                continue
+            uses = step.get("uses", "")
+            if isinstance(uses, str) and _NOTIFY_QUARTZ_ACTION in uses:
+                with_params = step.get("with", {})
+                if isinstance(with_params, dict):
+                    step_env = (
+                        step.get("env") if isinstance(step.get("env"), dict) else {}
+                    )
+                    env_map = {**top_env, **job_env, **step_env}
+                    calls.append(
+                        {
+                            str(k): _resolve_env_refs(str(v), env_map)
+                            for k, v in with_params.items()
+                        }
+                    )
     return calls
 
 
@@ -80,7 +118,7 @@ def _collect(repo: str) -> tuple[list[str], dict[str, list[dict[str, str]]]]:
     names = _workflow_names(repo)
     calls_by_workflow: dict[str, list[dict[str, str]]] = {}
     for name in names:
-        calls = _notify_quartz_calls(_workflow_text(repo, name))
+        calls = notify_quartz_calls(_workflow_text(repo, name))
         if calls:
             calls_by_workflow[name] = calls
     return names, calls_by_workflow

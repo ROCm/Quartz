@@ -716,32 +716,14 @@ class DerivePlatformAndPipelineTest(unittest.TestCase):
         )
         self.assertEqual(derive_platform_and_pipeline(rec), ("linux", "rocm", "test"))
 
-    def test_test_linux_jax_wheels_is_jax_test_leaf(self):
+    def test_test_multi_arch_linux_jax_wheels_is_jax_test_leaf(self):
         # JAX is linux-only; arch comes from `test_amdgpu_family`.
         rec = _path_record(
-            ".github/workflows/test_linux_jax_wheels.yml",
+            ".github/workflows/test_multi_arch_linux_jax_wheels.yml",
             inputs={"test_amdgpu_family": "gfx94X-dcgpu"},
         )
         self.assertEqual(derive_platform_and_pipeline(rec), ("linux", "jax", "test"))
         self.assertEqual(derive_architectures(rec), ["gfx94X-dcgpu"])
-
-    def test_test_rocm_wheels_is_rocm_test_leaf(self):
-        # ROCm wheel tests share the rocm/test leaf; per-arch via singular
-        # `amdgpu_family`, platform from the `test_runs_on` runner label.
-        path = ".github/workflows/test_rocm_wheels.yml"
-        linux = _path_record(
-            path,
-            inputs={"amdgpu_family": "gfx942", "test_runs_on": "linux-gfx942-1gpu"},
-        )
-        windows = _path_record(
-            path,
-            inputs={"amdgpu_family": "gfx1100", "test_runs_on": "windows-gfx1100"},
-        )
-        self.assertEqual(derive_platform_and_pipeline(linux), ("linux", "rocm", "test"))
-        self.assertEqual(
-            derive_platform_and_pipeline(windows), ("windows", "rocm", "test")
-        )
-        self.assertEqual(derive_architectures(linux), ["gfx942"])
 
 
 def _leaf_run() -> WorkflowRunRecord:

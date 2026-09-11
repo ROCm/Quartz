@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-11T00:02:49Z",
-  "status_json_last_updated": "2026-09-11T19:06:50Z",
+  "status_json_last_updated": "2026-09-11T19:08:53Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -61,8 +61,8 @@
         },
         "test": {
           "success": 109,
-          "failure": 196,
-          "in_progress": 12,
+          "failure": 197,
+          "in_progress": 11,
           "cancelled": 3,
           "skipped": 0
         },
@@ -255,6 +255,10 @@
       "build": {
         "linux": {
           "status": "success",
+          "run_id": 34553780931,
+          "run_attempt": 1,
+          "started_at": "2026-09-11T02:15:18Z",
+          "completed_at": "2026-09-11T19:08:47Z",
           "variants": [
             {
               "py": "3.10",
@@ -344,7 +348,7 @@
               "run_id": 34553780931,
               "run_attempt": 1,
               "started_at": "2026-09-11T02:15:19Z",
-              "completed_at": "2026-09-11T04:15:00Z"
+              "completed_at": "2026-09-11T19:08:47Z"
             },
             {
               "py": "3.13",
@@ -3088,7 +3092,7 @@
             "run_id": 34553780931,
             "run_attempt": 1,
             "started_at": "2026-09-11T02:13:30Z",
-            "completed_at": "2026-09-11T19:03:37Z",
+            "completed_at": "2026-09-11T19:08:13Z",
             "variants": [
               {
                 "py": "3.13",
@@ -3129,10 +3133,11 @@
               {
                 "py": "3.12",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 34553780931,
                 "run_attempt": 1,
-                "started_at": "2026-09-11T18:40:56Z"
+                "started_at": "2026-09-11T18:40:56Z",
+                "completed_at": "2026-09-11T19:08:13Z"
               },
               {
                 "py": "3.11",
@@ -3149,7 +3154,7 @@
                 "status": "in_progress",
                 "run_id": 34553780931,
                 "run_attempt": 1,
-                "started_at": "2026-09-11T02:13:30Z"
+                "started_at": "2026-09-11T19:05:52Z"
               },
               {
                 "py": "3.13",
@@ -3157,7 +3162,7 @@
                 "status": "in_progress",
                 "run_id": 34553780931,
                 "run_attempt": 1,
-                "started_at": "2026-09-11T04:15:14Z"
+                "started_at": "2026-09-11T19:08:42Z"
               },
               {
                 "py": "3.12",

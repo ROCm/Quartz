@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-13T00:01:34Z",
-  "status_json_last_updated": "2026-09-13T11:02:55Z",
+  "status_json_last_updated": "2026-09-13T11:11:46Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -61,8 +61,8 @@
         },
         "test": {
           "success": 111,
-          "failure": 171,
-          "in_progress": 38,
+          "failure": 172,
+          "in_progress": 37,
           "cancelled": 0,
           "skipped": 0
         },
@@ -2983,7 +2983,7 @@
                 "status": "in_progress",
                 "run_id": 34732423158,
                 "run_attempt": 1,
-                "started_at": "2026-09-13T02:11:17Z"
+                "started_at": "2026-09-13T04:11:24Z"
               },
               {
                 "py": "3.14",
@@ -3068,18 +3068,20 @@
             ]
           },
           "gfx1150": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 34732423158,
             "run_attempt": 1,
-            "started_at": "2026-09-13T02:11:17Z",
+            "started_at": "2026-09-13T04:11:26Z",
+            "completed_at": "2026-09-13T11:11:22Z",
             "variants": [
               {
                 "py": "3.13",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 34732423158,
                 "run_attempt": 1,
-                "started_at": "2026-09-13T10:45:47Z"
+                "started_at": "2026-09-13T10:45:47Z",
+                "completed_at": "2026-09-13T11:11:22Z"
               },
               {
                 "py": "3.13",
@@ -3152,7 +3154,7 @@
                 "status": "in_progress",
                 "run_id": 34732423158,
                 "run_attempt": 1,
-                "started_at": "2026-09-13T02:11:17Z"
+                "started_at": "2026-09-13T11:02:00Z"
               },
               {
                 "py": "3.14",

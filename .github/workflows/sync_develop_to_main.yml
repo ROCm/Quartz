@@ -7,9 +7,19 @@ on:
   push:
     branches:
       - develop
+  workflow_dispatch:
+    inputs:
+      force_execute:
+        description: Cancel any running sync before starting this one
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: sync-develop-to-main
+  # Only a forced manual run may cancel the active sync.
+  cancel-in-progress: >-
+    ${{ github.event_name == 'workflow_dispatch' && inputs.force_execute }}
 
 permissions:
   contents: read
@@ -48,6 +58,6 @@ jobs:
           git fetch origin develop
           message="$(git log -1 \
             --format="Merge develop (%h) into main%n%n%h, %s, %aN (%ae), %ad" \
-            "${GITHUB_SHA}")"
-          git merge --no-ff "${GITHUB_SHA}" -m "${message}"
+            origin/develop)"
+          git merge --no-ff origin/develop -m "${message}"
           git push origin HEAD:main

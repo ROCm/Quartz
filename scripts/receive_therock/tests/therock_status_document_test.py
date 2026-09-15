@@ -1118,10 +1118,10 @@ def test_reads_real_published_older_minor_document() -> None:
     # reading documents already on disk.
     import json
 
-    fixture = (
-        Path(__file__).with_name("fixtures") / "published_status_v2_0_nightly.json"
+    data_file = (
+        Path(__file__).with_name("therock_data") / "published_status_v2_0_nightly.json"
     )
-    data = json.loads(fixture.read_text())
+    data = json.loads(data_file.read_text())
     assert data["schema_version"] == "2.0"
 
     doc = StatusDocument.from_dict(data)

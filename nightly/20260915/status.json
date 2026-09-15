@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-15T00:01:37Z",
-  "status_json_last_updated": "2026-09-15T14:52:34Z",
+  "status_json_last_updated": "2026-09-15T14:53:12Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -61,8 +61,8 @@
         },
         "test": {
           "success": 58,
-          "failure": 202,
-          "in_progress": 58,
+          "failure": 203,
+          "in_progress": 57,
           "cancelled": 2,
           "skipped": 0
         },
@@ -256,6 +256,10 @@
       "build": {
         "linux": {
           "status": "success",
+          "run_id": 34919315426,
+          "run_attempt": 2,
+          "started_at": "2026-09-15T01:58:36Z",
+          "completed_at": "2026-09-15T14:51:44Z",
           "variants": [
             {
               "py": "3.11",
@@ -847,7 +851,7 @@
                 "status": "in_progress",
                 "run_id": 34919315426,
                 "run_attempt": 2,
-                "started_at": "2026-09-15T14:35:42Z"
+                "started_at": "2026-09-15T14:37:26Z"
               },
               {
                 "py": "3.14",
@@ -3415,8 +3419,8 @@
             "status": "failure",
             "run_id": 34919315426,
             "run_attempt": 2,
-            "started_at": "2026-09-15T14:35:42Z",
-            "completed_at": "2026-09-15T14:51:08Z",
+            "started_at": "2026-09-15T14:35:50Z",
+            "completed_at": "2026-09-15T14:52:42Z",
             "variants": [
               {
                 "py": "3.13",
@@ -3446,10 +3450,11 @@
               {
                 "py": "3.10",
                 "torch": "release/2.12",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 34919315426,
                 "run_attempt": 2,
-                "started_at": "2026-09-15T14:35:42Z"
+                "started_at": "2026-09-15T14:51:49Z",
+                "completed_at": "2026-09-15T14:52:42Z"
               },
               {
                 "py": "3.14",

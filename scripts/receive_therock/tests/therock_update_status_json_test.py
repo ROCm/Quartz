@@ -864,6 +864,42 @@ def test_finalized_release_points_latest_good_at_status(tmp_path: Path) -> None:
     assert resolved.build_date == _NIGHTLY_DATE
 
 
+def test_rerun_withdraws_latest_good_from_the_reopened_build(tmp_path: Path) -> None:
+    # The pointer targets the live document, not a copy of it, so a re-run that
+    # re-opens that same build back to in_progress would otherwise leave
+    # latest_good.json advertising a build that no longer passes.
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    latest_good = tmp_path / "nightly" / "latest_good.json"
+    assert latest_good.is_symlink()
+
+    rerun = _orchestrator_run()
+    rerun.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.overall_status is Status.in_progress
+    assert not latest_good.is_symlink()
+    assert not latest_good.exists()
+
+    # The re-run finishing all-green re-establishes the pointer.
+    rerun_done = _orchestrator_run()
+    rerun_done.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun_done), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert latest_good.is_symlink()
+    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+
+
 def _prerelease_leaf_run_version(version: str) -> WorkflowRunRecord:
     run = _prerelease_leaf_run()
     run.rocm_version = version
@@ -1096,6 +1132,69 @@ def test_bkc_finalized_points_latest_good_at_status(tmp_path: Path) -> None:
         json.loads((latest_good.parent / latest_good.readlink()).read_text("utf-8"))
     )
     assert resolved.summary.overall_status is Status.success
+
+
+def test_bkc_build_date_is_the_bkc_date_not_each_run_start(tmp_path: Path) -> None:
+    # Both bkc dates are fixed by the version, so build_date stays on the
+    # <bkc-date> the document is filed under instead of following whichever run
+    # last reported -- a child dispatched after midnight would otherwise move it,
+    # and consumers deduplicate on (rocm_version, build_date).
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+    later = _bkc_orchestrator_run()
+    later.run_attempt = 2
+    later.created_at = datetime(2026, 6, 20, 0, 12, tzinfo=timezone.utc)
+    tusj.update_status_json(
+        _event(later, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+
+def test_bkc_rerun_withdraws_the_good_pointers_of_the_reopened_build(
+    tmp_path: Path,
+) -> None:
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    per_nightly_good = (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    )
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert per_nightly_good.is_symlink()
+    assert top_good.is_symlink()
+
+    rerun = _bkc_orchestrator_run()
+    rerun.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    # Both levels point at the build that just re-opened, so both stand down.
+    assert (
+        _load(_bkc_status_path(tmp_path)).summary.overall_status is Status.in_progress
+    )
+    assert not per_nightly_good.exists()
+    assert not top_good.exists()
+
+
+def test_bkc_in_progress_build_leaves_another_builds_good_pointer_alone(
+    tmp_path: Path,
+) -> None:
+    # Withdrawal is limited to the pointer aimed at the build being updated: a
+    # newer bkc date starting up must not clear the good pointer earned by an
+    # older one.
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, "20260905")
+
+    per_nightly_good = (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    )
+    assert per_nightly_good.readlink() == Path(f"{_BKC_DATE}/status.json")
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / _BKC_DATE / "status.json"
 
 
 def test_bkc_top_latest_points_at_concrete_status(tmp_path: Path) -> None:

@@ -105,8 +105,12 @@ https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 > `summary.overall_status` is `success` (a worst-of rollup, so this implies the
 > build finished and every reported pipeline was green). A `latest_good.json`
 > pointer only advances to a build once that build reaches `success`, so it never
-> regresses to an in-progress or failed build. Prerelease has no `latest_good.json`
-> pointer yet.
+> regresses to an in-progress or failed build. Because it points at the live
+> document rather than a copy of it, a build can stop being green after the
+> pointer was written (a re-run re-opens it, or a late leaf fails it); the pointer
+> is then withdrawn until some build is green again, so treat a missing
+> `latest_good.json` as "nothing good to offer right now". Prerelease has no
+> `latest_good.json` pointer yet.
 
 > These endpoints go live as TheRock release workflows are instrumented to report
 > to Quartz. Until a given release type is instrumented, its files may be absent.

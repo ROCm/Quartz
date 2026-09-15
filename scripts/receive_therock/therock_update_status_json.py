@@ -232,19 +232,48 @@ def _nightly_root(date_suffix: str) -> str:
     return "nightly"
 
 
+class _StatusDocumentKind(Enum):
+    """The status document family a run routes to, keyed like TheRock's artifacts.
+
+    The member value is the filename suffix, and it mirrors TheRock's
+    `build_variant_suffix` (`amdgpu_family_matrix.all_build_variants`) so a
+    document is named for the same family as the artifacts it describes. That
+    suffix folds the debug flavors onto their base family -- `asan-debug` carries
+    suffix `asan`, matching the single `tarball-asan/` bucket every ASAN-family
+    build publishes to -- so both land in `status-asan.json` and the document's
+    `build_variant` field records which flavor produced it.
+
+    One consequence: two runs of the same family for one release (an `asan` and
+    an `asan-debug` build of the same nightly) share a document, so the later run
+    id resets it to its own ownership (see `_reset_document_for_new_owner`). That
+    is latent today -- `multi_arch_release_asan.yml` dispatches only `asan-debug`
+    for tracked releases -- and splitting them would mean diverging from the
+    naming TheRock publishes under.
+    """
+
+    RELEASE = ""
+    ASAN = "-asan"
+
+
+def _status_filename(document_kind: _StatusDocumentKind) -> str:
+    return f"status{document_kind.value}.json"
+
+
 def _status_json_path(
     repo_dir: Path,
     release_type: str,
     workflow_run: WorkflowRunRecord,
+    document_kind: _StatusDocumentKind,
 ) -> Path:
     release_version = workflow_run.classification.release_version or ""
+    filename = _status_filename(document_kind)
     # bkc carries two dates (the nightly base build date + the bkc run date) that
     # cannot be reconstructed from `created_at`, and its version is not one of the
     # nightly/prerelease forms `_release_version_suffix` accepts, so route it
     # before that call.
     if release_type == "nightly-bkc":
         nightly_version, bkc_date = _bkc_dirs(release_version)
-        return repo_dir / "nightly-bkc" / nightly_version / bkc_date / "status.json"
+        return repo_dir / "nightly-bkc" / nightly_version / bkc_date / filename
 
     # Test workflows are dispatched without a version input, so their events
     # carry no release_version.
@@ -254,10 +283,10 @@ def _status_json_path(
         suffix = _release_version_suffix(release_version)
 
     if release_type == "nightly":
-        return repo_dir / _nightly_root(suffix) / suffix / "status.json"
+        return repo_dir / _nightly_root(suffix) / suffix / filename
     if release_type == "prerelease":
         major_minor, full = _prerelease_dirs(release_version)
-        return repo_dir / "prerelease" / major_minor / full / "status.json"
+        return repo_dir / "prerelease" / major_minor / full / filename
 
     raise ValueError(f"Unexpected release_type: {release_type!r}")
 
@@ -1061,6 +1090,8 @@ def _is_ownerless_pytorch_leaf_for_release(
     legit normal/prerelease run. Restricting to `pipeline_type == "pytorch"`
     keeps this the sole ownerless-acceptance path.
     """
+    if doc.build_variant not in ("", "release"):
+        return False
     if workflow_run.classification.pipeline_type != "pytorch":
         return False
     release_version = workflow_run.classification.release_version
@@ -1219,16 +1250,17 @@ def _update_symlinks(
     doc: StatusDocument,
     status_path: Path,
     release_type: str,
+    document_kind: _StatusDocumentKind,
 ) -> list[Path]:
-    """Update the `latest.json`/`latest_good.json` pointers for the build.
+    """Update the variant-specific latest pointers for the build.
 
-    Meaningful for `nightly`, `nightly-bkc`, and `prerelease`. Every pointer is a
-    single-hop symlink to the concrete dated `status.json`: `latest.json` follows
-    the newest build, `latest_good.json` follows the newest all-green build. The
-    version-ordered top-level `nightly-bkc/latest.json`/`latest_good.json` (for the
-    highest nightly version) are maintained by `_update_bkc_top_latest`."""
+    Each build variant carries its own pointer pair, suffixed like its status
+    document: `latest.json`/`latest_good.json` for the release build,
+    `latest-asan.json`/`latest_good-asan.json` for `asan`, and so on. Every
+    pointer is a single-hop symlink to its concrete status document.
+    """
     if release_type == "prerelease":
-        return _update_prerelease_latest(repo_dir, doc, status_path)
+        return _update_prerelease_latest(repo_dir, status_path, document_kind)
     if release_type not in ("nightly", "nightly-bkc"):
         return []
 
@@ -1242,7 +1274,7 @@ def _update_symlinks(
 
     files_written: list[Path] = []
 
-    latest = latest_dir / "latest.json"
+    latest = latest_dir / _pointer_filename("latest", document_kind)
     if latest.is_symlink():
         try:
             existing_date = latest.readlink().parts[0]
@@ -1257,26 +1289,33 @@ def _update_symlinks(
         files_written.append(latest)
 
     if doc.summary.overall_status == Status.success:
-        latest_good = latest_dir / "latest_good.json"
+        latest_good = latest_dir / _pointer_filename("latest_good", document_kind)
         if _latest_good_should_update(latest_good, new_date):
             files_written.append(
-                _write_latest_good_symlink(latest_dir, new_target_relative)
+                _write_latest_good_symlink(
+                    latest_dir, new_target_relative, document_kind
+                )
             )
 
     if release_type == "nightly-bkc":
-        files_written += _update_bkc_top_latest(repo_dir, doc, status_path)
+        files_written += _update_bkc_top_latest(
+            repo_dir, doc, status_path, document_kind
+        )
 
     return files_written
 
 
-def _write_latest_good_symlink(latest_dir: Path, target_relative: Path) -> Path:
-    """Point `<latest_dir>/latest_good.json` at a concrete status.json (single hop).
+def _pointer_filename(base: str, document_kind: _StatusDocumentKind) -> str:
+    return f"{base}{document_kind.value}.json"
 
-    Callers gate this on the target build being all-green; the no-regress guard is
-    the caller's job (the per-date/per-base pointers use `_latest_good_should_update`;
-    the top-level bkc pointer uses `_bkc_top_should_update`).
-    """
-    latest_good = latest_dir / "latest_good.json"
+
+def _write_latest_good_symlink(
+    latest_dir: Path,
+    target_relative: Path,
+    document_kind: _StatusDocumentKind,
+) -> Path:
+    """Point the variant's latest-good pointer at a concrete status document."""
+    latest_good = latest_dir / _pointer_filename("latest_good", document_kind)
     if latest_good.is_symlink() or latest_good.exists():
         latest_good.unlink()
     latest_good.symlink_to(target_relative)
@@ -1284,16 +1323,17 @@ def _write_latest_good_symlink(latest_dir: Path, target_relative: Path) -> Path:
 
 
 def _update_prerelease_latest(
-    repo_dir: Path, doc: StatusDocument, status_path: Path
+    repo_dir: Path,
+    status_path: Path,
+    document_kind: _StatusDocumentKind,
 ) -> list[Path]:
-    """Point the prerelease `latest.json` pointers at the newest release candidate.
+    """Point the variant's prerelease latest pointers at the newest candidate.
 
     Maintains two levels, both version-key ordered so they never regress from,
     e.g., rc10 to rc2:
 
-      - `prerelease/latest.json`               newest candidate for the highest version
-                                               across all lines
-      - `prerelease/<major.minor>/latest.json` newest candidate within one line
+      - `prerelease/latest[-asan].json` newest candidate across all lines
+      - `prerelease/<major.minor>/latest[-asan].json` newest within one line
     """
     prerelease_root = repo_dir / "prerelease"
     major_minor_dir = status_path.parent.parent  # prerelease/<major.minor>
@@ -1301,7 +1341,7 @@ def _update_prerelease_latest(
 
     files_written: list[Path] = []
     for latest_dir in (prerelease_root, major_minor_dir):
-        latest = latest_dir / "latest.json"
+        latest = latest_dir / _pointer_filename("latest", document_kind)
         new_target_relative = status_path.relative_to(latest_dir)
         if latest.is_symlink():
             try:
@@ -1320,15 +1360,18 @@ def _update_prerelease_latest(
 
 
 def _update_bkc_top_latest(
-    repo_dir: Path, doc: StatusDocument, status_path: Path
+    repo_dir: Path,
+    doc: StatusDocument,
+    status_path: Path,
+    document_kind: _StatusDocumentKind,
 ) -> list[Path]:
-    """Update the top-level `nightly-bkc/latest.json` and `latest_good.json`.
+    """Update the top-level BKC pointers for one document kind.
 
     Both are single-hop symlinks to a concrete
-    `<nightly-version>/<bkc-date>/status.json`, ordered by `_bkc_top_key`: the
-    largest nightly version wins across nightly versions, and the newest build only
-    breaks ties within one nightly version. The two pointers move independently,
-    each with its own no-regress guard:
+    `<nightly-version>/<bkc-date>/status[-asan].json`, ordered by
+    `_bkc_top_key`: the largest nightly version wins across nightly versions,
+    and the newest build only breaks ties within one nightly version. The two
+    pointers move independently, each with its own no-regress guard:
 
       - `latest.json`      tracks the highest build regardless of status.
       - `latest_good.json` tracks the highest all-green build. It is NOT tied to
@@ -1346,7 +1389,7 @@ def _update_bkc_top_latest(
 
     files_written: list[Path] = []
 
-    latest = bkc_root / "latest.json"
+    latest = bkc_root / _pointer_filename("latest", document_kind)
     if _bkc_top_should_update(latest, new_key):
         if latest.is_symlink() or latest.exists():
             latest.unlink()
@@ -1354,10 +1397,10 @@ def _update_bkc_top_latest(
         files_written.append(latest)
 
     if doc.summary.overall_status == Status.success:
-        good = bkc_root / "latest_good.json"
+        good = bkc_root / _pointer_filename("latest_good", document_kind)
         if _bkc_top_should_update(good, new_key):
             files_written.append(
-                _write_latest_good_symlink(bkc_root, new_target_relative)
+                _write_latest_good_symlink(bkc_root, new_target_relative, document_kind)
             )
 
     return files_written
@@ -1380,15 +1423,13 @@ def _bkc_top_should_update(
 
 
 def _latest_good_should_update(latest_good: Path, new_build_date: str) -> bool:
-    """True unless the existing `latest_good.json` symlink already points at a
-    newer build.
+    """True unless the variant's latest-good symlink targets a newer build.
 
     Shared by the nightly and bkc per-date pointers. The pointer is a
-    single-hop symlink to `<date>/status.json` (nightly) or
-    `<nightly-version>/<bkc-date>/status.json` (bkc); either way the build date is
-    the first path component, read straight off the link target. A legacy snapshot file
-    (non-symlink) or an unreadable link is treated as "no newer build" and gets
-    replaced on the next successful write.
+    single-hop symlink to `<date>/status*.json` (nightly) or
+    `<nightly-version>/<bkc-date>/status*.json` (bkc); either way the
+    build date is the first path component. A legacy snapshot file or unreadable
+    link is treated as "no newer build" and replaced on the next successful write.
     """
     if not latest_good.is_symlink():
         return True
@@ -1612,6 +1653,7 @@ def _build_and_write(
     status_path: Path,
     repo_dir: Path,
     release_type: str,
+    document_kind: _StatusDocumentKind,
     finalize: bool = False,
     record_owner_only: bool = False,
     update_platform_urls_only: bool = False,
@@ -1668,7 +1710,9 @@ def _build_and_write(
     status_path.write_text(doc.to_json() + "\n", encoding="utf-8")
 
     files_to_commit = [status_path]
-    files_to_commit += _update_symlinks(repo_dir, doc, status_path, release_type)
+    files_to_commit += _update_symlinks(
+        repo_dir, doc, status_path, release_type, document_kind
+    )
 
     return doc, file_created, files_to_commit, commit_message
 
@@ -1680,6 +1724,89 @@ _TRACKED_EVENT_TYPES: frozenset[str] = frozenset(
 _TRACKED_RELEASE_TYPES: frozenset[str] = frozenset(
     {"nightly", "nightly-bkc", "prerelease"}
 )
+
+# The document each build variant publishes to, grouped by TheRock's
+# `build_variant_suffix`. TheRock also defines `host-asan`, `host-asan-debug` and
+# `tsan`; they are deliberately absent until they actually ship tracked releases,
+# and are rejected rather than folded in here so they cannot contaminate asan
+# results before each family is given its own suffix and enum member.
+_DOCUMENT_KIND_BY_VARIANT: dict[str, _StatusDocumentKind] = {
+    "release": _StatusDocumentKind.RELEASE,
+    "asan": _StatusDocumentKind.ASAN,
+    "asan-debug": _StatusDocumentKind.ASAN,
+}
+
+_SANITIZER_DOCUMENT_KINDS: frozenset[_StatusDocumentKind] = frozenset(
+    kind
+    for kind in _DOCUMENT_KIND_BY_VARIANT.values()
+    if kind is not _StatusDocumentKind.RELEASE
+)
+
+# The sanitizer document a variant-less `release-asan` run must mean. While asan
+# is the only sanitizer family registered there is nothing else it could be, so
+# the orchestrator need not declare a `build_variant` it does not currently take.
+#
+# This rests on `multi_arch_release_asan.yml` hard-coding one family for all its
+# jobs. If it ever dispatches a second one it must declare `build_variant` on its
+# own record too, or a run of the new family would take ownership of the asan
+# document and reset it. Registering that family here makes this None, which
+# rejects the variant-less run instead -- so register it in the same change that
+# teaches the workflow to build it.
+_IMPLIED_SANITIZER_KIND: _StatusDocumentKind | None = (
+    next(iter(_SANITIZER_DOCUMENT_KINDS))
+    if len(_SANITIZER_DOCUMENT_KINDS) == 1
+    else None
+)
+
+# Sanitizer documents are routed and tested but not published yet.
+#
+# `multi_arch_release_asan.yml` does not report to Quartz: it has no
+# `notify_quartz` job, and it does not propagate `quartz_tracking_id` to the
+# workflows it dispatches. Without those, nothing stamps `completed_at` (so the
+# rollup is pinned at `in_progress` forever) and every sanitizer leaf arrives
+# ownerless and is dropped. Publishing on the setup run alone would therefore
+# point `latest-asan.json` at a permanently in-progress stub carrying no results.
+#
+# Flip this to True once that orchestrator is wired, together with dropping
+# `multi_arch_release_asan.yml` from `_UNWIRED_UPSTREAM` in
+# therock_workflow_registry_test.py.
+_PUBLISH_SANITIZER_DOCUMENTS = False
+
+
+def _status_document_kind(
+    workflow_run: WorkflowRunRecord,
+) -> _StatusDocumentKind | None:
+    """Choose the status document without allowing cross-variant contamination."""
+    c = workflow_run.classification
+    build_variant = c.build_variant.lower()
+    kind = _DOCUMENT_KIND_BY_VARIANT.get(build_variant)
+
+    if c.pipeline_phase == "release":
+        # The release orchestrator declares no variant of its own, which is
+        # unambiguous: there is exactly one release document to finalize.
+        return _StatusDocumentKind.RELEASE if build_variant in ("", "release") else None
+    if c.pipeline_phase == "release-asan":
+        if kind in _SANITIZER_DOCUMENT_KINDS:
+            return kind
+        # `multi_arch_release_asan.yml` takes no `build_variant` input, so its own
+        # record declares none. That is unambiguous only while one sanitizer
+        # family is registered; `_IMPLIED_SANITIZER_KIND` goes None as soon as a
+        # second joins, rejecting the run rather than stamping `completed_at` on
+        # the wrong release.
+        return _IMPLIED_SANITIZER_KIND if build_variant == "" else None
+    if c.pipeline_type == "setup":
+        # The setup run is always dispatched with an explicit `build_variant`, so
+        # it needs none of the empty-variant tolerance the leaves below keep.
+        return kind
+    if kind in _SANITIZER_DOCUMENT_KINDS:
+        return kind
+    if build_variant in ("", "release"):
+        # The empty variant keeps the original two-field tracking id and older
+        # release producers backward compatible. Sanitizer producers must carry
+        # the variant, so ambiguous events remain gated by document ownership.
+        return _StatusDocumentKind.RELEASE
+    return None
+
 
 # status.json is only produced for the release-tracking repository; runs from
 # anywhere else (TheRock itself, forks) never touch it. Matched case-insensitively.
@@ -1828,25 +1955,34 @@ def update_status_json(
     update_platform_urls_only = False
 
     c = workflow_run.classification
+    document_kind = _status_document_kind(workflow_run)
+    if document_kind is None:
+        log.info(
+            "build_variant=%r and orchestrator phase=%r do not map to a tracked "
+            "status document (workflow_run_id=%s); skipping",
+            c.build_variant,
+            c.pipeline_phase,
+            workflow_run.workflow_run_id,
+        )
+        return None
+
+    if document_kind in _SANITIZER_DOCUMENT_KINDS and not _PUBLISH_SANITIZER_DOCUMENTS:
+        log.info(
+            "sanitizer status documents are not published yet (see "
+            "_PUBLISH_SANITIZER_DOCUMENTS): multi_arch_release_asan.yml does not "
+            "report to Quartz, so build_variant=%r could never finalize "
+            "(workflow_run_id=%s); skipping",
+            c.build_variant,
+            workflow_run.workflow_run_id,
+        )
+        return None
+
     if c.pipeline_type == "setup":
         # The setup run executes via `workflow_call`, so it shares the top-level
         # orchestrator's run id and can anchor document ownership before any leaf
-        # arrives (owner writer: `_record_orchestrator_owner`). Only the normal
-        # `release` setup may own the normal release document. The top-level
-        # orchestrators pass build_variant verbatim to setup_multi_arch.yml
-        # (multi_arch_release.yml -> "release", multi_arch_release_asan.yml ->
-        # "asan"), and sanitizer variants (asan, host-asan, tsan) get their own
-        # status.json file later. Gate positively on "release" so anything that
-        # is not provably the normal release is refused rather than fail-open.
-        if c.build_variant != "release":
-            log.info(
-                "setup run build_variant=%r is not the normal release; must not "
-                "own the normal release document (workflow_run_id=%s); skipping "
-                "status.json update",
-                c.build_variant,
-                workflow_run.workflow_run_id,
-            )
-            return None
+        # arrives (owner writer: `_record_orchestrator_owner`). The document kind
+        # is selected positively from build_variant above, so release and ASAN
+        # setup events can never own each other's document.
         record_owner_only = True
     else:
         finalize = _is_release_completion(payload, workflow_run)
@@ -1909,7 +2045,7 @@ def update_status_json(
                 "input or extend the architecture-extraction regex."
             )
 
-    status_path = _status_json_path(repo_dir, release_type, workflow_run)
+    status_path = _status_json_path(repo_dir, release_type, workflow_run, document_kind)
 
     if not commit_and_push:
         doc, _file_created, _files, _msg = _build_and_write(
@@ -1917,6 +2053,7 @@ def update_status_json(
             status_path,
             repo_dir,
             release_type,
+            document_kind,
             finalize=bool(finalize),
             record_owner_only=record_owner_only,
             update_platform_urls_only=update_platform_urls_only,
@@ -1972,6 +2109,7 @@ def update_status_json(
             status_path,
             repo_dir,
             release_type,
+            document_kind,
             finalize=bool(finalize),
             record_owner_only=record_owner_only,
             update_platform_urls_only=update_platform_urls_only,

@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-15T00:01:37Z",
-  "status_json_last_updated": "2026-09-15T10:57:18Z",
+  "status_json_last_updated": "2026-09-15T10:59:07Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -60,9 +60,9 @@
           "status": "success"
         },
         "test": {
-          "success": 127,
+          "success": 128,
           "failure": 184,
-          "in_progress": 7,
+          "in_progress": 6,
           "cancelled": 2,
           "skipped": 0
         },
@@ -256,6 +256,10 @@
       "build": {
         "linux": {
           "status": "success",
+          "run_id": 34919315426,
+          "run_attempt": 1,
+          "started_at": "2026-09-15T01:58:36Z",
+          "completed_at": "2026-09-15T10:56:27Z",
           "variants": [
             {
               "py": "3.11",
@@ -3088,8 +3092,8 @@
             "status": "failure",
             "run_id": 34919315426,
             "run_attempt": 1,
-            "started_at": "2026-09-15T01:57:47Z",
-            "completed_at": "2026-09-15T10:56:02Z",
+            "started_at": "2026-09-15T03:55:49Z",
+            "completed_at": "2026-09-15T10:58:48Z",
             "variants": [
               {
                 "py": "3.13",
@@ -3211,10 +3215,11 @@
               {
                 "py": "3.14",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 34919315426,
                 "run_attempt": 1,
-                "started_at": "2026-09-15T10:35:54Z"
+                "started_at": "2026-09-15T10:35:54Z",
+                "completed_at": "2026-09-15T10:58:48Z"
               },
               {
                 "py": "3.14",
@@ -3222,7 +3227,7 @@
                 "status": "in_progress",
                 "run_id": 34919315426,
                 "run_attempt": 1,
-                "started_at": "2026-09-15T01:57:47Z"
+                "started_at": "2026-09-15T10:56:28Z"
               },
               {
                 "py": "3.13",

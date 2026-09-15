@@ -134,6 +134,21 @@ class DeriveReleaseVersionTest(unittest.TestCase):
         )
         self.assertEqual(derive_release_version(rec), "7.13.0.dev0+db2fd412")
 
+    def test_bkc_rocm_local_passes_through(self):
+        # rocm wheel form: already the canonical PEP 440 local segment.
+        rec = _make_record(rocm_version="10.1.0a20260825+bkc.20260831")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260825+bkc.20260831")
+
+    def test_bkc_native_normalizes_tilde_base(self):
+        # deb/rpm `~` base becomes `a`; the `.bkc.` separator canonicalizes to `+bkc.`.
+        rec = _make_record(rocm_version="10.1.0~20260825.bkc.20260831")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260825+bkc.20260831")
+
+    def test_bkc_framework_stripped_to_rocm_part(self):
+        # framework `-bkc.` separator canonicalizes to the wheel `+bkc.` form.
+        rec = _make_record(rocm_version="2.12.0+rocm10.1.0a20260811-bkc.20260813")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260811+bkc.20260813")
+
 
 class DeriveReleaseTypeTest(unittest.TestCase):
     def test_returns_declared_type(self):
@@ -229,6 +244,24 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
         base = "https://rc.repo.amd.com/rocm/"
         self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
         self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
+
+    def test_bkc_linux_dated_segment_uses_the_bkc_date(self):
+        # bkc publishes per-run like nightly (only prerelease overwrites a fixed
+        # prefix), and the segment carries the bkc run date, not the nightly date
+        # the build was cut from.
+        rec = _release_record(
+            path=".github/workflows/multi_arch_release_linux.yml",
+            release_type="nightly-bkc",
+            release_version="10.1.0a20260825+bkc.20260831",
+            source_run_id="27797822902",
+        )
+        urls = derive_release_cdn_urls(rec)
+        base = "https://d2f0ijhovwa9ap.cloudfront.net/rocm/"
+        self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
+        self.assertEqual(urls.wheels_url, f"{base}whl-next/")
+        seg = f"{base}core/packages/<os-profile>"
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{seg}/20260831-27797822902/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{seg}/20260831-27797822902/"})
 
     def test_windows_has_no_native_package_urls(self):
         rec = _release_record(
@@ -407,6 +440,15 @@ class DeriveTarballUrlTest(unittest.TestCase):
         self.assertEqual(
             derive_tarball_url(rec),
             "https://therock-nightly-artifacts.s3.amazonaws.com/"
+            "27797822902-linux/tarballs/",
+        )
+
+    def test_bkc_uses_bkc_artifacts_bucket(self):
+        rec = self._build_record()
+        rec.release_type = "nightly-bkc"
+        self.assertEqual(
+            derive_tarball_url(rec),
+            "https://therock-bkc-artifacts.s3.amazonaws.com/"
             "27797822902-linux/tarballs/",
         )
 

@@ -9,7 +9,7 @@ Orchestrates the receive pipeline:
      run's jobs onto `workflow_run.api_jobs`)
   3. Classify derived fields (release_type / pipeline_type /
      pipeline_phase / etc.) onto the workflow_run record
-  4. Update status.json for nightly / prerelease tracking: apply the
+  4. Update status.json for nightly / nightly-bkc / prerelease tracking: apply the
      change into a local clone of the status-data repository and push
      it. If the push loses a race (a competing update landed first),
      retry (pull + re-apply) up to 5 times with random backoff.
@@ -87,9 +87,9 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help=(
             "Path to a local clone of the status-data repository. When "
-            "provided, nightly / prerelease runs trigger a status.json "
+            "provided, nightly / nightly-bkc / prerelease runs trigger a status.json "
             "update under the appropriate "
-            "nightly/<date>/ or prerelease/<major.minor>/<full>/ "
+            "nightly/<date>/, nightly-bkc/<nightly-date>/<bkc-date>/, or prerelease/<major.minor>/<full>/ "
             "tree. When "
             "omitted, the status.json update step is skipped entirely "
             "(useful for ingest-only runs and unit replay)."

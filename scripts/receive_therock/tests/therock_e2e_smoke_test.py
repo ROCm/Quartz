@@ -101,7 +101,7 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
     nightly_dir = tmp_path / "nightly"
     latest_good = nightly_dir / "latest_good.json"
 
-    # latest_good is a success-only snapshot and must not exist until
+    # latest_good is a success-only pointer and must not exist until
     # the top-level release finalizes and overall status is "success".
     assert not latest_good.exists()
 
@@ -111,13 +111,15 @@ def test_full_nightly_sequence_writes_symlink_and_latest_good(
     assert latest.is_symlink()
     assert latest.readlink() == Path(_NIGHTLY_DATE) / "status.json"
 
-    # latest_good is the success snapshot, written only after finalize.
-    assert latest_good.exists() and not latest_good.is_symlink()
-    snapshot = StatusDocument.from_dict(
-        json.loads(latest_good.read_text(encoding="utf-8"))
+    # latest_good is a single-hop symlink to the dated status.json, written only
+    # after the release finalizes all-green.
+    assert latest_good.is_symlink()
+    assert latest_good.readlink() == Path(_NIGHTLY_DATE) / "status.json"
+    resolved = StatusDocument.from_dict(
+        json.loads((latest_good.parent / latest_good.readlink()).read_text("utf-8"))
     )
-    assert snapshot.summary.overall_status is Status.success
-    assert snapshot.build_date == _NIGHTLY_DATE
+    assert resolved.summary.overall_status is Status.success
+    assert resolved.build_date == _NIGHTLY_DATE
 
 
 def test_dev_capture_fixture_is_gated_out(tmp_path: Path) -> None:

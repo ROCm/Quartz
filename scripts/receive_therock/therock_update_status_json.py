@@ -389,7 +389,7 @@ def _update_document_metadata(
 
 def _bkc_build_date(workflow_run: WorkflowRunRecord) -> str:
     """Returns build date for bkc is the bkc suffix date from the version
-       <nightly>+bkc.<bkc-date>, or "" for any other version.
+    <nightly>+bkc.<bkc-date>, or "" for any other version.
     """
     bkc = RELEASE_VERSION_BKC_RE.match(
         workflow_run.classification.release_version or ""

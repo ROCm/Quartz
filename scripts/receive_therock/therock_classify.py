@@ -573,15 +573,16 @@ def derive_release_cdn_urls(wr: WorkflowRunRecord) -> ReleaseCdnUrls | None:
 
 
 def _dated_package_segment(wr: WorkflowRunRecord) -> str | None:
-    """`<date>-<run_id>` path segment for dated native linux packages.
+    """`<date>-<run_id>` path segment for native linux packages.
 
     nightly and nightly-bkc both publish each run under its own directory; only
     prerelease overwrites a fixed prefix (see TheRock's
-    `publish_rocm_to_release_buckets.publish_packages`). The date is whichever
-    one identifies the build: the nightly date from `X.Y.ZaYYYYMMDD`, and for bkc
-    the run date from `X.Y.ZaYYYYMMDD+bkc.YYYYMMDD` -- the same date its
-    status.json is filed under. The run id is the orchestrator run that produced
-    the artifacts.
+    `publish_rocm_to_release_buckets.publish_packages`). The date identifies the
+    build: for nightly the nightly date from `<nightly-version>`; for bkc the bkc
+    suffix date from `<nightly-version>+bkc.<bkc-date>` -- the date the bkc
+    pipeline ran, not the nightly date it was cut from, and the same date its
+    status.json is filed under. The run id is the orchestrator run that produced the
+    artifacts.
     """
     run_id = wr.classification.source_run_id
     if not run_id:

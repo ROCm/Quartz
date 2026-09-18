@@ -388,14 +388,8 @@ def _update_document_metadata(
 
 
 def _bkc_build_date(workflow_run: WorkflowRunRecord) -> str:
-    """The bkc run date from a bkc version, or "" for any other version.
-
-    bkc is the one stream whose build date is pinned to the version instead of
-    being read from each event's `created_at`. Its two dates are both fixed by
-    the version (`X.Y.ZaYYYYMMDD+bkc.YYYYMMDD`), so a child dispatched after
-    midnight would otherwise report a `build_date` one day past the `<bkc-date>`
-    directory its own status.json is filed under, and later events could keep
-    moving it -- while consumers deduplicate on `(rocm_version, build_date)`.
+    """Returns build date for bkc is the bkc suffix date from the version
+       <nightly>+bkc.<bkc-date>, or "" for any other version.
     """
     bkc = RELEASE_VERSION_BKC_RE.match(
         workflow_run.classification.release_version or ""
@@ -1244,8 +1238,9 @@ def _update_symlinks(
     Meaningful for `nightly`, `nightly-bkc`, and `prerelease`. Every pointer is a
     single-hop symlink to the concrete dated `status.json`: `latest.json` follows
     the newest build, `latest_good.json` follows the newest all-green build and is
-    withdrawn again when the build it targets stops being green (see
-    `_withdraw_latest_good`). The version-ordered top-level
+    repointed to the next-best green build (or dropped) when the build it targets
+    is reopened by a new owner (see `_recompute_latest_good`). The version-ordered
+    top-level
     `nightly-bkc/latest.json`/`latest_good.json` (for the highest nightly version)
     are maintained by `_update_bkc_top_latest`."""
     if release_type == "prerelease":
@@ -1284,9 +1279,9 @@ def _update_symlinks(
                 _write_latest_good_symlink(latest_dir, new_target_relative)
             )
     else:
-        withdrawn = _withdraw_latest_good(latest_dir, new_target_relative)
-        if withdrawn is not None:
-            files_written.append(withdrawn)
+        recomputed = _recompute_latest_good(latest_dir, new_target_relative)
+        if recomputed is not None:
+            files_written.append(recomputed)
 
     if release_type == "nightly-bkc":
         files_written += _update_bkc_top_latest(repo_dir, doc, status_path)
@@ -1308,19 +1303,21 @@ def _write_latest_good_symlink(latest_dir: Path, target_relative: Path) -> Path:
     return latest_good
 
 
-def _withdraw_latest_good(latest_dir: Path, target_relative: Path) -> Path | None:
-    """Drop `latest_good.json` when it points at a build that is no longer green.
+def _recompute_latest_good(latest_dir: Path, target_relative: Path) -> Path | None:
+    """Repoint `latest_good.json` to the next-best green build after its target
+    reopens.
 
-    The pointer targets a mutable document rather than a snapshot of it, so the
-    target can stop being good after the pointer was written: a higher-attempt
-    re-run or a new owner re-opens that same dated `status.json` back to
-    `in_progress`, and a late failing leaf can turn it red. Leaving the pointer
-    up would advertise a build that no longer passes, so it is withdrawn here and
-    the next all-green build re-establishes it.
+    The pointer targets a mutable document rather than a snapshot of it. When a
+    new owner takes over the dated `status.json` it re-opens that build back to
+    `in_progress` (see `_reset_document_for_new_owner`), so a `latest_good.json`
+    aimed at it now advertises a build that is no longer green. The replacement
+    is the newest sibling `<date>/status.json` under `latest_dir` still reporting
+    `overall_status == success`; when none remain, the pointer is deleted.
 
-    Only a pointer aimed at *this* target is withdrawn; one tracking some other
-    build is none of this update's business. Returns the removed path so the
-    caller can stage the deletion, or None when there was nothing to withdraw.
+    Only a pointer aimed at *this* target is touched; one tracking some other
+    build is none of this update's business. Returns the pointer path so the
+    caller can stage the change (a repoint or a delete both stage under
+    `git add`), or None when there was nothing to do.
     """
     latest_good = latest_dir / "latest_good.json"
     if not latest_good.is_symlink():
@@ -1330,8 +1327,101 @@ def _withdraw_latest_good(latest_dir: Path, target_relative: Path) -> Path | Non
             return None
     except OSError:
         return None
+    replacement = _newest_good_dated_status(latest_dir)
     latest_good.unlink()
+    if replacement is None:
+        return latest_good
+    latest_good.symlink_to(replacement)
     return latest_good
+
+
+def _recompute_bkc_top_good(bkc_root: Path, target_relative: Path) -> Path | None:
+    """Repoint the top-level `nightly-bkc/latest_good.json` after its target
+    reopens.
+
+    Same trigger as `_recompute_latest_good`, one level up: the replacement is
+    the highest-version build still advertised by a per-nightly-version
+    `latest_good.json` (each already recomputed for this event), chosen by
+    `_bkc_top_key`. No surviving sub-pointer means no green build is left
+    anywhere, so the top pointer is deleted. Returns the pointer path for the
+    caller to stage, or None when its target was some other build.
+    """
+    good = bkc_root / "latest_good.json"
+    if not good.is_symlink():
+        return None
+    try:
+        if good.readlink() != target_relative:
+            return None
+    except OSError:
+        return None
+    replacement = _highest_subdir_good(bkc_root)
+    good.unlink()
+    if replacement is None:
+        return good
+    good.symlink_to(replacement)
+    return good
+
+
+def _newest_good_dated_status(latest_dir: Path) -> Path | None:
+    """Newest `<date>/status.json` under `latest_dir` still reporting all-green,
+    as a path relative to `latest_dir`, or None when no green build remains.
+
+    Scans the immediate `<date>` subdirectories (nightly dates, or bkc run dates
+    under one nightly version) and keeps the highest date whose status.json
+    finalized `overall_status == success`.
+    """
+    # Dated dirs are fixed-width YYYYMMDD, so reverse-lexicographic is
+    # newest-first; the first green we hit is the highest green, so return early.
+    for child in sorted(latest_dir.iterdir(), reverse=True):
+        if not child.is_dir():
+            continue
+        status_file = child / "status.json"
+        if not status_file.is_file():
+            continue
+        if _status_overall_is_success(status_file):
+            return Path(child.name) / "status.json"
+    return None
+
+
+def _highest_subdir_good(bkc_root: Path) -> Path | None:
+    """Highest-version target across the per-nightly-version `latest_good.json`
+    pointers under `bkc_root`, as a path relative to `bkc_root`
+    (`<nightly-version>/<bkc-date>/status.json`), or None when none survive.
+
+    Each sub-pointer is a single-hop symlink to `<bkc-date>/status.json`; its
+    `_bkc_top_key` combines the parent `<nightly-version>` with that bkc date.
+    """
+    # Single-pass max, not a sorted-descending early-escape: reading a
+    # sub-pointer is only is_symlink()+readlink() (no JSON parse), so there is no
+    # expensive work to short-circuit, unlike _newest_good_dated_status. Version
+    # strings also need _bkc_top_key to order ("10.0" > "1.0"), so a plain
+    # lexicographic escape would be wrong anyway.
+    best_key: tuple[int, int, int, int, int] | None = None
+    best_target: Path | None = None
+    for child in sorted(bkc_root.iterdir()):
+        if not child.is_dir():
+            continue
+        pointer = child / "latest_good.json"
+        if not pointer.is_symlink():
+            continue
+        try:
+            dated = pointer.readlink()  # <bkc-date>/status.json
+            key = _bkc_top_key(child.name, dated.parts[0])
+        except (IndexError, OSError):
+            continue
+        if best_key is None or key > best_key:
+            best_key = key
+            best_target = Path(child.name) / dated
+    return best_target
+
+
+def _status_overall_is_success(status_file: Path) -> bool:
+    """True when the status.json on disk finalized `overall_status == success`."""
+    try:
+        data = json.loads(status_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return StatusDocument.from_dict(data).summary.overall_status is Status.success
 
 
 def _update_prerelease_latest(
@@ -1387,8 +1477,9 @@ def _update_bkc_top_latest(
                            in progress or failed, a lower nightly version finishing
                            all-green still advances the good pointer, as long as it
                            outranks the current good target. Neither pointer
-                           regresses to a lower key, but the good one is withdrawn
-                           when the build it targets stops being green.
+                           regresses to a lower key, but the good one is repointed
+                           to the next-best build (or dropped) when its target is
+                           reopened by a new owner.
     """
     bkc_root = repo_dir / "nightly-bkc"
     new_target_relative = status_path.relative_to(
@@ -1412,9 +1503,9 @@ def _update_bkc_top_latest(
                 _write_latest_good_symlink(bkc_root, new_target_relative)
             )
     else:
-        withdrawn = _withdraw_latest_good(bkc_root, new_target_relative)
-        if withdrawn is not None:
-            files_written.append(withdrawn)
+        recomputed = _recompute_bkc_top_good(bkc_root, new_target_relative)
+        if recomputed is not None:
+            files_written.append(recomputed)
 
     return files_written
 

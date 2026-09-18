@@ -40,7 +40,7 @@ RELEASE_VERSION_PRERELEASE_RE = re.compile(r"^\d+\.\d+\.\d+(rc\d+)$")
 #   rocm     `10.1.0a20260825+bkc.20260831`  (PEP 440 local `+bkc.`)
 #   native   `10.1.0a20260825.bkc.20260831`  (deb/rpm `~` suffix -> `a...bkc.`)
 #   pytorch  `10.1.0a20260811-bkc.20260813`  (framework `+rocm...-bkc.`)
-# Captures 1) the nightly version `X.Y.ZaYYYYMMDD`, 2) the 8-digit bkc date.
+# Captures 1) the `<nightly-version>` `X.Y.ZaYYYYMMDD`, 2) the 8-digit `<bkc-date>`.
 RELEASE_VERSION_BKC_RE = re.compile(r"^(\d+\.\d+\.\d+a\d{8})[+.-]bkc\.(\d{8})$")
 # `dev` is not a release routing format: any version carrying a `.dev` local
 # segment or a bare `<X>.<Y>.<Z>dev<N>` is rejected before it can reach a

@@ -14,6 +14,7 @@ sys.path.insert(0, os.fspath(Path(__file__).parent.parent))
 from therock_classify import (
     classify,
     derive_architectures,
+    derive_build_variant,
     derive_deb_urls,
     derive_effective_owner_run_id,
     derive_platform_and_pipeline,
@@ -134,6 +135,21 @@ class DeriveReleaseVersionTest(unittest.TestCase):
         )
         self.assertEqual(derive_release_version(rec), "7.13.0.dev0+db2fd412")
 
+    def test_bkc_rocm_local_passes_through(self):
+        # rocm wheel form: already the canonical PEP 440 local segment.
+        rec = _make_record(rocm_version="10.1.0a20260825+bkc.20260831")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260825+bkc.20260831")
+
+    def test_bkc_native_normalizes_tilde_base(self):
+        # deb/rpm `~` base becomes `a`; the `.bkc.` separator canonicalizes to `+bkc.`.
+        rec = _make_record(rocm_version="10.1.0~20260825.bkc.20260831")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260825+bkc.20260831")
+
+    def test_bkc_framework_stripped_to_rocm_part(self):
+        # framework `-bkc.` separator canonicalizes to the wheel `+bkc.` form.
+        rec = _make_record(rocm_version="2.12.0+rocm10.1.0a20260811-bkc.20260813")
+        self.assertEqual(derive_release_version(rec), "10.1.0a20260811+bkc.20260813")
+
 
 class DeriveReleaseTypeTest(unittest.TestCase):
     def test_returns_declared_type(self):
@@ -227,6 +243,20 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
         )
         urls = derive_release_cdn_urls(rec)
         base = "https://rc.repo.amd.com/rocm/"
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
+
+    def test_bkc_linux_has_no_dated_segment(self):
+        rec = _release_record(
+            path=".github/workflows/multi_arch_release_linux.yml",
+            release_type="nightly-bkc",
+            release_version="10.1.0a20260825+bkc.20260831",
+            source_run_id="27797822902",
+        )
+        urls = derive_release_cdn_urls(rec)
+        base = "https://d2f0ijhovwa9ap.cloudfront.net/rocm/"
+        self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
+        self.assertEqual(urls.wheels_url, f"{base}whl-next/")
         self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
         self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
 
@@ -407,6 +437,15 @@ class DeriveTarballUrlTest(unittest.TestCase):
         self.assertEqual(
             derive_tarball_url(rec),
             "https://therock-nightly-artifacts.s3.amazonaws.com/"
+            "27797822902-linux/tarballs/",
+        )
+
+    def test_bkc_uses_bkc_artifacts_bucket(self):
+        rec = self._build_record()
+        rec.release_type = "nightly-bkc"
+        self.assertEqual(
+            derive_tarball_url(rec),
+            "https://therock-bkc-artifacts.s3.amazonaws.com/"
             "27797822902-linux/tarballs/",
         )
 
@@ -721,6 +760,11 @@ class DeriveEffectiveOwnerRunIdTest(unittest.TestCase):
         run.workflow_run_id = 29079513704
         self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
 
+    def test_top_level_asan_orchestrator_is_self(self):
+        run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
+        run.workflow_run_id = 29079513705
+        self.assertEqual(derive_effective_owner_run_id(run), 29079513705)
+
     def test_descendant_uses_quartz_tracking_id(self):
         # Every triggered workflow carries the top-level owner in the propagated
         # id, regardless of its immediate GitHub parent.
@@ -755,6 +799,29 @@ class DeriveEffectiveOwnerRunIdTest(unittest.TestCase):
         run = _leaf_run()
         run.inputs = {"quartz_tracking_id": ""}
         self.assertIsNone(derive_effective_owner_run_id(run))
+
+
+class DeriveBuildVariantTest(unittest.TestCase):
+    def test_direct_input_wins_over_tracking_id(self):
+        run = _leaf_run()
+        run.inputs = {
+            "build_variant": "asan-debug",
+            "quartz_tracking_id": "123;nightly;asan",
+        }
+        self.assertEqual(derive_build_variant(run), "asan-debug")
+
+    def test_tracking_id_supplies_descendant_variant(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "123;nightly;asan"}
+        self.assertEqual(derive_build_variant(run), "asan")
+
+    def test_asan_orchestrator_carries_no_variant_of_its_own(self):
+        # multi_arch_release_asan.yml takes no `build_variant` input and does not
+        # carry the tracking id it generates. Guessing a flavor here would stamp
+        # the document wrong (it dispatches "asan-debug", not "asan"), so the
+        # variant stays empty and the setup run supplies it.
+        run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
+        self.assertEqual(derive_build_variant(run), "")
 
 
 class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):

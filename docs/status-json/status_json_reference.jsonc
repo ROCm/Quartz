@@ -1,4 +1,4 @@
-// Reference layout for status.json v2.
+// Reference layout for status.json and status-asan.json v2.
 // NOTE: This file is a human-readable spec and contains `//` comments. The
 // real status.json emitted by Quartz is strict JSON with comments stripped.
 //
@@ -23,7 +23,7 @@
   "release_type": "nightly",                    // "nightly" | "rc" | "dev"
   "rocm_version": "7.13.0a20260408",
   "build_date": "20260408",
-  "build_variant": "release",                   // (schema 2.1) build flavor: "release" | "asan" | ... ; "" when present but no signal yet (before the setup run reports); key absent entirely in pre-2.1 documents
+  "build_variant": "release",                   // (schema 2.1) build flavor: "release" | "asan" | "asan-debug" | ... ; in status-asan.json this is the one field distinguishing the ASAN flavors; "" when present but no signal yet (before the setup run reports); key absent entirely in pre-2.1 documents
   "therock_commit": "db2fd412ed7fcadf306cdcf19f09cdd998544197",  // (schema 2.1) 40-hex TheRock commit the release was built from; "" until the setup run resolves it; key absent entirely in pre-2.1 documents
   "trigger_workflow_run_id": 12340000,          // run_id of the orchestrator (multi_arch_ci)
   "trigger_run_attempt": 1,                     // attempt of the owning orchestrator run; ownership is the (trigger_workflow_run_id, trigger_run_attempt) pair, so a GitHub re-run (same run id, higher attempt) supersedes the run before it

@@ -25,6 +25,7 @@ from typing import Final
 
 from therock_types import (
     ORCHESTRATOR_SPECS,
+    RELEASE_VERSION_BKC_RE,
     RELEASE_VERSION_NIGHTLY_RE,
     WORKFLOW_SPECS,
     WorkflowRunRecord,
@@ -242,12 +243,24 @@ def _dev_local(wr: WorkflowRunRecord, fallback: str) -> str:
     return ref if _GIT_SHA_RE.fullmatch(ref) else fallback
 
 
+def _canonicalize_bkc_version(v: str) -> str:
+    """Normalize any bkc producer separator to the canonical `+bkc.` form.
+
+    The three producers spell the bkc suffix differently: wheel `+bkc.`,
+    native deb/rpm `.bkc.`, framework `-bkc.`. The canonical `release_version`
+    is the PEP 440 wheel form, so all collapse to `<nightly-version>+bkc.<bkc-date>`.
+    """
+    m = RELEASE_VERSION_BKC_RE.match(v)
+    return f"{m.group(1)}+bkc.{m.group(2)}" if m else v
+
+
 def derive_release_version(wr: WorkflowRunRecord) -> str | None:
     raw = (wr.rocm_version or "").strip()
     if not raw:
         return None
     v = _rocm_version_segment(raw)
-    return _normalize_native_version(v, wr) if "~" in v else v
+    v = _normalize_native_version(v, wr) if "~" in v else v
+    return _canonicalize_bkc_version(v)
 
 
 def derive_release_type(wr: WorkflowRunRecord) -> str:
@@ -264,7 +277,22 @@ def derive_test_type(wr: WorkflowRunRecord) -> str:
 
 
 def derive_build_variant(wr: WorkflowRunRecord) -> str:
-    return str(wr.inputs.get("build_variant") or "").strip()
+    """The release flavor this run belongs to: "release", "asan", "asan-debug", ...
+
+    Read from the run's own `build_variant` input, else from the variant field of
+    the propagated `quartz_tracking_id`. Empty when neither carries it, notably on
+    the asan orchestrator's own record: it takes no `build_variant` input and
+    generates (but does not carry) the tracking id. Deliberately not defaulted to
+    a flavor there -- `multi_arch_release_asan.yml` dispatches `asan-debug`, so
+    guessing would stamp the document with the wrong flavor. The document it
+    routes to is resolved from its pipeline phase instead, and the precise flavor
+    is stamped by the setup run, which does carry the input.
+    """
+    direct = str(wr.inputs.get("build_variant") or "").strip()
+    if direct:
+        return direct
+    _, _, tracked_variant = parse_quartz_tracking_id(wr.inputs)
+    return tracked_variant or ""
 
 
 def derive_therock_commit(wr: WorkflowRunRecord) -> str:
@@ -284,6 +312,7 @@ def derive_therock_commit(wr: WorkflowRunRecord) -> str:
 _ARTIFACTS_BUCKET_BY_RELEASE_TYPE: Final[dict[str, str]] = {
     "dev": "therock-dev-artifacts",
     "nightly": "therock-nightly-artifacts",
+    "nightly-bkc": "therock-bkc-artifacts",
     "prerelease": "therock-prerelease-artifacts",
 }
 
@@ -308,9 +337,9 @@ def derive_source_run_id(wr: WorkflowRunRecord) -> str | None:
 # (e.g. python-packages) do not finalize a release either. Consumers such as
 # therock_update_status_json key off this same tuple to decide which
 # orchestrator run stamps the status.json document's completion signal.
-# `release-asan` is intentionally absent: asan runs must never own or finalize
-# the normal release document (they will get their own status.json file later).
-FINALIZING_PHASES: Final = frozenset({"release"})
+# Each finalizing phase routes to its own status document: `release` owns
+# `status.json`, while `release-asan` owns `status-asan.json`.
+FINALIZING_PHASES: Final = frozenset({"release", "release-asan"})
 
 
 def is_top_level_orchestrator(wr: WorkflowRunRecord) -> bool:
@@ -330,16 +359,16 @@ def derive_effective_owner_run_id(wr: WorkflowRunRecord) -> int | None:
     place, so every downstream consumer (status.json today, the database
     later) sees the same resolved owner rather than each recomputing it.
 
-    The top-level `multi_arch_release.yml` orchestrator is the root of ownership
-    and therefore owns itself (it generates the id but does not carry it on its
-    own inputs). Every descendant run carries the owner directly in the
-    propagated `quartz_tracking_id`, so it is read from there rather than
-    reconstructed from artifact ids, URLs, or the immediate GitHub parent.
-    Returns None for runs outside a tracked release (CI, tracking disabled).
+    A top-level release orchestrator is the root of ownership and therefore owns
+    itself (it generates the id but does not carry it on its own inputs). Every
+    descendant run carries the owner directly in the propagated
+    `quartz_tracking_id`, so it is read from there rather than reconstructed
+    from artifact ids, URLs, or the immediate GitHub parent. Returns None for
+    runs outside a tracked release (CI, tracking disabled).
     """
     if is_top_level_orchestrator(wr):
         return wr.workflow_run_id
-    run_id, _ = parse_quartz_tracking_id(wr.inputs)
+    run_id, _, _ = parse_quartz_tracking_id(wr.inputs)
     return run_id
 
 
@@ -485,6 +514,7 @@ def _native_package_urls(
 # bucket, and release-triggered devreleases are out of scope for now.
 _RELEASE_CDN_BASE: Final[dict[str, str]] = {
     "nightly": "https://nightly.repo.amd.com/rocm/",
+    "nightly-bkc": "https://d2f0ijhovwa9ap.cloudfront.net/rocm/",
     "prerelease": "https://rc.repo.amd.com/rocm/",
 }
 
@@ -512,7 +542,7 @@ def derive_release_cdn_urls(wr: WorkflowRunRecord) -> ReleaseCdnUrls | None:
 
     Returns None (leave the per-run S3 URLs untouched) unless all hold:
       - the workflow is a per-platform release orchestrator,
-      - `release_type` is nightly or prerelease,
+      - `release_type` is nightly, nightly-bkc, or prerelease,
       - the `Publish to Release Buckets` job succeeded.
 
     nightly URLs carry a `<date>-<run_id>` segment for the native packages;

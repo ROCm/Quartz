@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-18T00:01:56Z",
-  "status_json_last_updated": "2026-09-18T02:04:58Z",
+  "status_json_last_updated": "2026-09-18T02:10:16Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -47,8 +47,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 8,
-          "in_progress": 2,
+          "failure": 9,
+          "in_progress": 1,
           "cancelled": 0,
           "skipped": 0
         }
@@ -197,10 +197,11 @@
             "completed_at": "2026-09-18T01:40:41Z"
           },
           "gfx90a": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 35296051136,
             "run_attempt": 1,
-            "started_at": "2026-09-18T01:37:04Z"
+            "started_at": "2026-09-18T01:37:04Z",
+            "completed_at": "2026-09-18T02:09:38Z"
           },
           "gfx125X-dcgpu": {
             "status": "failure",

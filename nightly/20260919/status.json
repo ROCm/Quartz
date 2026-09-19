@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-19T00:01:24Z",
-  "status_json_last_updated": "2026-09-19T01:40:36Z",
+  "status_json_last_updated": "2026-09-19T01:40:38Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -43,7 +43,7 @@
       },
       "rocm": {
         "build": {
-          "status": "success"
+          "status": "failure"
         },
         "test": {
           "success": 0,
@@ -55,7 +55,7 @@
       },
       "pytorch": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -67,7 +67,7 @@
       },
       "jax": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -138,11 +138,11 @@
     "rocm": {
       "build": {
         "linux": {
-          "status": "success",
+          "status": "failure",
           "run_id": 35407830953,
           "run_attempt": 1,
           "started_at": "2026-09-19T00:00:43Z",
-          "completed_at": "2026-09-19T01:38:34Z"
+          "completed_at": "2026-09-19T01:38:47Z"
         },
         "windows": {
           "status": "success",

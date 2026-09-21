@@ -154,6 +154,22 @@ def _prerelease_leaf_run() -> WorkflowRunRecord:
     return run
 
 
+def _run_nightly_build_good(repo_dir: Path, date: str) -> None:
+    """Emit a full leaf+orchestrator nightly build that finalizes all-green under
+    nightly/<date>/. build_date follows created_at (not the version), so the date
+    is set there."""
+    version = f"7.14.0a{date}"
+    when = datetime(
+        int(date[:4]), int(date[4:6]), int(date[6:8]), 15, 8, tzinfo=timezone.utc
+    )
+    for factory in (_leaf_run, _orchestrator_run):
+        run = factory()
+        run.rocm_version = version
+        run.classification.release_version = version
+        run.created_at = when
+        tusj.update_status_json(_event(run), repo_dir=repo_dir, commit_and_push=False)
+
+
 def _event(
     workflow_run: WorkflowRunRecord,
     *,
@@ -938,6 +954,122 @@ def test_finalized_asan_release_updates_only_asan_pointers(
     assert not (nightly_root / "latest_good.json").exists()
 
 
+def test_reopened_asan_build_never_falls_back_to_a_release_document(
+    tmp_path: Path, publish_sanitizer: None
+) -> None:
+    # The latest-good recompute stays inside one variant. A green release build
+    # in the same dated directory is no substitute for the reopened ASAN one, so
+    # the ASAN pointer is dropped rather than repointed at `status.json`.
+    setup = _setup_run(600, build_variant="asan")
+    setup.inputs = {"build_pytorch": False, "build_jax": False}
+    tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
+    asan_leaf = _leaf_run()
+    asan_leaf.trigger_workflow_run_id = 600
+    asan_leaf.classification.build_variant = "asan"
+    tusj.update_status_json(_event(asan_leaf), repo_dir=tmp_path, commit_and_push=False)
+    asan_orchestrator = _orchestrator_run(
+        ".github/workflows/multi_arch_release_asan.yml"
+    )
+    asan_orchestrator.workflow_run_id = 600
+    asan_orchestrator.classification.build_variant = "asan"
+    tusj.update_status_json(
+        _event(asan_orchestrator), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    # A green release build lands in that same dated directory.
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    nightly_root = tmp_path / "nightly"
+    asan_good = nightly_root / "latest_good-asan.json"
+    release_good = nightly_root / "latest_good.json"
+    assert asan_good.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan.json")
+    assert release_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+
+    # A new owner reopens the ASAN build, leaving no green ASAN build anywhere.
+    reopen = _setup_run(700, build_variant="asan")
+    reopen.inputs = {"build_pytorch": False, "build_jax": False}
+    tusj.update_status_json(_event(reopen), repo_dir=tmp_path, commit_and_push=False)
+
+    assert not asan_good.is_symlink()
+    assert not asan_good.exists()
+    # The release variant's pointer is none of that update's business.
+    assert release_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+
+
+def test_reopen_drops_latest_good_when_no_green_build_remains(
+    tmp_path: Path,
+) -> None:
+    # The pointer targets the live document, not a copy of it, so re-opening that
+    # same build back to in_progress would otherwise leave latest_good.json
+    # advertising a build that no longer passes. With no other green sibling to
+    # fall back to, the pointer is dropped.
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    latest_good = tmp_path / "nightly" / "latest_good.json"
+    assert latest_good.is_symlink()
+
+    rerun = _orchestrator_run()
+    rerun.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.overall_status is Status.in_progress
+    assert not latest_good.is_symlink()
+    assert not latest_good.exists()
+
+    # The re-run finishing all-green re-establishes the pointer.
+    rerun_done = _orchestrator_run()
+    rerun_done.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun_done), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert latest_good.is_symlink()
+    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+
+
+def test_nightly_reopen_repoints_latest_good_to_previous_green(
+    tmp_path: Path,
+) -> None:
+    # Two green nightly dates. latest_good targets the newer one; a new owner
+    # re-opening that build must repoint it to the older green date rather than
+    # drop it.
+    older_date = "20260619"
+    newer_date = "20260620"
+    _run_nightly_build_good(tmp_path, older_date)
+    _run_nightly_build_good(tmp_path, newer_date)
+    latest_good = tmp_path / "nightly" / "latest_good.json"
+    assert latest_good.readlink() == Path(newer_date) / "status.json"
+
+    # A higher run id takes over the newer build, reopening it to in_progress.
+    reopen = _orchestrator_run()
+    reopen.workflow_run_id = 29079513704
+    reopen.conclusion = None
+    reopen.status = "in_progress"
+    reopen.created_at = datetime(2026, 6, 20, 15, 8, tzinfo=timezone.utc)
+    reopen.rocm_version = f"7.14.0a{newer_date}"
+    reopen.classification.release_version = f"7.14.0a{newer_date}"
+    tusj.update_status_json(
+        _event(reopen, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    assert latest_good.readlink() == Path(older_date) / "status.json"
+
+
 def _prerelease_leaf_run_version(version: str) -> WorkflowRunRecord:
     run = _prerelease_leaf_run()
     run.rocm_version = version
@@ -1238,6 +1370,142 @@ def test_bkc_asan_updates_variant_specific_pointers(
     assert (bkc_root / "latest-asan.json").readlink() == top_target
     assert (bkc_root / "latest_good-asan.json").readlink() == top_target
     assert not (bkc_root / "latest.json").exists()
+
+
+def test_bkc_build_date_is_the_bkc_date_not_each_run_start(tmp_path: Path) -> None:
+    # Both bkc dates are fixed by the version, so build_date stays on the
+    # <bkc-date> the document is filed under instead of following whichever run
+    # last reported -- a child dispatched after midnight would otherwise move it,
+    # and consumers deduplicate on (rocm_version, build_date).
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+    later = _bkc_orchestrator_run()
+    later.run_attempt = 2
+    later.created_at = datetime(2026, 6, 20, 0, 12, tzinfo=timezone.utc)
+    tusj.update_status_json(
+        _event(later, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+
+def test_bkc_reopen_drops_good_pointers_when_no_green_remains(
+    tmp_path: Path,
+) -> None:
+    # Both good pointers target the build that re-opens back to in_progress, and
+    # it is the only build in the tree, so the recompute finds no green fallback
+    # at either level and drops both pointers.
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    per_nightly_good = (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    )
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert per_nightly_good.is_symlink()
+    assert top_good.is_symlink()
+
+    rerun = _bkc_orchestrator_run()
+    rerun.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    assert (
+        _load(_bkc_status_path(tmp_path)).summary.overall_status is Status.in_progress
+    )
+    assert not per_nightly_good.exists()
+    assert not top_good.exists()
+
+
+def test_bkc_reopen_repoints_subdir_good_to_previous_green(
+    tmp_path: Path,
+) -> None:
+    # Two green builds under one nightly version. The subdir good pointer targets
+    # the newer bkc_date; a new owner re-opening that build must repoint it to the
+    # older green sibling rather than drop it.
+    older = "20260831"
+    newer = "20260905"
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, older)
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, newer)
+    subdir_good = tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert subdir_good.readlink() == Path(newer) / "status.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / newer / "status.json"
+
+    # A higher run id takes over the newer build, reopening it to in_progress.
+    _establish_owner(
+        tmp_path,
+        29079513704,
+        release_type="nightly-bkc",
+        version=f"{_BKC_NIGHTLY_VERSION}+bkc.{newer}",
+        head_branch=_BKC_BRANCH,
+    )
+
+    assert subdir_good.readlink() == Path(older) / "status.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / older / "status.json"
+
+
+def test_bkc_reopen_repoints_top_good_to_lower_nightly_version(
+    tmp_path: Path,
+) -> None:
+    # Two nightly versions, one green build each. The high version wins both top
+    # pointers; a later green low version must not regress them; then a new owner
+    # re-opening the high build drops its (only) subdir good and the top good
+    # pointer falls back to the lower version's green build.
+    low_version = "7.14.2a20260826"
+    low_date = "20260905"
+    high_version = "10.1.0a20260825"
+    high_date = "20260831"
+    top_high_target = Path(high_version) / high_date / "status.json"
+    low_target = Path(low_date) / "status.json"
+    top_low_target = Path(low_version) / low_date / "status.json"
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    top_latest = tmp_path / "nightly-bkc" / "latest.json"
+    low_latest = tmp_path / "nightly-bkc" / Path(low_version) / "latest.json"
+    high_subdir_good = tmp_path / "nightly-bkc" / high_version / "latest_good.json"
+
+    _run_bkc_build_good(tmp_path, high_version, high_date)
+    assert top_good.readlink() == top_high_target
+
+    # A later, all-green lower nightly version must not regress either top pointer.
+    _run_bkc_build_good(tmp_path, low_version, low_date)
+    assert top_good.readlink() == top_high_target
+    assert top_latest.readlink() == top_high_target
+    assert low_latest.readlink() == low_target
+
+    # A higher run id takes over the high-version build, reopening it to in_progress.
+    _establish_owner(
+        tmp_path,
+        29079513704,
+        release_type="nightly-bkc",
+        version=f"{high_version}+bkc.{high_date}",
+        head_branch=_BKC_BRANCH,
+    )
+
+    # Its lone subdir good is gone, so the top good pointer regresses to the low version.
+    assert not high_subdir_good.exists()
+    assert top_good.readlink() == top_low_target
+    assert top_latest.readlink() == top_high_target
+
+
+def test_bkc_in_progress_build_leaves_another_builds_good_pointer_alone(
+    tmp_path: Path,
+) -> None:
+    # The recompute only fires for the pointer aimed at the build being updated: a
+    # newer bkc date starting up leaves the good pointer earned by an older one
+    # untouched, since that pointer does not target the in-progress build.
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, "20260905")
+
+    per_nightly_good = (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    )
+    assert per_nightly_good.readlink() == Path(f"{_BKC_DATE}/status.json")
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / _BKC_DATE / "status.json"
 
 
 def test_bkc_top_latest_points_at_concrete_status(tmp_path: Path) -> None:

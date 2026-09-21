@@ -246,7 +246,10 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
         self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
         self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
 
-    def test_bkc_linux_has_no_dated_segment(self):
+    def test_bkc_linux_dated_segment_uses_the_bkc_date(self):
+        # bkc publishes per-run like nightly (only prerelease overwrites a fixed
+        # prefix), and the segment carries the bkc run date, not the nightly date
+        # the build was cut from.
         rec = _release_record(
             path=".github/workflows/multi_arch_release_linux.yml",
             release_type="nightly-bkc",
@@ -257,8 +260,9 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
         base = "https://d2f0ijhovwa9ap.cloudfront.net/rocm/"
         self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
         self.assertEqual(urls.wheels_url, f"{base}whl-next/")
-        self.assertEqual(urls.rpm_urls, {"rpm": f"{base}core/packages/"})
-        self.assertEqual(urls.deb_urls, {"deb": f"{base}core/packages/"})
+        seg = f"{base}core/packages/<os-profile>"
+        self.assertEqual(urls.rpm_urls, {"rpm": f"{seg}/20260831-27797822902/"})
+        self.assertEqual(urls.deb_urls, {"deb": f"{seg}/20260831-27797822902/"})
 
     def test_windows_has_no_native_package_urls(self):
         rec = _release_record(

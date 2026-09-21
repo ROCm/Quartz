@@ -63,6 +63,7 @@ from therock_status_document import (
 )
 from therock_summary import freeze_requested_architectures, rebuild_summary
 from therock_types import (
+    RELEASE_VERSION_BKC_RE,
     RELEASE_VERSION_DEV_RE,
     RELEASE_VERSION_NIGHTLY_RE,
     RELEASE_VERSION_PRERELEASE_RE,
@@ -237,6 +238,14 @@ def _status_json_path(
     workflow_run: WorkflowRunRecord,
 ) -> Path:
     release_version = workflow_run.classification.release_version or ""
+    # bkc carries two dates (the nightly base build date + the bkc run date) that
+    # cannot be reconstructed from `created_at`, and its version is not one of the
+    # nightly/prerelease forms `_release_version_suffix` accepts, so route it
+    # before that call.
+    if release_type == "nightly-bkc":
+        nightly_version, bkc_date = _bkc_dirs(release_version)
+        return repo_dir / "nightly-bkc" / nightly_version / bkc_date / "status.json"
+
     # Test workflows are dispatched without a version input, so their events
     # carry no release_version.
     if not release_version and release_type == "nightly" and workflow_run.created_at:
@@ -251,6 +260,36 @@ def _status_json_path(
         return repo_dir / "prerelease" / major_minor / full / "status.json"
 
     raise ValueError(f"Unexpected release_type: {release_type!r}")
+
+
+def _bkc_dirs(release_version: str) -> tuple[str, str]:
+    """Split a bkc version into its (nightly_version, bkc_date) directory names.
+
+    "10.1.0a20260825+bkc.20260831" -> ("10.1.0a20260825", "20260831")
+    """
+    m = RELEASE_VERSION_BKC_RE.match(release_version)
+    if not m:
+        raise ValueError(
+            f"Cannot route bkc version {release_version!r}; expected "
+            "'<major>.<minor>.<patch>a<YYYYMMDD>[+.-]bkc.<YYYYMMDD>'."
+        )
+    return m.group(1), m.group(2)
+
+
+_BKC_NIGHTLY_VERSION_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)a(\d{8})$")
+
+
+def _bkc_top_key(nightly_version: str, bkc_date: str) -> tuple[int, int, int, int, int]:
+    """Order bkc builds for the top-level `nightly-bkc/latest.json`.
+
+    Like prerelease, the largest nightly version wins; the bkc_date only breaks
+    ties within the same nightly version. So "10.1.0a20260825" outranks
+    "7.14.2a20260826" (10 > 7) even though the latter's build is a day newer.
+    """
+    m = _BKC_NIGHTLY_VERSION_RE.match(nightly_version)
+    if not m:
+        return (0, 0, 0, 0, 0)
+    return (int(m[1]), int(m[2]), int(m[3]), int(m[4]), int(bkc_date))
 
 
 _PRERELEASE_VERSION_KEY_RE = re.compile(r"^(\d+)\.(\d+)\.(\d+)rc(\d+)$")
@@ -285,7 +324,11 @@ def _prerelease_version_key(version: str) -> tuple[int, int, int, int]:
     return (int(m[1]), int(m[2]), int(m[3]), int(m[4]))
 
 
-_DOC_RELEASE_TYPE = {"nightly": "nightly", "prerelease": "rc"}
+_DOC_RELEASE_TYPE = {
+    "nightly": "nightly",
+    "nightly-bkc": "nightly-bkc",
+    "prerelease": "rc",
+}
 
 
 def _doc_release_type(release_type: str) -> str:
@@ -303,7 +346,7 @@ def _load_or_create_document(
         data = json.loads(status_path.read_text(encoding="utf-8"))
         return StatusDocument.from_dict(data), False
 
-    build_date = (
+    build_date = _bkc_build_date(workflow_run) or (
         workflow_run.created_at.strftime("%Y%m%d") if workflow_run.created_at else ""
     )
     created_at_str = (
@@ -337,8 +380,21 @@ def _update_document_metadata(
     if workflow_run.classification.release_version and not doc.rocm_version:
         doc.rocm_version = workflow_run.classification.release_version
 
-    if workflow_run.created_at is not None:
+    bkc_build_date = _bkc_build_date(workflow_run)
+    if bkc_build_date:
+        doc.build_date = bkc_build_date
+    elif workflow_run.created_at is not None:
         doc.build_date = workflow_run.created_at.strftime("%Y%m%d")
+
+
+def _bkc_build_date(workflow_run: WorkflowRunRecord) -> str:
+    """Returns build date for bkc is the bkc suffix date from the version
+    <nightly>+bkc.<bkc-date>, or "" for any other version.
+    """
+    bkc = RELEASE_VERSION_BKC_RE.match(
+        workflow_run.classification.release_version or ""
+    )
+    return bkc.group(2) if bkc else ""
 
 
 _CONCLUSION_MAP: dict[str, Status] = {
@@ -1177,16 +1233,25 @@ def _update_symlinks(
     status_path: Path,
     release_type: str,
 ) -> list[Path]:
-    """Update `latest.json` (symlink) and `latest_good.json` (snapshot file).
-    Only meaningful for the `nightly` release type."""
+    """Update the `latest.json`/`latest_good.json` pointers for the build.
+
+    Meaningful for `nightly`, `nightly-bkc`, and `prerelease`. Every pointer is a
+    single-hop symlink to the concrete dated `status.json`: `latest.json` follows
+    the newest build, `latest_good.json` follows the newest all-green build and is
+    repointed to the next-best green build (or dropped) when the build it targets
+    is reopened by a new owner (see `_recompute_latest_good`). The version-ordered
+    top-level
+    `nightly-bkc/latest.json`/`latest_good.json` (for the highest nightly version)
+    are maintained by `_update_bkc_top_latest`."""
     if release_type == "prerelease":
-        return _update_prerelease_latest(repo_dir, status_path)
-    if release_type != "nightly":
+        return _update_prerelease_latest(repo_dir, doc, status_path)
+    if release_type not in ("nightly", "nightly-bkc"):
         return []
 
-    # Root follows wherever the document was written: nightly/ normally, or the
-    # legacy release-nightly/ during the rename bridge (see `_nightly_root`), so
-    # the pointer never crosses into a different folder than its target.
+    # Root follows wherever the document was written, two levels up from the
+    # dated status.json: nightly/<date>/ (or the legacy release-nightly/<date>/
+    # during the #93 rename bridge), and nightly-bkc/<nightly-version>/<bkc-date>/. Deriving it
+    # from the target keeps the pointer in the same folder as its target.
     latest_dir = status_path.parent.parent
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
@@ -1210,18 +1275,161 @@ def _update_symlinks(
     if doc.summary.overall_status == Status.success:
         latest_good = latest_dir / "latest_good.json"
         if _latest_good_should_update(latest_good, new_date):
-            if latest_good.is_symlink() or latest_good.exists():
-                latest_good.unlink()
-            latest_good.write_text(doc.to_json() + "\n", encoding="utf-8")
-            files_written.append(latest_good)
+            files_written.append(
+                _write_latest_good_symlink(latest_dir, new_target_relative)
+            )
+    else:
+        recomputed = _recompute_latest_good(latest_dir, new_target_relative)
+        if recomputed is not None:
+            files_written.append(recomputed)
+
+    if release_type == "nightly-bkc":
+        files_written += _update_bkc_top_latest(repo_dir, doc, status_path)
 
     return files_written
 
 
-def _update_prerelease_latest(repo_dir: Path, status_path: Path) -> list[Path]:
+def _write_latest_good_symlink(latest_dir: Path, target_relative: Path) -> Path:
+    """Point `<latest_dir>/latest_good.json` at a concrete status.json (single hop).
+
+    Callers gate this on the target build being all-green; the no-regress guard is
+    the caller's job (the per-date/per-base pointers use `_latest_good_should_update`;
+    the top-level bkc pointer uses `_bkc_top_should_update`).
+    """
+    latest_good = latest_dir / "latest_good.json"
+    if latest_good.is_symlink() or latest_good.exists():
+        latest_good.unlink()
+    latest_good.symlink_to(target_relative)
+    return latest_good
+
+
+def _recompute_latest_good(latest_dir: Path, target_relative: Path) -> Path | None:
+    """Repoint `latest_good.json` to the next-best green build after its target
+    reopens.
+
+    The pointer targets a mutable document rather than a snapshot of it. When a
+    new owner takes over the dated `status.json` it re-opens that build back to
+    `in_progress` (see `_reset_document_for_new_owner`), so a `latest_good.json`
+    aimed at it now advertises a build that is no longer green. The replacement
+    is the newest sibling `<date>/status.json` under `latest_dir` still reporting
+    `overall_status == success`; when none remain, the pointer is deleted.
+
+    Only a pointer aimed at *this* target is touched; one tracking some other
+    build is none of this update's business. Returns the pointer path so the
+    caller can stage the change (a repoint or a delete both stage under
+    `git add`), or None when there was nothing to do.
+    """
+    latest_good = latest_dir / "latest_good.json"
+    if not latest_good.is_symlink():
+        return None
+    try:
+        if latest_good.readlink() != target_relative:
+            return None
+    except OSError:
+        return None
+    replacement = _newest_good_dated_status(latest_dir)
+    latest_good.unlink()
+    if replacement is None:
+        return latest_good
+    latest_good.symlink_to(replacement)
+    return latest_good
+
+
+def _recompute_bkc_top_good(bkc_root: Path, target_relative: Path) -> Path | None:
+    """Repoint the top-level `nightly-bkc/latest_good.json` after its target
+    reopens.
+
+    Same trigger as `_recompute_latest_good`, one level up: the replacement is
+    the highest-version build still advertised by a per-nightly-version
+    `latest_good.json` (each already recomputed for this event), chosen by
+    `_bkc_top_key`. No surviving sub-pointer means no green build is left
+    anywhere, so the top pointer is deleted. Returns the pointer path for the
+    caller to stage, or None when its target was some other build.
+    """
+    good = bkc_root / "latest_good.json"
+    if not good.is_symlink():
+        return None
+    try:
+        if good.readlink() != target_relative:
+            return None
+    except OSError:
+        return None
+    replacement = _highest_subdir_good(bkc_root)
+    good.unlink()
+    if replacement is None:
+        return good
+    good.symlink_to(replacement)
+    return good
+
+
+def _newest_good_dated_status(latest_dir: Path) -> Path | None:
+    """Newest `<date>/status.json` under `latest_dir` still reporting all-green,
+    as a path relative to `latest_dir`, or None when no green build remains.
+
+    Scans the immediate `<date>` subdirectories (nightly dates, or bkc run dates
+    under one nightly version) and keeps the highest date whose status.json
+    finalized `overall_status == success`.
+    """
+    # Dated dirs are fixed-width YYYYMMDD, so reverse-lexicographic is
+    # newest-first; the first green we hit is the highest green, so return early.
+    for child in sorted(latest_dir.iterdir(), reverse=True):
+        if not child.is_dir():
+            continue
+        status_file = child / "status.json"
+        if not status_file.is_file():
+            continue
+        if _status_overall_is_success(status_file):
+            return Path(child.name) / "status.json"
+    return None
+
+
+def _highest_subdir_good(bkc_root: Path) -> Path | None:
+    """Highest-version target across the per-nightly-version `latest_good.json`
+    pointers under `bkc_root`, as a path relative to `bkc_root`
+    (`<nightly-version>/<bkc-date>/status.json`), or None when none survive.
+
+    Each sub-pointer is a single-hop symlink to `<bkc-date>/status.json`; its
+    `_bkc_top_key` combines the parent `<nightly-version>` with that bkc date.
+    """
+    # Single-pass max, not a sorted-descending early-escape: reading a
+    # sub-pointer is only is_symlink()+readlink() (no JSON parse), so there is no
+    # expensive work to short-circuit, unlike _newest_good_dated_status. Version
+    # strings also need _bkc_top_key to order ("10.0" > "1.0"), so a plain
+    # lexicographic escape would be wrong anyway.
+    best_key: tuple[int, int, int, int, int] | None = None
+    best_target: Path | None = None
+    for child in sorted(bkc_root.iterdir()):
+        if not child.is_dir():
+            continue
+        pointer = child / "latest_good.json"
+        if not pointer.is_symlink():
+            continue
+        try:
+            dated = pointer.readlink()  # <bkc-date>/status.json
+            key = _bkc_top_key(child.name, dated.parts[0])
+        except (IndexError, OSError):
+            continue
+        if best_key is None or key > best_key:
+            best_key = key
+            best_target = Path(child.name) / dated
+    return best_target
+
+
+def _status_overall_is_success(status_file: Path) -> bool:
+    """True when the status.json on disk finalized `overall_status == success`."""
+    try:
+        data = json.loads(status_file.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return StatusDocument.from_dict(data).summary.overall_status is Status.success
+
+
+def _update_prerelease_latest(
+    repo_dir: Path, doc: StatusDocument, status_path: Path
+) -> list[Path]:
     """Point the prerelease `latest.json` pointers at the newest release candidate.
 
-    Maintains two symlinks, both version-key ordered so they never regress from,
+    Maintains two levels, both version-key ordered so they never regress from,
     e.g., rc10 to rc2:
 
       - `prerelease/latest.json`               newest candidate for the highest version
@@ -1252,21 +1460,89 @@ def _update_prerelease_latest(repo_dir: Path, status_path: Path) -> list[Path]:
     return files_written
 
 
-def _latest_good_should_update(latest_good: Path, new_build_date: str) -> bool:
-    """True unless an existing `latest_good.json` snapshots a newer build.
+def _update_bkc_top_latest(
+    repo_dir: Path, doc: StatusDocument, status_path: Path
+) -> list[Path]:
+    """Update the top-level `nightly-bkc/latest.json` and `latest_good.json`.
 
-    Migrates legacy symlink installs implicitly: a stale symlink is treated
-    as "no existing snapshot" and gets replaced on the next successful write.
+    Both are single-hop symlinks to a concrete
+    `<nightly-version>/<bkc-date>/status.json`, ordered by `_bkc_top_key`: the
+    largest nightly version wins across nightly versions, and the newest build only
+    breaks ties within one nightly version. The two pointers move independently,
+    each with its own no-regress guard:
+
+      - `latest.json`      tracks the highest build regardless of status.
+      - `latest_good.json` tracks the highest all-green build. It is NOT tied to
+                           `latest.json`: when the highest nightly version is still
+                           in progress or failed, a lower nightly version finishing
+                           all-green still advances the good pointer, as long as it
+                           outranks the current good target. Neither pointer
+                           regresses to a lower key, but the good one is repointed
+                           to the next-best build (or dropped) when its target is
+                           reopened by a new owner.
     """
-    if not latest_good.exists():
-        return True
-    if latest_good.is_symlink():
+    bkc_root = repo_dir / "nightly-bkc"
+    new_target_relative = status_path.relative_to(
+        bkc_root
+    )  # <nightly-version>/<bkc-date>/status.json
+    new_key = _bkc_top_key(new_target_relative.parts[0], new_target_relative.parts[1])
+
+    files_written: list[Path] = []
+
+    latest = bkc_root / "latest.json"
+    if _bkc_top_should_update(latest, new_key):
+        if latest.is_symlink() or latest.exists():
+            latest.unlink()
+        latest.symlink_to(new_target_relative)
+        files_written.append(latest)
+
+    if doc.summary.overall_status == Status.success:
+        good = bkc_root / "latest_good.json"
+        if _bkc_top_should_update(good, new_key):
+            files_written.append(
+                _write_latest_good_symlink(bkc_root, new_target_relative)
+            )
+    else:
+        recomputed = _recompute_bkc_top_good(bkc_root, new_target_relative)
+        if recomputed is not None:
+            files_written.append(recomputed)
+
+    return files_written
+
+
+def _bkc_top_should_update(
+    pointer: Path, new_key: tuple[int, int, int, int, int]
+) -> bool:
+    """True unless the top-level bkc `pointer` already targets a higher-ranked
+    build. Absent or unreadable pointers count as "nothing to regress from". The
+    target is `<nightly-version>/<bkc-date>/status.json`, so its `_bkc_top_key` is
+    read from the first two path components."""
+    if not pointer.is_symlink():
         return True
     try:
-        existing = json.loads(latest_good.read_text(encoding="utf-8"))
-    except (json.JSONDecodeError, OSError):
+        existing = pointer.readlink()  # <nightly-version>/<bkc-date>/status.json
+        return _bkc_top_key(existing.parts[0], existing.parts[1]) <= new_key
+    except (IndexError, OSError):
         return True
-    existing_date = str(existing.get("build_date") or "")
+
+
+def _latest_good_should_update(latest_good: Path, new_build_date: str) -> bool:
+    """True unless the existing `latest_good.json` symlink already points at a
+    newer build.
+
+    Shared by the nightly and bkc per-date pointers. The pointer is a
+    single-hop symlink to `<date>/status.json` (nightly) or
+    `<nightly-version>/<bkc-date>/status.json` (bkc); either way the build date is
+    the first path component, read straight off the link target. A legacy snapshot file
+    (non-symlink) or an unreadable link is treated as "no newer build" and gets
+    replaced on the next successful write.
+    """
+    if not latest_good.is_symlink():
+        return True
+    try:
+        existing_date = latest_good.readlink().parts[0]
+    except (IndexError, OSError):
+        return True
     return existing_date <= new_build_date
 
 
@@ -1548,7 +1824,9 @@ _TRACKED_EVENT_TYPES: frozenset[str] = frozenset(
     {"workflow_run_in_progress", "workflow_run_completed"}
 )
 
-_TRACKED_RELEASE_TYPES: frozenset[str] = frozenset({"nightly", "prerelease"})
+_TRACKED_RELEASE_TYPES: frozenset[str] = frozenset(
+    {"nightly", "nightly-bkc", "prerelease"}
+)
 
 # status.json is only produced for the release-tracking repository; runs from
 # anywhere else (TheRock itself, forks) never touch it. Matched case-insensitively.
@@ -1556,6 +1834,37 @@ _TRACKED_RELEASE_TYPES: frozenset[str] = frozenset({"nightly", "prerelease"})
 _TRACKED_REPOSITORIES: frozenset[str] = frozenset(
     {"rocm/rockrel", "rocm/quartz-tester-rockrel"}
 )
+
+
+def _assert_branch_matches_release_type(release_type: str, head_branch: str) -> None:
+    """Guard that the triggering ref matches the release tier it claims to be.
+
+    A mismatch means a run was cut from the wrong branch (for example a nightly
+    off a feature branch, or a bkc off `main`); the resulting version and layout
+    would be wrong, so this raises rather than silently publishing.
+
+      nightly      -> `main`
+      nightly-bkc  -> `release/bkc/...`
+      prerelease   -> `release/therock-...`
+    """
+    branch = head_branch or ""
+    if release_type == "nightly":
+        allowed = branch == "main"
+        expected = "'main'"
+    elif release_type == "nightly-bkc":
+        allowed = branch.startswith("release/bkc/")
+        expected = "'release/bkc/...'"
+    elif release_type == "prerelease":
+        allowed = branch.startswith("release/therock-")
+        expected = "'release/therock-...'"
+    else:
+        return
+
+    if not allowed:
+        raise ValueError(
+            f"release_type={release_type!r} must be built from {expected}, "
+            f"but the run was triggered from head_branch={head_branch!r}."
+        )
 
 
 def _is_release_cdn_url_update(
@@ -1658,6 +1967,8 @@ def update_status_json(
             sorted(_TRACKED_RELEASE_TYPES),
         )
         return None
+
+    _assert_branch_matches_release_type(release_type, workflow_run.head_branch)
 
     finalize = None
     record_owner_only = False

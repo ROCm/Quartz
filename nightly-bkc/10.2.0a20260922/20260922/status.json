@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-22T19:39:44Z",
-  "status_json_last_updated": "2026-09-22T21:05:10Z",
+  "status_json_last_updated": "2026-09-22T21:05:40Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -23,7 +23,8 @@
         "tarballs": "https://therock-bkc-artifacts.s3.amazonaws.com/35775100487-linux/tarballs/",
         "wheels": "https://therock-bkc-artifacts.s3.amazonaws.com/35775100487-linux/python/",
         "artifacts": "https://therock-bkc-artifacts.s3.amazonaws.com/35775100487-linux/index.html",
-        "rpm": "https://therock-bkc-artifacts.s3.amazonaws.com/35775100487-linux/packages/rpm/x86_64/"
+        "rpm": "https://therock-bkc-artifacts.s3.amazonaws.com/35775100487-linux/packages/rpm/x86_64/",
+        "deb": "https://therock-bkc-artifacts.s3.amazonaws.com/35775100487-linux/packages/deb/"
       },
       "rocm": {
         "build": {
@@ -115,6 +116,12 @@
     },
     "native_packages": {
       "rpm": {
+        "status": "in_progress",
+        "run_id": 35775100487,
+        "run_attempt": 1,
+        "started_at": "2026-09-22T19:38:39Z"
+      },
+      "deb": {
         "status": "in_progress",
         "run_id": 35775100487,
         "run_attempt": 1,

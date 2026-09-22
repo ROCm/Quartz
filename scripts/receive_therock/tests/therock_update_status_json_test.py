@@ -142,14 +142,32 @@ def _windows_leaf_run() -> WorkflowRunRecord:
 
 
 _PRERELEASE_VERSION = "7.14.0rc1"
+_PRERELEASE_BRANCH = "release/therock-7.14"
 
 
 def _prerelease_leaf_run() -> WorkflowRunRecord:
     run = _leaf_run()
     run.release_type = "prerelease"
+    run.head_branch = _PRERELEASE_BRANCH
     run.rocm_version = _PRERELEASE_VERSION
     run.classification.release_version = _PRERELEASE_VERSION
     return run
+
+
+def _run_nightly_build_good(repo_dir: Path, date: str) -> None:
+    """Emit a full leaf+orchestrator nightly build that finalizes all-green under
+    nightly/<date>/. build_date follows created_at (not the version), so the date
+    is set there."""
+    version = f"7.14.0a{date}"
+    when = datetime(
+        int(date[:4]), int(date[4:6]), int(date[6:8]), 15, 8, tzinfo=timezone.utc
+    )
+    for factory in (_leaf_run, _orchestrator_run):
+        run = factory()
+        run.rocm_version = version
+        run.classification.release_version = version
+        run.created_at = when
+        tusj.update_status_json(_event(run), repo_dir=repo_dir, commit_and_push=False)
 
 
 def _event(
@@ -183,6 +201,7 @@ def _establish_owner(
     *,
     release_type: str = "nightly",
     version: str = _RELEASE_VERSION,
+    head_branch: str | None = None,
 ) -> None:
     """Anchor document ownership the way the real pipeline does.
 
@@ -192,12 +211,19 @@ def _establish_owner(
     owning run. A higher run id here takes over, resetting the previous run's
     detail -- the same reset a newer release run triggers in production.
     """
+    if head_branch is None:
+        head_branch = {
+            "nightly": "main",
+            "nightly-bkc": _BKC_BRANCH,
+            "prerelease": _PRERELEASE_BRANCH,
+        }[release_type]
     orch = _orchestrator_run()
     orch.workflow_run_id = run_id
     orch.conclusion = None
     orch.status = "in_progress"
     orch.release_type = release_type
     orch.rocm_version = version
+    orch.head_branch = head_branch
     orch.classification.release_version = version
     tusj.update_status_json(
         _event(orch, event_type="workflow_run_in_progress"),
@@ -681,6 +707,7 @@ def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
 
     release = _orchestrator_run(".github/workflows/multi_arch_release_linux.yml")
     release.release_type = "prerelease"
+    release.head_branch = _PRERELEASE_BRANCH
     release.rocm_version = _PRERELEASE_VERSION
     release.classification.release_version = _PRERELEASE_VERSION
     release.tarball_url = "https://rc.repo.amd.com/rocm/core/tarball/"
@@ -835,7 +862,7 @@ def test_nightly_leaf_creates_latest_symlink_but_not_latest_good(
     assert not (tmp_path / "nightly" / "latest_good.json").exists()
 
 
-def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
+def test_finalized_release_points_latest_good_at_status(tmp_path: Path) -> None:
     tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -844,13 +871,82 @@ def test_finalized_release_writes_latest_good_snapshot(tmp_path: Path) -> None:
     )
 
     latest_good = tmp_path / "nightly" / "latest_good.json"
-    assert latest_good.exists()
-    assert not latest_good.is_symlink()  # snapshot file, not a symlink
-    snapshot = StatusDocument.from_dict(
-        json.loads(latest_good.read_text(encoding="utf-8"))
+    assert latest_good.is_symlink()  # single-hop symlink to the dated status.json
+    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+    resolved = StatusDocument.from_dict(
+        json.loads((latest_good.parent / latest_good.readlink()).read_text("utf-8"))
     )
-    assert snapshot.summary.overall_status is Status.success
-    assert snapshot.build_date == _NIGHTLY_DATE
+    assert resolved.summary.overall_status is Status.success
+    assert resolved.build_date == _NIGHTLY_DATE
+
+
+def test_reopen_drops_latest_good_when_no_green_build_remains(
+    tmp_path: Path,
+) -> None:
+    # The pointer targets the live document, not a copy of it, so re-opening that
+    # same build back to in_progress would otherwise leave latest_good.json
+    # advertising a build that no longer passes. With no other green sibling to
+    # fall back to, the pointer is dropped.
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    latest_good = tmp_path / "nightly" / "latest_good.json"
+    assert latest_good.is_symlink()
+
+    rerun = _orchestrator_run()
+    rerun.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.overall_status is Status.in_progress
+    assert not latest_good.is_symlink()
+    assert not latest_good.exists()
+
+    # The re-run finishing all-green re-establishes the pointer.
+    rerun_done = _orchestrator_run()
+    rerun_done.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun_done), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert latest_good.is_symlink()
+    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
+
+
+def test_nightly_reopen_repoints_latest_good_to_previous_green(
+    tmp_path: Path,
+) -> None:
+    # Two green nightly dates. latest_good targets the newer one; a new owner
+    # re-opening that build must repoint it to the older green date rather than
+    # drop it.
+    older_date = "20260619"
+    newer_date = "20260620"
+    _run_nightly_build_good(tmp_path, older_date)
+    _run_nightly_build_good(tmp_path, newer_date)
+    latest_good = tmp_path / "nightly" / "latest_good.json"
+    assert latest_good.readlink() == Path(newer_date) / "status.json"
+
+    # A higher run id takes over the newer build, reopening it to in_progress.
+    reopen = _orchestrator_run()
+    reopen.workflow_run_id = 29079513704
+    reopen.conclusion = None
+    reopen.status = "in_progress"
+    reopen.created_at = datetime(2026, 6, 20, 15, 8, tzinfo=timezone.utc)
+    reopen.rocm_version = f"7.14.0a{newer_date}"
+    reopen.classification.release_version = f"7.14.0a{newer_date}"
+    tusj.update_status_json(
+        _event(reopen, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    assert latest_good.readlink() == Path(older_date) / "status.json"
 
 
 def _prerelease_leaf_run_version(version: str) -> WorkflowRunRecord:
@@ -969,6 +1065,390 @@ def test_prerelease_line_latest_isolated_per_line(tmp_path: Path) -> None:
     assert (tmp_path / "prerelease" / "latest.json").readlink() == Path(
         "10.0/10.0.0rc1/status.json"
     )
+
+
+# --- bkc nightly: nightly-version/bkc-date routing, per-version pointers, branch guard --
+
+_BKC_BRANCH = "release/bkc/therock-10.1-20260825"
+_BKC_NIGHTLY_VERSION = "10.1.0a20260825"
+_BKC_DATE = "20260831"
+_BKC_VERSION = f"{_BKC_NIGHTLY_VERSION}+bkc.{_BKC_DATE}"
+
+
+def _bkc_leaf_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
+    run = _leaf_run()
+    run.release_type = "nightly-bkc"
+    run.head_branch = _BKC_BRANCH
+    run.rocm_version = version
+    run.classification.release_version = version
+    return run
+
+
+def _bkc_orchestrator_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
+    run = _orchestrator_run()
+    run.release_type = "nightly-bkc"
+    run.head_branch = _BKC_BRANCH
+    run.rocm_version = version
+    run.classification.release_version = version
+    return run
+
+
+def _bkc_status_path(repo_dir: Path) -> Path:
+    return repo_dir / "nightly-bkc" / _BKC_NIGHTLY_VERSION / _BKC_DATE / "status.json"
+
+
+def _run_bkc_leaf(repo_dir: Path, nightly_version: str, bkc_date: str) -> None:
+    """Establish ownership then emit a leaf for one bkc (nightly_version, bkc_date)
+    build, writing its status.json and refreshing every latest.json pointer.
+    """
+    version = f"{nightly_version}+bkc.{bkc_date}"
+    _establish_owner(
+        repo_dir,
+        release_type="nightly-bkc",
+        version=version,
+        head_branch=_BKC_BRANCH,
+    )
+    tusj.update_status_json(
+        _event(_bkc_leaf_run(version)), repo_dir=repo_dir, commit_and_push=False
+    )
+
+
+def _run_bkc_build_good(repo_dir: Path, nightly_version: str, bkc_date: str) -> None:
+    """Emit a full leaf+orchestrator bkc build that finalizes all-green, so the
+    top-level `latest_good.json` gate fires."""
+    version = f"{nightly_version}+bkc.{bkc_date}"
+    tusj.update_status_json(
+        _event(_bkc_leaf_run(version)), repo_dir=repo_dir, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_bkc_orchestrator_run(version)), repo_dir=repo_dir, commit_and_push=False
+    )
+
+
+@pytest.mark.parametrize(
+    "version",
+    [
+        f"{_BKC_NIGHTLY_VERSION}+bkc.{_BKC_DATE}",  # rocm PEP 440 local
+        f"{_BKC_NIGHTLY_VERSION}.bkc.{_BKC_DATE}",  # native deb/rpm (normalized)
+        f"{_BKC_NIGHTLY_VERSION}-bkc.{_BKC_DATE}",  # pytorch framework local
+    ],
+)
+def test_bkc_routes_to_nightly_version_date_tree(tmp_path: Path, version: str) -> None:
+    # All three producer separators normalize to the same (nightly_version, bkc_date) dir.
+    out = tusj.update_status_json(
+        _event(_bkc_leaf_run(version)), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out == _bkc_status_path(tmp_path)
+    assert not (tmp_path / "release-nightly").exists()
+
+
+def test_bkc_leaf_creates_latest_symlink_but_not_latest_good(
+    tmp_path: Path,
+) -> None:
+    _establish_owner(
+        tmp_path,
+        release_type="nightly-bkc",
+        version=_BKC_VERSION,
+        head_branch=_BKC_BRANCH,
+    )
+    out = tusj.update_status_json(
+        _event(_bkc_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out == _bkc_status_path(tmp_path)
+
+    latest = tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest.json"
+    assert latest.is_symlink()
+    assert latest.readlink() == Path(_BKC_DATE) / "status.json"
+
+    # A leaf alone keeps the release in_progress, so no good snapshot yet.
+    assert not (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    ).exists()
+
+
+def test_bkc_finalized_points_latest_good_at_status(tmp_path: Path) -> None:
+    tusj.update_status_json(
+        _event(_bkc_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_bkc_orchestrator_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    latest_good = tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    assert latest_good.is_symlink()
+    assert latest_good.readlink() == Path(f"{_BKC_DATE}/status.json")
+    resolved = StatusDocument.from_dict(
+        json.loads((latest_good.parent / latest_good.readlink()).read_text("utf-8"))
+    )
+    assert resolved.summary.overall_status is Status.success
+
+
+def test_bkc_build_date_is_the_bkc_date_not_each_run_start(tmp_path: Path) -> None:
+    # Both bkc dates are fixed by the version, so build_date stays on the
+    # <bkc-date> the document is filed under instead of following whichever run
+    # last reported -- a child dispatched after midnight would otherwise move it,
+    # and consumers deduplicate on (rocm_version, build_date).
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+    later = _bkc_orchestrator_run()
+    later.run_attempt = 2
+    later.created_at = datetime(2026, 6, 20, 0, 12, tzinfo=timezone.utc)
+    tusj.update_status_json(
+        _event(later, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+
+def test_bkc_reopen_drops_good_pointers_when_no_green_remains(
+    tmp_path: Path,
+) -> None:
+    # Both good pointers target the build that re-opens back to in_progress, and
+    # it is the only build in the tree, so the recompute finds no green fallback
+    # at either level and drops both pointers.
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    per_nightly_good = (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    )
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert per_nightly_good.is_symlink()
+    assert top_good.is_symlink()
+
+    rerun = _bkc_orchestrator_run()
+    rerun.run_attempt = 2
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    assert (
+        _load(_bkc_status_path(tmp_path)).summary.overall_status is Status.in_progress
+    )
+    assert not per_nightly_good.exists()
+    assert not top_good.exists()
+
+
+def test_bkc_reopen_repoints_subdir_good_to_previous_green(
+    tmp_path: Path,
+) -> None:
+    # Two green builds under one nightly version. The subdir good pointer targets
+    # the newer bkc_date; a new owner re-opening that build must repoint it to the
+    # older green sibling rather than drop it.
+    older = "20260831"
+    newer = "20260905"
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, older)
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, newer)
+    subdir_good = tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert subdir_good.readlink() == Path(newer) / "status.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / newer / "status.json"
+
+    # A higher run id takes over the newer build, reopening it to in_progress.
+    _establish_owner(
+        tmp_path,
+        29079513704,
+        release_type="nightly-bkc",
+        version=f"{_BKC_NIGHTLY_VERSION}+bkc.{newer}",
+        head_branch=_BKC_BRANCH,
+    )
+
+    assert subdir_good.readlink() == Path(older) / "status.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / older / "status.json"
+
+
+def test_bkc_reopen_repoints_top_good_to_lower_nightly_version(
+    tmp_path: Path,
+) -> None:
+    # Two nightly versions, one green build each. The high version wins both top
+    # pointers; a later green low version must not regress them; then a new owner
+    # re-opening the high build drops its (only) subdir good and the top good
+    # pointer falls back to the lower version's green build.
+    low_version = "7.14.2a20260826"
+    low_date = "20260905"
+    high_version = "10.1.0a20260825"
+    high_date = "20260831"
+    top_high_target = Path(high_version) / high_date / "status.json"
+    low_target = Path(low_date) / "status.json"
+    top_low_target = Path(low_version) / low_date / "status.json"
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    top_latest = tmp_path / "nightly-bkc" / "latest.json"
+    low_latest = tmp_path / "nightly-bkc" / Path(low_version) / "latest.json"
+    high_subdir_good = tmp_path / "nightly-bkc" / high_version / "latest_good.json"
+
+    _run_bkc_build_good(tmp_path, high_version, high_date)
+    assert top_good.readlink() == top_high_target
+
+    # A later, all-green lower nightly version must not regress either top pointer.
+    _run_bkc_build_good(tmp_path, low_version, low_date)
+    assert top_good.readlink() == top_high_target
+    assert top_latest.readlink() == top_high_target
+    assert low_latest.readlink() == low_target
+
+    # A higher run id takes over the high-version build, reopening it to in_progress.
+    _establish_owner(
+        tmp_path,
+        29079513704,
+        release_type="nightly-bkc",
+        version=f"{high_version}+bkc.{high_date}",
+        head_branch=_BKC_BRANCH,
+    )
+
+    # Its lone subdir good is gone, so the top good pointer regresses to the low version.
+    assert not high_subdir_good.exists()
+    assert top_good.readlink() == top_low_target
+    assert top_latest.readlink() == top_high_target
+
+
+def test_bkc_in_progress_build_leaves_another_builds_good_pointer_alone(
+    tmp_path: Path,
+) -> None:
+    # The recompute only fires for the pointer aimed at the build being updated: a
+    # newer bkc date starting up leaves the good pointer earned by an older one
+    # untouched, since that pointer does not target the in-progress build.
+    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, "20260905")
+
+    per_nightly_good = (
+        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / "latest_good.json"
+    )
+    assert per_nightly_good.readlink() == Path(f"{_BKC_DATE}/status.json")
+    top_good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert top_good.readlink() == Path(_BKC_NIGHTLY_VERSION) / _BKC_DATE / "status.json"
+
+
+def test_bkc_top_latest_points_at_concrete_status(tmp_path: Path) -> None:
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+
+    top = tmp_path / "nightly-bkc" / "latest.json"
+    assert top.is_symlink()
+    # Single-hop straight to the dated status.json, never a symlink-to-symlink.
+    assert top.readlink() == Path(_BKC_NIGHTLY_VERSION) / _BKC_DATE / "status.json"
+    assert (top.parent / top.readlink()).is_file()
+    # Top-level latest_good is deferred, matching prerelease.
+    assert not (tmp_path / "nightly-bkc" / "latest_good.json").exists()
+
+
+def test_bkc_top_latest_highest_nightly_version_wins_regardless_of_order(
+    tmp_path: Path,
+) -> None:
+    high = Path("10.1.0a20260825") / "20260831" / "status.json"
+
+    # A lower nightly version with a NEWER build date arrives first...
+    _run_bkc_leaf(tmp_path, "7.14.2a20260826", "20260905")
+    # ...then the higher nightly version takes over even though its build is a day older.
+    _run_bkc_leaf(tmp_path, "10.1.0a20260825", "20260831")
+    top = tmp_path / "nightly-bkc" / "latest.json"
+    assert top.readlink() == high
+
+    # A later lower-version build must not regress the top-level pointer.
+    _run_bkc_leaf(tmp_path, "7.14.2a20260826", "20260910")
+    assert top.readlink() == high
+
+
+def test_bkc_top_latest_advances_within_same_nightly_version(tmp_path: Path) -> None:
+    # Within one nightly version the newer bkc_date is the newer build and wins the tiebreak.
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, "20260831")
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, "20260905")
+
+    top = tmp_path / "nightly-bkc" / "latest.json"
+    assert top.readlink() == Path(_BKC_NIGHTLY_VERSION) / "20260905" / "status.json"
+
+
+def test_bkc_top_latest_good_absent_while_in_progress(tmp_path: Path) -> None:
+    # A leaf alone leaves the top build in_progress: latest.json advances, but the
+    # good pointer is withheld until it finishes all-green.
+    _run_bkc_leaf(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
+
+    assert (tmp_path / "nightly-bkc" / "latest.json").is_symlink()
+    assert not (tmp_path / "nightly-bkc" / "latest_good.json").exists()
+
+
+def test_bkc_top_latest_good_does_not_regress_to_lower_nightly_version(
+    tmp_path: Path,
+) -> None:
+    high = Path("10.1.0a20260825") / "20260831" / "status.json"
+    _run_bkc_build_good(tmp_path, "10.1.0a20260825", "20260831")
+    good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert good.is_symlink()
+    assert good.readlink() == high
+    assert (good.parent / good.readlink()).is_file()  # single-hop, resolves to a file
+
+    # A newer, all-green lower nightly version must not overwrite the top-level good pointer.
+    _run_bkc_build_good(tmp_path, "7.14.2a20260826", "20260905")
+    assert good.readlink() == high
+
+
+def test_bkc_top_latest_good_advances_to_higher_good_nightly_version(
+    tmp_path: Path,
+) -> None:
+    _run_bkc_build_good(tmp_path, "7.14.2a20260826", "20260905")
+    good = tmp_path / "nightly-bkc" / "latest_good.json"
+    assert good.readlink() == Path("7.14.2a20260826") / "20260905" / "status.json"
+
+    # A higher nightly version finishing good takes over the top-level good pointer.
+    _run_bkc_build_good(tmp_path, "10.1.0a20260825", "20260831")
+    assert good.readlink() == Path("10.1.0a20260825") / "20260831" / "status.json"
+
+
+def test_bkc_top_latest_good_advances_below_in_progress_latest(tmp_path: Path) -> None:
+    # The good pointer tracks the highest all-green build independently of
+    # latest.json. Even when latest.json sits on a higher nightly version that never
+    # went green, a lower nightly version finishing good must still advance the good pointer.
+    good = tmp_path / "nightly-bkc" / "latest_good.json"
+    latest = tmp_path / "nightly-bkc" / "latest.json"
+
+    _run_bkc_build_good(tmp_path, "7.13.0a20260801", "20260810")
+    assert good.readlink() == Path("7.13.0a20260801") / "20260810" / "status.json"
+
+    # A higher nightly version is only in progress: it owns latest.json but not latest_good.
+    _run_bkc_leaf(tmp_path, "10.0.1a20260701", "20260905")
+    assert latest.readlink() == Path("10.0.1a20260701") / "20260905" / "status.json"
+    assert good.readlink() == Path("7.13.0a20260801") / "20260810" / "status.json"
+
+    # A middle nightly version finishes all-green: below latest.json but above the current
+    # good target, so the good pointer advances while latest.json stays put.
+    _run_bkc_build_good(tmp_path, "7.14.0a20260901", "20260910")
+    assert latest.readlink() == Path("10.0.1a20260701") / "20260905" / "status.json"
+    assert good.readlink() == Path("7.14.0a20260901") / "20260910" / "status.json"
+
+
+def test_nightly_off_main_branch_raises(tmp_path: Path) -> None:
+    run = _leaf_run()
+    run.head_branch = "users/someone/feature"
+    with pytest.raises(ValueError, match="must be built from 'main'"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_bkc_off_release_branch_raises(tmp_path: Path) -> None:
+    run = _bkc_leaf_run()
+    run.head_branch = "main"
+    with pytest.raises(ValueError, match="release/bkc/"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_prerelease_off_disallowed_branch_raises(tmp_path: Path) -> None:
+    run = _prerelease_leaf_run()
+    run.head_branch = "release/bkc/therock-10.1-20260825"
+    with pytest.raises(ValueError, match="release/therock-"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_prerelease_off_main_branch_raises(tmp_path: Path) -> None:
+    # main no longer produces prereleases; only release/therock-... does.
+    run = _prerelease_leaf_run()
+    run.head_branch = "main"
+    with pytest.raises(ValueError, match="release/therock-"):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+
+def test_prerelease_from_release_therock_branch_routes(tmp_path: Path) -> None:
+    run = _prerelease_leaf_run()
+    run.head_branch = "release/therock-7.14"
+    out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
 
 
 def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:
@@ -2328,6 +2808,105 @@ def test_jax_rockrel_build_leaf_not_flipped_by_cancelled_test() -> None:
         "py": "3.12",
         "jax_version": "0.10.2",
     }
+
+
+def test_pytorch_framework_labelled_test_subjob_excluded_from_build() -> None:
+    # A pytorch test sub-job names its framework -- "Test PyTorch | <arch>" --
+    # so the build/test split must recognize the labelled form as readily as the
+    # bare one. A failed test cell belongs to the test leaf and must leave its
+    # cell's build status untouched.
+    run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        jobs=[
+            _job(
+                "release / Build | py 3.11 | torch release/2.12 / "
+                "Build | py 3.11 | torch release/2.12"
+            ),
+            _job(
+                "release / Build | py 3.11 | torch release/2.12 / "
+                "Test PyTorch | gfx1151",
+                conclusion="failure",
+            ),
+        ],
+    )
+    variants = tusj._derive_variants(run)
+    assert len(variants) == 1
+    assert variants[0].matrix == {"py": "3.11", "torch": "release/2.12"}
+    assert variants[0].status is Status.success
+
+
+def test_pytorch_configure_tests_job_is_not_a_test_subjob() -> None:
+    # The split keys on a whole "Test" word, not any occurrence of it: each cell
+    # runs a build-side "Configure PyTorch Tests | <plan>" job whose status
+    # belongs to the build leaf, so it stays on the build side despite its name
+    # containing "Tests |".
+    assert not tusj._is_test_subjob("Configure PyTorch Tests | standard")
+    assert not tusj._is_test_subjob("Configure PyTorch Tests | none")
+    assert tusj._is_test_subjob("Test PyTorch | gfx1151")
+    assert tusj._is_test_subjob("Test | gfx942")
+    # The arch read is the job's own, never the runner label beside it.
+    assert tusj._TEST_ARCH_JOB_RE.findall(
+        "Test PyTorch | gfx94X-dcgpu | linux-gfx942-1gpu-ossci-rocm"
+    ) == ["gfx94X-dcgpu"]
+
+
+def test_pytorch_build_leaf_not_flipped_by_failed_framework_labelled_test() -> None:
+    # One pytorch build run in which a single cell (py 3.11) is the only one
+    # whose tests ran, and those tests failed; every other cell skipped its tests.
+    # The failure belongs to the test half, so every build cell reads success and
+    # so does the build leaf.
+    doc = StatusDocument()
+    jobs = [
+        _job(
+            "release / Build | py 3.11 | torch release/2.12 / "
+            "Build | py 3.11 | torch release/2.12"
+        ),
+        _job(
+            "release / Build | py 3.11 | torch release/2.12 / "
+            "Configure PyTorch Tests | standard"
+        ),
+        _job(
+            "release / Build | py 3.11 | torch release/2.12 / "
+            "Test PyTorch | gfx94X-dcgpu",
+            conclusion="failure",
+        ),
+        _job(
+            "release / Build | py 3.12 | torch release/2.12 / "
+            "Build | py 3.12 | torch release/2.12"
+        ),
+        _job(
+            "release / Build | py 3.12 | torch release/2.12 / "
+            "Configure PyTorch Tests | none"
+        ),
+    ]
+    run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=1111,
+        conclusion="failure",
+        jobs=jobs,
+    )
+    tusj._merge_run_into_document(doc, run, tusj._create_leaf(run))
+
+    build_leaf = doc.pipelines.pytorch.build["linux"]
+    assert {
+        (v.matrix["py"], v.matrix["torch"]): v.status for v in build_leaf.variants
+    } == {
+        ("3.11", "release/2.12"): Status.success,
+        ("3.12", "release/2.12"): Status.success,
+    }
+    assert build_leaf.status is Status.success
+
+    # The failure is not dropped on the floor: the same split routes it to the
+    # test half, scoped to the arch it actually ran on, which is what reaches the
+    # test leaf once that arch's own notify creates it.
+    test_variants = tusj._variants_from_jobs(
+        run, "torch", arch="gfx94X-dcgpu", phase="test"
+    )
+    assert [(v.matrix, v.status) for v in test_variants] == [
+        ({"py": "3.11", "torch": "release/2.12"}, Status.failure)
+    ]
 
 
 def test_test_snapshot_finalizes_same_run_build_leaf() -> None:

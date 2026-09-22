@@ -96,6 +96,7 @@ runs:
         client-id: ${{ inputs.gh_app_client_id }}
         private-key: ${{ inputs.gh_app_private_key }}
         repositories: ${{ inputs.quartz_repo }}
+        permission-actions: write
 
     - name: Notify Quartz
       if: steps.app-token.outputs.token != ''

@@ -422,21 +422,28 @@ _MATRIX_JOB_RE = re.compile(
 )
 
 # One (py, ref) build cell can nest per-arch test jobs, e.g.
-#   "Build | py 3.12 | torch release/2.10 / Test | gfx942 | linux-gfx942-1gpu..."
-# Extracts the arch a job's own "Test | <arch>" segment names, if any, so
-# jobs from different architectures nested under the same cell are never
-# grouped together as if they were one architecture's result. Deliberately
-# anchored to the "Test | " segment rather than reusing therock_classify's
-# bare `_GPU_FAMILY_RE` (though it shares the same GPU_FAMILY_TOKEN shape):
-# an unanchored scan would also match the runner-label segment that often
-# follows in the same job name (e.g. "linux-gfx942-1gpu-..." above, which
-# names a *different* family string than the job's own "Test | gfx94X-dcgpu"
-# segment) and reintroduce the cross-arch conflation this exists to prevent.
-# Case-insensitive (like `_MATRIX_JOB_RE`): this regex is also the build-vs-test
-# partition signal in `_is_test_subjob`, so a differently-cased "test |" segment
-# must not be misread as a build sub-job.
+#   "Build | py 3.12 | torch release/2.10 / Test PyTorch | gfx942"
+# Extracts the arch named by a job's own test segment, so jobs from different
+# architectures nested under the same cell are never grouped together as if they
+# were one architecture's result. `_is_test_subjob` reads the same segment to
+# tell a cell's test jobs from its build jobs.
+#
+# The segment is "Test", an optional framework label, then "| <arch>" -- e.g.
+# "Test PyTorch | gfx942" or "Test | gfx942". The label spans anything up to the
+# pipe except "/" and "|", so a match stays within a single " / "-delimited name
+# segment and can never pair a "Test" with an arch belonging to a later one.
+# "Test" matches only as a whole word, keeping a build-side "Configure PyTorch
+# Tests | <plan>" job on the build side of the split.
+#
+# Anchored to the pipe rather than reusing therock_classify's bare
+# `_GPU_FAMILY_RE` (though it shares the same GPU_FAMILY_TOKEN shape): an
+# unanchored scan would also match the runner-label segment that often follows
+# in the same job name (e.g. "linux-gfx942-1gpu-...", naming a *different* family
+# string than the job's own "Test | gfx94X-dcgpu" segment) and reintroduce the
+# cross-arch conflation this exists to prevent. Case-insensitive (like
+# `_MATRIX_JOB_RE`), so a differently-cased "test |" segment is still recognized.
 _TEST_ARCH_JOB_RE = re.compile(
-    rf"Test\s*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})", re.IGNORECASE
+    rf"Test(?!\w)[^|/]*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})", re.IGNORECASE
 )
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:

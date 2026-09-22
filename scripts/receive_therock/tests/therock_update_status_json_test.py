@@ -2811,13 +2811,10 @@ def test_jax_rockrel_build_leaf_not_flipped_by_cancelled_test() -> None:
 
 
 def test_pytorch_framework_labelled_test_subjob_excluded_from_build() -> None:
-    # #111: rockrel labels a pytorch test sub-job with its framework --
-    # "Test PyTorch | gfx1151" -- where TheRock names it bare, "Test | gfx1151".
-    # jax escaped this because its rockrel names happen to carry a bare
-    # "Test | <arch>" ancestor segment too (see the #82 tests above); the pytorch
-    # names have no bare segment anywhere, so the labelled tail is the only
-    # build-vs-test signal. Unrecognized, every failing test job was absorbed
-    # into its own (py, torch) build cell and reported the build as failed.
+    # A pytorch test sub-job names its framework -- "Test PyTorch | <arch>" --
+    # so the build/test split must recognize the labelled form as readily as the
+    # bare one. A failed test cell belongs to the test leaf and must leave its
+    # cell's build status untouched.
     run = _variant_run(
         pipeline_type="pytorch",
         pipeline_phase="build",
@@ -2828,7 +2825,6 @@ def test_pytorch_framework_labelled_test_subjob_excluded_from_build() -> None:
             ),
             _job(
                 "release / Build | py 3.11 | torch release/2.12 / "
-                "Test PyTorch Wheels (gfx1151, linux-gfx1151-gpu-rocm) / "
                 "Test PyTorch | gfx1151",
                 conclusion="failure",
             ),
@@ -2841,26 +2837,25 @@ def test_pytorch_framework_labelled_test_subjob_excluded_from_build() -> None:
 
 
 def test_pytorch_configure_tests_job_is_not_a_test_subjob() -> None:
-    # The partition must key on a whole "Test" word, not any occurrence of it:
-    # the build side runs "Configure PyTorch Tests | <plan>" within each cell.
-    # It is a build sub-job and its status belongs to the build leaf, so it must
-    # stay on the build side of the split even though its name contains "Tests |".
+    # The split keys on a whole "Test" word, not any occurrence of it: each cell
+    # runs a build-side "Configure PyTorch Tests | <plan>" job whose status
+    # belongs to the build leaf, so it stays on the build side despite its name
+    # containing "Tests |".
     assert not tusj._is_test_subjob("Configure PyTorch Tests | standard")
     assert not tusj._is_test_subjob("Configure PyTorch Tests | none")
     assert tusj._is_test_subjob("Test PyTorch | gfx1151")
     assert tusj._is_test_subjob("Test | gfx942")
     # The arch read is the job's own, never the runner label beside it.
     assert tusj._TEST_ARCH_JOB_RE.findall(
-        "Test PyTorch Wheels (gfx1151, linux-gfx1151-gpu-rocm) / "
-        "Test PyTorch | gfx94X-dcgpu"
+        "Test PyTorch | gfx94X-dcgpu | linux-gfx942-1gpu-ossci-rocm"
     ) == ["gfx94X-dcgpu"]
 
 
 def test_pytorch_build_leaf_not_flipped_by_failed_framework_labelled_test() -> None:
-    # The #111 shape end-to-end, from run 35552035342: one rockrel pytorch build
-    # run in which py 3.11 was the only cell whose tests ran, and those tests
-    # failed. Every other cell skipped its tests and stayed green. The failure
-    # belongs to the test leaf; both py 3.11 and py 3.12 builds must read success.
+    # One pytorch build run in which a single cell (py 3.11) is the only one
+    # whose tests ran, and those tests failed; every other cell skipped its tests.
+    # The failure belongs to the test half, so every build cell reads success and
+    # so does the build leaf.
     doc = StatusDocument()
     jobs = [
         _job(
@@ -2873,7 +2868,6 @@ def test_pytorch_build_leaf_not_flipped_by_failed_framework_labelled_test() -> N
         ),
         _job(
             "release / Build | py 3.11 | torch release/2.12 / "
-            "Test PyTorch Wheels (gfx94X-dcgpu, linux-gfx942-1gpu-ccs-rocm) / "
             "Test PyTorch | gfx94X-dcgpu",
             conclusion="failure",
         ),
@@ -2889,7 +2883,7 @@ def test_pytorch_build_leaf_not_flipped_by_failed_framework_labelled_test() -> N
     run = _variant_run(
         pipeline_type="pytorch",
         pipeline_phase="build",
-        run_id=35552035342,
+        run_id=1111,
         conclusion="failure",
         jobs=jobs,
     )

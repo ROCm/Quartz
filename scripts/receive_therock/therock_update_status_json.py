@@ -435,8 +435,17 @@ _MATRIX_JOB_RE = re.compile(
 # Case-insensitive (like `_MATRIX_JOB_RE`): this regex is also the build-vs-test
 # partition signal in `_is_test_subjob`, so a differently-cased "test |" segment
 # must not be misread as a build sub-job.
+#
+# The segment may carry a framework label between "Test" and the pipe --
+# TheRock names it bare ("Test | gfx942") while rockrel names the framework
+# ("Test PyTorch | gfx1151") -- so anything up to the pipe is allowed. That
+# span stops at "/" and "|" so it can never run past its own " / "-delimited
+# segment and pair a "Test" from one segment with an arch from a later one.
+# `(?!\w)` keeps "Test" a whole word, so a build-side "Configure PyTorch
+# Tests | <x>" job is not read as a test sub-job. Both guards matter: this is
+# the signal that keeps a failed test out of its cell's build leaf (#111).
 _TEST_ARCH_JOB_RE = re.compile(
-    rf"Test\s*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})", re.IGNORECASE
+    rf"Test(?!\w)[^|/]*\|\s*(?P<arch>{GPU_FAMILY_TOKEN})", re.IGNORECASE
 )
 
 # pipeline_type -> the matrix axis key used in the variant (reference schema:

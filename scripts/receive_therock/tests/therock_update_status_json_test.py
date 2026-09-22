@@ -2810,6 +2810,111 @@ def test_jax_rockrel_build_leaf_not_flipped_by_cancelled_test() -> None:
     }
 
 
+def test_pytorch_framework_labelled_test_subjob_excluded_from_build() -> None:
+    # #111: rockrel labels a pytorch test sub-job with its framework --
+    # "Test PyTorch | gfx1151" -- where TheRock names it bare, "Test | gfx1151".
+    # jax escaped this because its rockrel names happen to carry a bare
+    # "Test | <arch>" ancestor segment too (see the #82 tests above); the pytorch
+    # names have no bare segment anywhere, so the labelled tail is the only
+    # build-vs-test signal. Unrecognized, every failing test job was absorbed
+    # into its own (py, torch) build cell and reported the build as failed.
+    run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        jobs=[
+            _job(
+                "release / Build | py 3.11 | torch release/2.12 / "
+                "Build | py 3.11 | torch release/2.12"
+            ),
+            _job(
+                "release / Build | py 3.11 | torch release/2.12 / "
+                "Test PyTorch Wheels (gfx1151, linux-gfx1151-gpu-rocm) / "
+                "Test PyTorch | gfx1151",
+                conclusion="failure",
+            ),
+        ],
+    )
+    variants = tusj._derive_variants(run)
+    assert len(variants) == 1
+    assert variants[0].matrix == {"py": "3.11", "torch": "release/2.12"}
+    assert variants[0].status is Status.success
+
+
+def test_pytorch_configure_tests_job_is_not_a_test_subjob() -> None:
+    # The partition must key on a whole "Test" word, not any occurrence of it:
+    # the build side runs "Configure PyTorch Tests | <plan>" within each cell.
+    # It is a build sub-job and its status belongs to the build leaf, so it must
+    # stay on the build side of the split even though its name contains "Tests |".
+    assert not tusj._is_test_subjob("Configure PyTorch Tests | standard")
+    assert not tusj._is_test_subjob("Configure PyTorch Tests | none")
+    assert tusj._is_test_subjob("Test PyTorch | gfx1151")
+    assert tusj._is_test_subjob("Test | gfx942")
+    # The arch read is the job's own, never the runner label beside it.
+    assert tusj._TEST_ARCH_JOB_RE.findall(
+        "Test PyTorch Wheels (gfx1151, linux-gfx1151-gpu-rocm) / "
+        "Test PyTorch | gfx94X-dcgpu"
+    ) == ["gfx94X-dcgpu"]
+
+
+def test_pytorch_build_leaf_not_flipped_by_failed_framework_labelled_test() -> None:
+    # The #111 shape end-to-end, from run 35552035342: one rockrel pytorch build
+    # run in which py 3.11 was the only cell whose tests ran, and those tests
+    # failed. Every other cell skipped its tests and stayed green. The failure
+    # belongs to the test leaf; both py 3.11 and py 3.12 builds must read success.
+    doc = StatusDocument()
+    jobs = [
+        _job(
+            "release / Build | py 3.11 | torch release/2.12 / "
+            "Build | py 3.11 | torch release/2.12"
+        ),
+        _job(
+            "release / Build | py 3.11 | torch release/2.12 / "
+            "Configure PyTorch Tests | standard"
+        ),
+        _job(
+            "release / Build | py 3.11 | torch release/2.12 / "
+            "Test PyTorch Wheels (gfx94X-dcgpu, linux-gfx942-1gpu-ccs-rocm) / "
+            "Test PyTorch | gfx94X-dcgpu",
+            conclusion="failure",
+        ),
+        _job(
+            "release / Build | py 3.12 | torch release/2.12 / "
+            "Build | py 3.12 | torch release/2.12"
+        ),
+        _job(
+            "release / Build | py 3.12 | torch release/2.12 / "
+            "Configure PyTorch Tests | none"
+        ),
+    ]
+    run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=35552035342,
+        conclusion="failure",
+        jobs=jobs,
+    )
+    tusj._merge_run_into_document(doc, run, tusj._create_leaf(run))
+
+    build_leaf = doc.pipelines.pytorch.build["linux"]
+    assert {
+        (v.matrix["py"], v.matrix["torch"]): v.status for v in build_leaf.variants
+    } == {
+        ("3.11", "release/2.12"): Status.success,
+        ("3.12", "release/2.12"): Status.success,
+    }
+    assert build_leaf.status is Status.success
+
+    # The failure is not dropped on the floor: the same split routes it to the
+    # test half, scoped to the arch it actually ran on, which is what reaches the
+    # test leaf once that arch's own notify creates it.
+    test_variants = tusj._variants_from_jobs(
+        run, "torch", arch="gfx94X-dcgpu", phase="test"
+    )
+    assert [(v.matrix, v.status) for v in test_variants] == [
+        ({"py": "3.11", "torch": "release/2.12"}, Status.failure)
+    ]
+
+
 def test_test_snapshot_finalizes_same_run_build_leaf() -> None:
     # Shared-run topology: a pytorch/jax build workflow calls its test workflow
     # via workflow_call, so the reusable test's own notify carries the whole

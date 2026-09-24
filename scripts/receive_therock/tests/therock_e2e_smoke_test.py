@@ -6,8 +6,9 @@
 Drives `therock_process_data.main` (parse -> enrich -> classify ->
 update_status_json) over real-shaped `DISPATCH_PAYLOAD` fixtures, exercising
 the whole nightly sequence: build/native leaves land the release in a capped
-`in_progress` state, then the top-level `multi_arch_release` completed event
-finalizes the document to `success`.
+`in_progress` state, the per-platform release orchestrators finalize each
+platform's rocm build rollup, then the top-level `multi_arch_release` completed
+event finalizes the document to `success`.
 
 Offline + deterministic:
   - `--no-fetch-jobs` so enrichment never touches the GitHub API,
@@ -39,6 +40,8 @@ _SETUP = "nightly_setup_completed.json"
 _LINUX_BUILD = "nightly_build_portable_linux_completed.json"
 _WINDOWS_BUILD = "nightly_build_windows_completed.json"
 _NATIVE_DEB = "nightly_build_native_linux_packages_deb_completed.json"
+_RELEASE_LINUX = "nightly_release_linux_completed.json"
+_RELEASE_WINDOWS = "nightly_release_windows_completed.json"
 _RELEASE = "nightly_release_completed.json"
 
 
@@ -74,14 +77,27 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
         assert _process(fixture, tmp_path) == 0
 
     mid = _load(tmp_path)
-    # All three leaves are terminal-success in their rollups...
-    assert mid.summary.linux.rocm.build.status is Status.success
-    assert mid.summary.windows.rocm.build.status is Status.success
+    # Build leaves are capped `in_progress` until the per-platform release
+    # orchestrator finalizes their rollup (#113); only native_packages, which
+    # is a distinct pipeline, is terminal-success at this point.
+    assert mid.summary.linux.rocm.build.status is Status.in_progress
+    assert mid.summary.windows.rocm.build.status is Status.in_progress
     assert mid.summary.linux.native_packages.deb.status is Status.success
     assert mid.completed_at is None
     assert mid.summary.overall_status is Status.in_progress
     assert mid.build_variant == "release"
     assert mid.therock_commit == "0123456789abcdef0123456789abcdef01234567"
+
+    # Per-platform release events roll up the four build jobs and finalize each
+    # platform's rocm build to terminal-success.
+    for fixture in (_RELEASE_LINUX, _RELEASE_WINDOWS):
+        assert _process(fixture, tmp_path) == 0
+
+    rolled = _load(tmp_path)
+    assert rolled.summary.linux.rocm.build.status is Status.success
+    assert rolled.summary.windows.rocm.build.status is Status.success
+    assert rolled.completed_at is None
+    assert rolled.summary.overall_status is Status.in_progress
 
     assert _process(_RELEASE, tmp_path) == 0
 
@@ -95,7 +111,14 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
 def test_full_nightly_sequence_writes_symlink_and_latest_good(
     tmp_path: Path,
 ) -> None:
-    for fixture in (_SETUP, _LINUX_BUILD, _WINDOWS_BUILD, _NATIVE_DEB):
+    for fixture in (
+        _SETUP,
+        _LINUX_BUILD,
+        _WINDOWS_BUILD,
+        _NATIVE_DEB,
+        _RELEASE_LINUX,
+        _RELEASE_WINDOWS,
+    ):
         assert _process(fixture, tmp_path) == 0
 
     nightly_dir = tmp_path / "nightly"

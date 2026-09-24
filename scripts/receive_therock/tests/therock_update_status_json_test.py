@@ -267,11 +267,13 @@ def test_leaf_event_leaves_release_in_progress(tmp_path: Path) -> None:
     )
     assert out == _nightly_status_path(tmp_path)
     doc = _load(out)
-    # A terminal build leaf alone does not end the release: capped + no stamp.
+    # A build leaf alone does not end the release: capped + no stamp.
     assert doc.completed_at is None
     assert doc.summary.overall_status is Status.in_progress
-    # ... but the platform rollup reflects the finished build.
-    assert doc.summary.linux.rocm.build.status is Status.success
+    # The build leaf is held non-terminal too (#113): its per-stage notifies
+    # share the run and any one finishing early must not flip it success. Only
+    # the per-platform release orchestrator finalizes it.
+    assert doc.summary.linux.rocm.build.status is Status.in_progress
 
 
 def test_rocm_test_events_populate_test_rollup(tmp_path: Path) -> None:
@@ -683,16 +685,17 @@ def test_per_platform_orchestrator_does_not_finalize(tmp_path: Path) -> None:
     tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    out = tusj.update_status_json(
+    tusj.update_status_json(
         _event(_orchestrator_run(".github/workflows/multi_arch_release_linux.yml")),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    # Per-platform orchestrators fan out under the top-level one; they own no
-    # document-level completion signal.
-    assert out is None
+    # Per-platform orchestrators now finalize the rocm build rollup (and CDN
+    # URLs), but they own no *document-level* completion signal: only the
+    # top-level orchestrator stamps completed_at / uncaps overall_status.
     doc = _load(_nightly_status_path(tmp_path))
     assert doc.completed_at is None
+    assert doc.summary.overall_status is Status.in_progress
 
 
 def test_prerelease_platform_orchestrator_replaces_s3_urls_with_cdn(
@@ -736,6 +739,184 @@ def test_orchestrator_without_release_version_is_skipped(tmp_path: Path) -> None
     run.classification.release_version = ""
     out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
     assert out is None
+
+
+# --- issue #113: rocm build finalizes at the per-platform release orchestrator -
+#
+# The build leaf is capped in_progress (a stage finishing early must not flip it
+# success). The per-platform release orchestrator's completed event is the single
+# finalizer: it rolls up the build, the tarball/python packaging built from it,
+# and the publish to the release buckets. Its `always()` notify fires on every
+# path, so a publish failure -- or a hard build failure with skipped downstream --
+# still lands a terminal rocm build status.
+
+
+def _release_captured_outputs(
+    *,
+    build_artifacts: str = "success",
+    build_tarballs: str = "success",
+    build_python_packages: str = "success",
+    publish_to_release_buckets: str = "success",
+) -> dict[str, dict[str, object]]:
+    return {
+        "build_artifacts": {"result": build_artifacts, "outputs": {}},
+        "build_tarballs": {"result": build_tarballs, "outputs": {}},
+        "build_python_packages": {"result": build_python_packages, "outputs": {}},
+        "publish_to_release_buckets": {
+            "result": publish_to_release_buckets,
+            "outputs": {},
+        },
+    }
+
+
+def _release_linux_completion(
+    captured_outputs: dict[str, dict[str, object]],
+) -> WorkflowRunRecord:
+    run = _orchestrator_run(".github/workflows/multi_arch_release_linux.yml")
+    run.captured_outputs = captured_outputs
+    return run
+
+
+def _seed_capped_build_leaf(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    # Capped: not terminal until the release orchestrator finalizes it.
+    assert _linux_build_leaf(tmp_path).status is Status.in_progress
+
+
+def test_release_platform_completion_rolls_up_all_success(tmp_path: Path) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    leaf = doc.pipelines.rocm.build["linux"]
+    assert leaf.status is Status.success
+    assert leaf.completed_at is not None
+    assert doc.summary.linux.rocm.build.status is Status.success
+
+
+def test_release_platform_completion_publish_failure_fails_build(
+    tmp_path: Path,
+) -> None:
+    # Compilation succeeded but the publish to release buckets failed: rocm build
+    # rolls up to failure (the whole point of #113 -- publish is part of "build").
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(
+            _release_linux_completion(
+                _release_captured_outputs(publish_to_release_buckets="failure")
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pipelines.rocm.build["linux"].status is Status.failure
+    assert doc.summary.linux.rocm.build.status is Status.failure
+
+
+def test_release_platform_completion_build_failure_with_skipped_downstream(
+    tmp_path: Path,
+) -> None:
+    # Hard build failure: build_artifacts fails, so tarball/python/publish are
+    # skipped. worst-of(failure, skipped, ...) is failure, so rocm build fails.
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(
+            _release_linux_completion(
+                _release_captured_outputs(
+                    build_artifacts="failure",
+                    build_tarballs="skipped",
+                    build_python_packages="skipped",
+                    publish_to_release_buckets="skipped",
+                )
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pipelines.rocm.build["linux"].status is Status.failure
+    assert doc.summary.linux.rocm.build.status is Status.failure
+    # The per-platform release does not stamp document-level completion.
+    assert doc.completed_at is None
+
+
+def test_release_platform_completion_without_prior_leaf_creates_it(
+    tmp_path: Path,
+) -> None:
+    # Out-of-order / dropped build notify: the release orchestrator completes
+    # before any build leaf was recorded. The rollup is authoritative on its own
+    # (it reads the release orchestrator's needs, not the leaf), so it synthesizes
+    # the terminal leaf rather than leaving the platform absent -- an absent leaf
+    # would strand overall_status at in_progress forever.
+    _establish_owner(tmp_path)
+    assert "linux" not in _load(_nightly_status_path(tmp_path)).pipelines.rocm.build
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    leaf = _load(_nightly_status_path(tmp_path)).pipelines.rocm.build["linux"]
+    assert leaf.status is Status.success
+    assert leaf.started_at is not None
+    assert leaf.completed_at is not None
+
+
+def test_release_platform_completion_partial_outputs_stays_capped(
+    tmp_path: Path,
+) -> None:
+    # Fail-closed: if one rollup job is missing from captured_outputs (dropped or
+    # not yet reported), the build must NOT green on the surviving subset. It
+    # stays capped in_progress until a complete rollup arrives.
+    _seed_capped_build_leaf(tmp_path)
+    partial = _release_captured_outputs()
+    del partial["publish_to_release_buckets"]
+    tusj.update_status_json(
+        _event(_release_linux_completion(partial)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    leaf = _linux_build_leaf(tmp_path)
+    assert leaf.status is Status.in_progress
+    assert leaf.completed_at is None
+
+
+def test_finalized_build_reopens_to_in_progress_on_rerun(tmp_path: Path) -> None:
+    # #113 lifecycle end to end: the release orchestrator finalizes rocm build to
+    # terminal success, then the build is re-dispatched (same run id, higher
+    # attempt). Its capped in_progress notify wins the slot (should_replace:
+    # higher attempt beats a terminal leaf), reopening rocm build to in_progress
+    # until a release orchestrator finalizes it again.
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert _linux_build_leaf(tmp_path).status is Status.success
+    assert (
+        _load(_nightly_status_path(tmp_path)).summary.linux.rocm.build.status
+        is Status.success
+    )
+
+    # conclusion is irrelevant here: the rocm/build cap forces in_progress.
+    rerun = _linux_build(27797822902, attempt=2)
+    tusj.update_status_json(_event(rerun), repo_dir=tmp_path, commit_and_push=False)
+
+    leaf = _linux_build_leaf(tmp_path)
+    assert leaf.run_attempt == 2
+    assert leaf.status is Status.in_progress
+    assert leaf.completed_at is None
+    assert (
+        _load(_nightly_status_path(tmp_path)).summary.linux.rocm.build.status
+        is Status.in_progress
+    )
 
 
 def test_from_dict_resolves_version_from_captured_setup_output() -> None:
@@ -1460,9 +1641,12 @@ def test_successive_leaves_merge_into_one_document(tmp_path: Path) -> None:
         _event(_windows_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
     doc = _load(out)
-    # Both platform builds landed in the same release document.
-    assert doc.summary.linux.rocm.build.status is Status.success
-    assert doc.summary.windows.rocm.build.status is Status.success
+    # Both platform builds landed in the same release document (each capped
+    # in_progress until its per-platform release orchestrator finalizes it).
+    assert "linux" in doc.pipelines.rocm.build
+    assert "windows" in doc.pipelines.rocm.build
+    assert doc.summary.linux.rocm.build.status is Status.in_progress
+    assert doc.summary.windows.rocm.build.status is Status.in_progress
 
 
 # --- platform artifact URLs: gated by leaf acceptance, pinned to one run -----
@@ -1907,19 +2091,34 @@ def test_stale_older_run_never_overwrites_newer(tmp_path: Path) -> None:
 
 def test_out_of_order_completed_then_started_keeps_terminal(tmp_path: Path) -> None:
     # Same run, reordered delivery: the completed event lands before the started
-    # one. The stray in_progress must not downgrade the finished leaf.
-    _establish_owner(tmp_path, 100)
+    # one. The stray in_progress must not downgrade the finished leaf. Build
+    # leaves are always capped in_progress (#113), so this end-to-end
+    # do-not-downgrade guard rides on a terminal-capable test leaf.
+    _establish_owner(tmp_path)
     tusj.update_status_json(
-        _event(_linux_build(100, conclusion="success", parent_run_id=100)),
-        repo_dir=tmp_path,
-        commit_and_push=False,
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
-    tusj.update_status_json(
-        _event(_linux_build(100, conclusion="", parent_run_id=100)),
-        repo_dir=tmp_path,
-        commit_and_push=False,
+    done = _run(
+        path=".github/workflows/test_artifacts.yml",
+        platform="linux",
+        pipeline_type="rocm",
+        pipeline_phase="test",
+        architectures=["gfx942"],
     )
-    leaf = _linux_build_leaf(tmp_path)
+    started = _run(
+        path=".github/workflows/test_artifacts.yml",
+        platform="linux",
+        pipeline_type="rocm",
+        pipeline_phase="test",
+        architectures=["gfx942"],
+    )
+    started.status = "in_progress"
+    started.conclusion = None
+
+    tusj.update_status_json(_event(done), repo_dir=tmp_path, commit_and_push=False)
+    tusj.update_status_json(_event(started), repo_dir=tmp_path, commit_and_push=False)
+
+    leaf = _load(_nightly_status_path(tmp_path)).pipelines.rocm.test["linux"]["gfx942"]
     assert leaf.status is Status.success
     assert leaf.completed_at is not None
 
@@ -2051,7 +2250,7 @@ def test_superseded_parent_leaf_is_ignored_even_with_newer_child_id(
 
     leaf = _linux_build_leaf(tmp_path)
     assert leaf.run_id == 201
-    assert leaf.status is Status.success
+    assert leaf.status is Status.in_progress
 
 
 def test_newer_parent_leaf_never_takes_over_owner(
@@ -2112,7 +2311,10 @@ def test_setup_release_run_anchors_owner_and_admits_leaf(tmp_path: Path) -> None
     leaf.trigger_workflow_run_id = 500
     tusj.update_status_json(_event(leaf), repo_dir=tmp_path, commit_and_push=False)
     doc = _load(_nightly_status_path(tmp_path))
-    assert doc.summary.linux.rocm.build.status is Status.success
+    # The leaf was admitted (it landed under the owner's build tree); it stays
+    # capped in_progress until the release orchestrator finalizes it.
+    assert "linux" in doc.pipelines.rocm.build
+    assert doc.summary.linux.rocm.build.status is Status.in_progress
 
 
 @pytest.mark.parametrize("build_variant", ["asan", "host-asan", "tsan", ""])
@@ -2209,9 +2411,10 @@ def test_rerun_higher_attempt_reopens_finalized_document(tmp_path: Path) -> None
     assert doc.completed_at is None
     assert doc.orchestrator_conclusion is None
     assert doc.summary.overall_status is Status.in_progress
-    # ... but the passing leaf from attempt 1 survives (partial re-run keeps it).
+    # ... but the build leaf from attempt 1 survives (partial re-run keeps it);
+    # it stays capped in_progress (finalized only by the release orchestrator).
     assert _linux_build_leaf(tmp_path).run_id == 101
-    assert _linux_build_leaf(tmp_path).status is Status.success
+    assert _linux_build_leaf(tmp_path).status is Status.in_progress
 
 
 def test_stale_lower_attempt_completion_does_not_overwrite_newer(

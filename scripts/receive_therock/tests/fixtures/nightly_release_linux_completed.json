@@ -1,0 +1,81 @@
+{
+  "event_type": "workflow_run_completed",
+  "repository": "ROCm/rockrel",
+  "workflow_run": {
+    "id": 27797822900,
+    "name": "Multi-Arch Release Linux",
+    "display_title": "Multi-Arch Release Linux",
+    "path": ".github/workflows/multi_arch_release_linux.yml",
+    "event": "workflow_dispatch",
+    "status": "completed",
+    "conclusion": "success",
+    "run_number": 12,
+    "run_attempt": 1,
+    "head_branch": "main",
+    "head_sha": "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+    "html_url": "https://github.com/ROCm/rockrel/actions/runs/27797822900",
+    "created_at": "2026-06-19T15:05:00Z",
+    "run_started_at": "2026-06-19T15:05:00Z",
+    "updated_at": "2026-06-19T15:20:00Z",
+    "actor": {
+      "login": "octocat"
+    },
+    "release_type": "nightly",
+    "inputs": {
+      "release_type": "nightly",
+      "rocm_package_version": "7.14.0a20260619",
+      "quartz_tracking_id": "27797822900;nightly"
+    },
+    "captured_outputs": {
+      "build_artifacts": {
+        "result": "success",
+        "outputs": {}
+      },
+      "build_tarballs": {
+        "result": "success",
+        "outputs": {
+          "tarball_urls": "{\"multiarch\": \"https://therock-nightly-artifacts.s3.amazonaws.com/35936383981-linux/tarballs/therock-dist-linux-multiarch-10.2.0a20260924.tar.gz\"}"
+        }
+      },
+      "build_python_packages": {
+        "result": "success",
+        "outputs": {
+          "kpack_split": "true",
+          "package_find_links_url": "https://therock-nightly-artifacts.s3.amazonaws.com/35936383981-linux/python/index.html"
+        }
+      },
+      "build_native_deb_packages": {
+        "result": "success",
+        "outputs": {
+          "package_repository_url": "https://therock-nightly-artifacts.s3.amazonaws.com/35936383981-linux/packages/deb"
+        }
+      },
+      "build_native_rpm_packages": {
+        "result": "success",
+        "outputs": {
+          "package_repository_url": "https://therock-nightly-artifacts.s3.amazonaws.com/35936383981-linux/packages/rpm/x86_64"
+        }
+      },
+      "publish_to_release_buckets": {
+        "result": "success",
+        "outputs": {}
+      },
+      "trigger_test_artifacts_per_family": {
+        "result": "success",
+        "outputs": {}
+      },
+      "trigger_test_native_install": {
+        "result": "success",
+        "outputs": {}
+      },
+      "trigger_release_pytorch_wheels": {
+        "result": "success",
+        "outputs": {}
+      },
+      "trigger_release_jax_wheels": {
+        "result": "success",
+        "outputs": {}
+      }
+    }
+  }
+}

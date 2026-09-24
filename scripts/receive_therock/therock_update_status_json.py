@@ -714,6 +714,19 @@ def _create_leaf(
     else:
         status = _run_status(workflow_run)
 
+    cls = workflow_run.classification
+    if cls.pipeline_type == "rocm" and cls.pipeline_phase == "build":
+        # The rocm build is a single per-platform leaf fed by many notifies that
+        # share the top-level run id: every build stage
+        # (multi_arch_build_<platform>_artifacts.yml) and the whole-build workflow
+        # all report here. A stage finishing early would otherwise flip the leaf
+        # terminal (e.g. success after compiler-runtime while math-libs still
+        # runs). Hold it non-terminal here; the terminal status is stamped once
+        # by the per-platform release orchestrator as a rollup of build + tarball
+        # + python + publish (see `_finalize_rocm_build_rollup`).
+        status = Status.in_progress
+        completed_at = None
+
     return RunLeaf(
         run_id=workflow_run.workflow_run_id,
         run_attempt=workflow_run.run_attempt,
@@ -927,6 +940,79 @@ def _update_platform_urls(
         urls["rpm"] = next(iter(workflow_run.rpm_urls.values()))
     if workflow_run.deb_urls:
         urls["deb"] = next(iter(workflow_run.deb_urls.values()))
+
+
+# Jobs of the per-platform release orchestrator (multi_arch_release_<platform>.yml)
+# whose worst-of is the true rocm build outcome: the build itself, the tarball and
+# python packaging built from it, and the publish to the release buckets. The
+# `trigger_*` jobs in the same `needs` are downstream fan-outs, not part of the
+# build, so they are deliberately excluded.
+_ROCM_BUILD_ROLLUP_JOBS: tuple[str, ...] = (
+    "build_artifacts",
+    "build_tarballs",
+    "build_python_packages",
+    "publish_to_release_buckets",
+)
+
+
+def _captured_job_status(
+    workflow_run: WorkflowRunRecord, job_name: str
+) -> Status | None:
+    """Status of one `needs.<job>` result in captured_outputs, or None if absent."""
+    need = (workflow_run.captured_outputs or {}).get(job_name)
+    if not isinstance(need, dict):
+        return None
+    result = need.get("result")
+    if not isinstance(result, str) or not result:
+        return None
+    return _CONCLUSION_MAP.get(result, Status.failure)
+
+
+def _finalize_rocm_build_rollup(
+    doc: StatusDocument, workflow_run: WorkflowRunRecord
+) -> None:
+    """Stamp the terminal rocm build status from a completed per-platform release
+    orchestrator (multi_arch_release_<platform>.yml).
+
+    The rocm build leaf is held non-terminal while the build runs (see
+    `_create_leaf`): its per-stage notifies share the run and any one finishing
+    early would flip it terminal prematurely. This is the single place that
+    finalizes it, rolling up the build, the tarball/python packaging built from
+    it, and the publish to the release buckets (`_ROCM_BUILD_ROLLUP_JOBS`). A
+    publish failure therefore makes rocm build fail even when compilation
+    succeeded.
+    """
+    platform = workflow_run.classification.platform
+    if platform not in ("linux", "windows"):
+        return
+    statuses: list[Status] = []
+    for job in _ROCM_BUILD_ROLLUP_JOBS:
+        s = _captured_job_status(workflow_run, job)
+        if s is None:
+            # A rollup job has not reported (or the payload is malformed). Do not
+            # finalize on a subset: greening the build while one of build /
+            # tarball / python / publish is missing.
+            # Leave the leaf capped in_progress.
+            return
+        statuses.append(s)
+    status = rollup_statuses(statuses, Status.in_progress)
+    ts_start = workflow_run.run_started_at or workflow_run.created_at
+    started_at = _datetime_to_z(ts_start) if ts_start is not None else None
+    ts_done = workflow_run.updated_at
+    completed_at = _datetime_to_z(ts_done) if ts_done is not None else None
+    leaf = doc.pipelines.rocm.build.get(platform)
+    if leaf is None:
+        doc.pipelines.rocm.build[platform] = RunLeaf(
+            run_id=workflow_run.workflow_run_id,
+            run_attempt=workflow_run.run_attempt,
+            status=status,
+            started_at=started_at,
+            completed_at=completed_at,
+        )
+        return
+    leaf.status = status
+    if completed_at is not None:
+        leaf.completed_at = completed_at
 
 
 def _update_release_cdn_urls(
@@ -1768,7 +1854,7 @@ def _build_and_write(
     release_type: str,
     finalize: bool = False,
     record_owner_only: bool = False,
-    update_platform_urls_only: bool = False,
+    finalize_platform_release: bool = False,
 ) -> tuple[StatusDocument, bool, list[Path], str]:
     """Read or create the status.json on disk, apply the run, and persist it.
 
@@ -1777,8 +1863,9 @@ def _build_and_write(
       - record_owner_only:         only record the owning orchestrator run id
                                    (the orchestrator's start event, before it
                                    finalizes).
-      - update_platform_urls_only: apply CDN URLs from a completed per-platform
-                                   release orchestrator.
+      - finalize_platform_release: from a completed per-platform release
+                                   orchestrator, stamp the terminal rocm build
+                                   rollup and apply CDN URLs (when published).
       - default:                   upsert the run's leaf into the pipeline tree.
     """
     status_path.parent.mkdir(parents=True, exist_ok=True)
@@ -1800,9 +1887,10 @@ def _build_and_write(
         if _record_orchestrator_owner(doc, workflow_run):
             _update_document_metadata(doc, workflow_run, now)
             applied = True
-    elif update_platform_urls_only:
+    elif finalize_platform_release:
         if _gate_to_document_owner(doc, workflow_run):
             _update_document_metadata(doc, workflow_run, now)
+            _finalize_rocm_build_rollup(doc, workflow_run)
             _update_release_cdn_urls(doc, workflow_run)
             rebuild_summary(doc)
             applied = True
@@ -1874,23 +1962,23 @@ def _assert_branch_matches_release_type(release_type: str, head_branch: str) -> 
         )
 
 
-def _is_release_cdn_url_update(
+def _is_release_platform_completion(
     payload: TheRockDispatchEvent,
     workflow_run: WorkflowRunRecord,
 ) -> bool:
-    """A completed per-platform release orchestrator with CDN URLs to persist."""
+    """A completed per-platform release orchestrator.
+
+    This event finalizes the rocm build rollup (build + tarball + python +
+    publish) and, when publish succeeded, persists the CDN URLs. It must route
+    even with no URLs to persist: a publish failure produces no CDN URLs but is
+    exactly the outcome that must land as `rocm.build = failure`.
+    """
     c = workflow_run.classification
     return (
         payload.event_type == "workflow_run_completed"
         and c.pipeline_type == "orchestrator"
         and c.platform in ("linux", "windows")
         and c.pipeline_phase in RELEASE_CDN_PHASES
-        and bool(
-            workflow_run.tarball_url
-            or workflow_run.wheels_url
-            or workflow_run.rpm_urls
-            or workflow_run.deb_urls
-        )
     )
 
 
@@ -1979,7 +2067,7 @@ def update_status_json(
 
     finalize = None
     record_owner_only = False
-    update_platform_urls_only = False
+    finalize_platform_release = False
 
     c = workflow_run.classification
     if c.pipeline_type == "setup":
@@ -2005,8 +2093,8 @@ def update_status_json(
     else:
         finalize = _is_release_completion(payload, workflow_run)
         if finalize is None:
-            if _is_release_cdn_url_update(payload, workflow_run):
-                update_platform_urls_only = True
+            if _is_release_platform_completion(payload, workflow_run):
+                finalize_platform_release = True
             elif (
                 payload.event_type == "workflow_run_in_progress"
                 and is_top_level_orchestrator(workflow_run)
@@ -2015,7 +2103,7 @@ def update_status_json(
             else:
                 return None
 
-    if finalize or record_owner_only or update_platform_urls_only:
+    if finalize or record_owner_only or finalize_platform_release:
         if not workflow_run.classification.release_version:
             log.info(
                 "release orchestrator event but release_version is "
@@ -2073,7 +2161,7 @@ def update_status_json(
             release_type,
             finalize=bool(finalize),
             record_owner_only=record_owner_only,
-            update_platform_urls_only=update_platform_urls_only,
+            finalize_platform_release=finalize_platform_release,
         )
         log.info(
             "status.json written (commit_and_push=False): %s",
@@ -2128,7 +2216,7 @@ def update_status_json(
             release_type,
             finalize=bool(finalize),
             record_owner_only=record_owner_only,
-            update_platform_urls_only=update_platform_urls_only,
+            finalize_platform_release=finalize_platform_release,
         )
 
         outcome = _commit_and_push(repo_dir, files_to_commit, commit_message)

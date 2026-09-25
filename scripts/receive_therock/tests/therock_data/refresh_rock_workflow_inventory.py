@@ -149,7 +149,7 @@ def main() -> None:
         "_comment": (
             "Source-of-truth snapshot of workflow filenames and their "
             "notify_quartz calls in the rock repos. Refresh with: python "
-            "scripts/receive_therock/tests/fixtures/"
+            "scripts/receive_therock/tests/therock_data/"
             "refresh_rock_workflow_inventory.py"
         ),
         "_generated_at": now,

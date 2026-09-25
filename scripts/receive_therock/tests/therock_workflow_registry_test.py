@@ -103,6 +103,12 @@ _UNWIRED_UPSTREAM = frozenset(
     {
         # Fan-out release orchestrators: they only dispatch reporting
         # sub-workflows and emit no notify_quartz of their own.
+        #
+        # multi_arch_release_asan.yml additionally does not propagate
+        # `quartz_tracking_id`, so its leaves arrive ownerless too. Until both are
+        # wired, sanitizer status documents stay unpublished -- drop this entry
+        # and flip `_PUBLISH_SANITIZER_DOCUMENTS` in
+        # therock_update_status_json.py together.
         "multi_arch_release_asan.yml",
         "multi_arch_repackage.yml",
         "multi_arch_repackage_linux.yml",

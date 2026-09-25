@@ -37,8 +37,15 @@ status.json
 └─ pipelines               deep per-arch / per-variant detail
 ```
 
-For example, to know if ROCm built successfully, check
-`summary.<platform>.rocm.build.status`.
+For downloadable CDN artifacts, check
+`summary.<platform>.rocm.build.status`: it covers artifact production,
+tarball/wheel packaging, and publication. Schema 2.2 also exposes
+`summary.<platform>.rocm.build_artifacts.status`, the outcome of the build
+stages alone (artifacts on S3, not necessarily on the CDN), and
+`summary.<platform>.publish` for the publication outcome and successful
+publication timestamp. `build_artifacts` is absent until the platform's
+whole-build workflow completes; `publish` is absent until the per-platform
+release orchestrator has a complete result.
 
 The tree uses a handful of terms that recur throughout this guide and map
 directly to keys in the document:

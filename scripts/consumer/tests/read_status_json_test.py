@@ -78,7 +78,7 @@ class StripJsoncCommentsTest(unittest.TestCase):
 
     def test_reference_parses(self):
         data = _load_reference()
-        self.assertEqual(data["schema_version"], "2.1")
+        self.assertEqual(data["schema_version"], "2.2")
 
 
 class StatusEnumTest(unittest.TestCase):
@@ -128,7 +128,7 @@ class StatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.status.rocm_version, "7.13.0a20260408")
         self.assertEqual(self.status.build_date, "20260408")
         self.assertEqual(self.status.release_type, "nightly")
-        self.assertEqual(self.status.schema_version, "2.1")
+        self.assertEqual(self.status.schema_version, "2.2")
 
     def test_build_provenance(self):
         self.assertEqual(self.status.build_variant, "release")
@@ -224,6 +224,20 @@ class PlatformStatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.linux.pipeline_build_status("jax"), Status.in_progress)
         # Windows does not run jax; the pipeline is absent.
         self.assertIsNone(self.windows.pipeline_build_status("jax"))
+
+    def test_rocm_artifact_and_publish_status(self):
+        self.assertEqual(self.linux.rocm_build_artifacts_status(), Status.success)
+        self.assertEqual(self.linux.publish_status(), Status.success)
+        self.assertEqual(self.linux.published_at(), "2026-04-08T10:15:00Z")
+
+        self.assertEqual(self.windows.rocm_build_artifacts_status(), Status.success)
+        self.assertEqual(self.windows.publish_status(), Status.failure)
+        self.assertIsNone(self.windows.published_at())
+
+        older = PlatformStatus("linux", {"rocm": {"build": {"status": "success"}}})
+        self.assertIsNone(older.rocm_build_artifacts_status())
+        self.assertIsNone(older.publish_status())
+        self.assertIsNone(older.published_at())
 
     def test_pipeline_test_counts(self):
         counts = self.linux.pipeline_test_counts("rocm")

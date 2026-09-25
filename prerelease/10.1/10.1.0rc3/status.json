@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-09-25T19:26:27Z",
-  "status_json_last_updated": "2026-09-25T21:49:42Z",
+  "status_json_last_updated": "2026-09-25T21:49:46Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -32,15 +32,15 @@
         "gfx125X-dcgpu"
       ],
       "urls": {
-        "tarballs": "https://therock-prerelease-artifacts.s3.amazonaws.com/36179538173-linux/tarballs/",
-        "wheels": "https://therock-prerelease-artifacts.s3.amazonaws.com/36179538173-linux/python/",
+        "tarballs": "https://rc.repo.amd.com/rocm/core/tarball/",
+        "wheels": "https://rc.repo.amd.com/rocm/whl-next/",
         "artifacts": "https://therock-prerelease-artifacts.s3.amazonaws.com/36179538173-linux/index.html",
-        "deb": "https://therock-prerelease-artifacts.s3.amazonaws.com/36179538173-linux/packages/deb",
-        "rpm": "https://therock-prerelease-artifacts.s3.amazonaws.com/36179538173-linux/packages/rpm/x86_64"
+        "deb": "https://rc.repo.amd.com/rocm/core/packages/",
+        "rpm": "https://rc.repo.amd.com/rocm/core/packages/"
       },
       "rocm": {
         "build": {
-          "status": "in_progress"
+          "status": "success"
         },
         "test": {
           "success": 0,
@@ -138,10 +138,11 @@
           "started_at": "2026-09-25T19:25:03Z"
         },
         "linux": {
-          "status": "in_progress",
+          "status": "success",
           "run_id": 36179538173,
           "run_attempt": 1,
-          "started_at": "2026-09-25T19:25:03Z"
+          "started_at": "2026-09-25T19:25:03Z",
+          "completed_at": "2026-09-25T21:48:57Z"
         }
       },
       "test": {}

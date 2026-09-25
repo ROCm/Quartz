@@ -24,7 +24,8 @@ writes the GitHub Actions `inputs.payload_json` to a file and exports
 its path):
 
       python scripts/receive_therock/therock_process_data.py \\
-          --payload-file tests/fixtures/dispatch/sample.json
+          --payload-file \\
+          scripts/receive_therock/tests/therock_data/nightly_setup_completed.json
 
       DISPATCH_PAYLOAD_FILE=payload.json \\
           python scripts/receive_therock/therock_process_data.py --fetch-jobs
@@ -76,7 +77,7 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "Fetch job details from the GitHub API during enrichment. "
             "Pass --fetch-jobs to enable, --no-fetch-jobs to disable. "
-            "Default: disabled (so local fixture replay does not hit "
+            "Default: disabled (so local test-data replay does not hit "
             "the live API). The receiver workflow always passes one of "
             "the two flags explicitly so the caller's intent is visible."
         ),

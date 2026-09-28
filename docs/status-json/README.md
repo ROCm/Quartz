@@ -43,16 +43,17 @@ For example, to know if ROCm built successfully, check
 The tree uses a handful of terms that recur throughout this guide and map
 directly to keys in the document:
 
-| Term                  | Meaning                                                                                                                                                |
-| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                        |
-| **nightly**           | An automatic build produced once a day.                                                                                                                |
-| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                                                                                   |
-| **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                |
-| **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                      |
-| **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.              |
-| **phase**             | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead.                                                              |
-| **variant**           | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail. |
+| Term                  | Meaning                                                                                                                                                          |
+| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                                  |
+| **nightly**           | An automatic build produced once a day.                                                                                                                          |
+| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                                                                                             |
+| **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                          |
+| **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                                |
+| **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.                        |
+| **phase**             | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead.                                                                        |
+| **build variant**     | The release flavor, such as `release`, `asan`, or `asan-debug`. It selects the document: `status.json` for `release`, `status-asan.json` for either ASAN flavor. |
+| **variant**           | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail.           |
 
 Not every pipeline runs on every platform, and `native_packages` is a special
 case with no `build` / `test` phases:
@@ -70,22 +71,36 @@ below.
 
 ## Endpoints
 
-Quartz publishes one `status.json` per release build (nightly/nightly-bkc/prerelease), plus stable pointers to the
-most recent builds.
+Quartz publishes one document per build-variant family, all sharing the same
+schema. The normal release build gets the unsuffixed `status.json`; ASAN builds
+get `status-asan.json`. The suffix follows TheRock's own `build_variant_suffix`,
+which folds the debug flavor onto its base family, so both `asan` and
+`asan-debug` publish to `status-asan.json` and the document's `build_variant`
+field says which flavor produced it. Each family carries its own stable pointers,
+so consumers can follow one without a build of the other ever moving it.
 
-| Endpoint                                               | Points to                                                                                                             |
-| ------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------- |
-| `nightly/<date>/status.json`                           | A specific nightly, for example `nightly/20260707/status.json`                                                        |
-| `nightly/latest.json`                                  | The most recent nightly (any result, including still in progress)                                                     |
-| `nightly/latest_good.json`                             | The most recent fully-passing nightly                                                                                 |
-| `nightly-bkc/<nightly-version>/<bkc-date>/status.json` | A specific bkc nightly, for example `nightly-bkc/10.1.0a20260825/20260831/status.json`                                |
-| `nightly-bkc/<nightly-version>/latest.json`            | The most recent bkc nightly for that nightly version (any result, including still in progress)                        |
-| `nightly-bkc/<nightly-version>/latest_good.json`       | The most recent fully-passing bkc nightly for that nightly version                                                    |
-| `nightly-bkc/latest.json`                              | The most recent build of the highest bkc nightly version (by version number, not build date)                          |
-| `nightly-bkc/latest_good.json`                         | The highest-versioned fully-passing bkc build (may trail `latest.json` when the highest nightly version is not green) |
-| `prerelease/<major.minor>/<full>/status.json`          | A specific prerelease, for example `prerelease/7.14/7.14.0rc1/status.json`                                            |
-| `prerelease/latest.json`                               | The highest-versioned prerelease across all release lines (by version number, not build date)                         |
-| `prerelease/<major.minor>/latest.json`                 | The highest-versioned prerelease in one release line, e.g. `prerelease/7.14/latest.json`                              |
+Below, `<v>` stands for that suffix: empty for the release build, `-asan` for the
+ASAN family. So `status<v>.json` is either `status.json` or `status-asan.json`.
+
+| Endpoint                                                  | Points to                                                                       |
+| --------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| `nightly/<date>/status<v>.json`                           | A specific nightly build of that variant                                        |
+| `nightly/latest<v>.json`                                  | The most recent build of that variant (including still in progress)             |
+| `nightly/latest_good<v>.json`                             | The most recent fully-passing build of that variant                             |
+| `nightly-bkc/<nightly-version>/<bkc-date>/status<v>.json` | A specific BKC nightly build of that variant                                    |
+| `nightly-bkc/<nightly-version>/latest<v>.json`            | The most recent BKC build of that variant for the nightly version               |
+| `nightly-bkc/<nightly-version>/latest_good<v>.json`       | The most recent fully-passing BKC build of that variant for the nightly version |
+| `nightly-bkc/latest<v>.json`                              | The most recent build of that variant for the highest BKC nightly version       |
+| `nightly-bkc/latest_good<v>.json`                         | The highest-versioned fully-passing BKC build of that variant                   |
+| `prerelease/<major.minor>/<full>/status<v>.json`          | A specific prerelease build of that variant                                     |
+| `prerelease/latest<v>.json`                               | The highest-versioned prerelease of that variant across all release lines       |
+| `prerelease/<major.minor>/latest<v>.json`                 | The highest-versioned prerelease of that variant in one release line            |
+
+> **The sanitizer endpoints are not published yet.** TheRock's
+> `multi_arch_release_asan.yml` does not report to Quartz, so an `asan` or
+> `asan-debug` document written today could never be finalized. Quartz routes and
+> tests these files but withholds them until that orchestrator is instrumented;
+> expect them to be absent until then.
 
 Each is served as raw content. The raw URL form is:
 
@@ -93,13 +108,13 @@ Each is served as raw content. The raw URL form is:
 https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 ```
 
-> **Note on the pointer files:** Every `latest.json` and `latest_good.json` pointer
-> is a git symlink to the dated `status.json` it currently points at. Raw GitHub
-> serves a symlink as its target path (a one-line body like `20260707/status.json`),
-> not the file it points to, so a plain fetch returns that path rather than JSON. The
-> Python helper `load_status` follows this pointer for you transparently; if you
-> fetch it yourself, resolve the returned path against the pointer URL and fetch
-> again.
+> **Note on the pointer files:** Every `latest*.json` and `latest_good*.json`
+> pointer is a git symlink to the concrete `status*.json` it currently points
+> at. Raw GitHub serves a symlink as its target path (a one-line body like
+> `20260707/status-asan.json`), not the file it points to, so a plain fetch
+> returns that path rather than JSON. The Python helper `load_status` follows
+> this pointer for you transparently; if you fetch it yourself, resolve the
+> returned path against the pointer URL and fetch again.
 
 > **Note on `latest_good.json`:** "Fully passing" means the build's
 > `summary.overall_status` is `success` (a worst-of rollup, so this implies the
@@ -108,9 +123,10 @@ https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 > regresses to an in-progress or failed build. Because it points at the live
 > document rather than a copy of it, a build can stop being green after the
 > pointer was written (a re-run re-opens it, or a late leaf fails it); the pointer
-> is then withdrawn until some build is green again, so treat a missing
-> `latest_good.json` as "nothing good to offer right now". Prerelease has no
-> `latest_good.json` pointer yet.
+> then falls back to the newest build of that variant still passing, and is
+> dropped entirely when none is left, so treat a missing pointer as "nothing good
+> to offer right now". Prerelease has no `latest_good.json` pointer yet, for
+> either build flavor.
 
 > These endpoints go live as TheRock release workflows are instrumented to report
 > to Quartz. Until a given release type is instrumented, its files may be absent.

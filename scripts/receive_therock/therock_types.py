@@ -71,26 +71,38 @@ def _parse_bool(value: Any) -> bool | None:
     return None
 
 
-def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | None]:
-    """Split the propagated `quartz_tracking_id` into (owner_run_id, release_type).
+def parse_quartz_tracking_id(
+    inputs: dict[str, Any],
+) -> tuple[int | None, str | None, str | None]:
+    """Split `quartz_tracking_id` into owner, release type, and build variant.
 
     The top-level `multi_arch_release.yml` orchestrator stamps every workflow it
-    triggers with `quartz_tracking_id: "<github.run_id>;<release_type>"` (empty
-    when tracking is disabled). `github.run_id` is the orchestrator's own run, the
-    top-level owner of the whole release lineage, and `release_type` is the
-    channel it published to. Both are authoritative for every descendant run, so
-    they are read straight from here rather than reconstructed from artifact ids,
-    URLs, or the immediate GitHub parent.
+    triggers with `quartz_tracking_id:
+    "<github.run_id>;<release_type>;<build_variant>"` (empty when tracking is
+    disabled). The build variant is optional for compatibility with producers
+    that still emit the original two-field form.
 
-    Returns `(None, None)` when the input is absent or empty (CI runs, manual
-    TheRock dispatches, and the orchestrator's own record, which generates the id
-    but does not carry it on its own inputs). A present but non-numeric run-id is
-    a producer-side format bug and raises rather than coercing to None.
+    Returns `(None, None, None)` when the input is absent or empty (CI runs,
+    manual TheRock dispatches, and the orchestrator's own record, which
+    generates the id but does not carry it on its own inputs). A present but
+    non-numeric run-id is a producer-side format bug and raises rather than
+    coercing to None. Surplus fields only warn: they stay attached to the build
+    variant, which leaves it unrecognized so the run is skipped rather than
+    routed to a status document on a half-understood id.
     """
     raw = inputs.get("quartz_tracking_id")
     if not isinstance(raw, str) or not raw.strip():
-        return None, None
-    run_id_part, _, release_type_part = raw.partition(";")
+        return None, None, None
+    parts = raw.split(";", 2)
+    parts += [""] * (3 - len(parts))
+    run_id_part, release_type_part, build_variant_part = parts
+    if ";" in build_variant_part:
+        log.warning(
+            "parse_quartz_tracking_id: quartz_tracking_id=%r carries more than "
+            "the expected three fields; keeping the surplus on the build "
+            "variant so it cannot be mistaken for a known one",
+            raw,
+        )
     try:
         run_id = int(run_id_part.strip())
     except ValueError as exc:
@@ -98,7 +110,11 @@ def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | 
             f"parse_quartz_tracking_id: non-numeric run-id {run_id_part!r} "
             f"in quartz_tracking_id={raw!r}"
         ) from exc
-    return run_id, release_type_part.strip() or None
+    return (
+        run_id,
+        release_type_part.strip() or None,
+        build_variant_part.strip() or None,
+    )
 
 
 # Allow-list of `event_type` values the ingest pipeline accepts on a
@@ -807,7 +823,7 @@ class WorkflowRunRecord:
         # `inputs.release_type` is the direct declared input that feeds that id
         # and is the only source on the orchestrator's own record and manual
         # dispatches. "" (CI) / absent both normalize to None.
-        _, quartz_release_type = parse_quartz_tracking_id(inputs)
+        _, quartz_release_type, _ = parse_quartz_tracking_id(inputs)
         explicit_rt = quartz_release_type or inputs.get("release_type") or None
         if explicit_rt and explicit_rt not in KNOWN_RELEASE_TYPES:
             log.warning(

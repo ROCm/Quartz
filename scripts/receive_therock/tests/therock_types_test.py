@@ -249,11 +249,15 @@ def test_run_from_dict_release_type_resolution(raw: dict, expected: str | None) 
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ({}, (None, None)),
-        ({"quartz_tracking_id": ""}, (None, None)),
-        ({"quartz_tracking_id": "123;nightly"}, (123, "nightly")),
-        ({"quartz_tracking_id": "123"}, (123, None)),
-        ({"quartz_tracking_id": "123;"}, (123, None)),
+        ({}, (None, None, None)),
+        ({"quartz_tracking_id": ""}, (None, None, None)),
+        ({"quartz_tracking_id": "123;nightly"}, (123, "nightly", None)),
+        (
+            {"quartz_tracking_id": "123;nightly;asan"},
+            (123, "nightly", "asan"),
+        ),
+        ({"quartz_tracking_id": "123"}, (123, None, None)),
+        ({"quartz_tracking_id": "123;"}, (123, None, None)),
     ],
 )
 def test_parse_quartz_tracking_id(value: dict, expected: tuple) -> None:
@@ -261,9 +265,25 @@ def test_parse_quartz_tracking_id(value: dict, expected: tuple) -> None:
 
 
 @pytest.mark.parametrize("value", ["123abc;nightly", ";nightly"])
-def test_parse_quartz_tracking_id_malformed_run_id_raises(value: str) -> None:
+def test_parse_quartz_tracking_id_non_numeric_run_id_raises(value: str) -> None:
     with pytest.raises(ValueError):
         parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+def test_parse_quartz_tracking_id_surplus_fields_warn_instead_of_raising(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    # A producer emitting more than three fields is a format bug, but it must not
+    # take down the ingest: warn, and leave the surplus on the build variant so it
+    # stays unrecognized and the run is skipped rather than misrouted.
+    with caplog.at_level(logging.WARNING):
+        parsed = parse_quartz_tracking_id(
+            {"quartz_tracking_id": "123;nightly;asan;surplus"}
+        )
+    assert parsed == (123, "nightly", "asan;surplus")
+    assert any(
+        "more than the expected three fields" in r.message for r in caplog.records
+    )
 
 
 def test_run_from_dict_rocm_version_precedence() -> None:

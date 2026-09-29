@@ -14,6 +14,7 @@ sys.path.insert(0, os.fspath(Path(__file__).parent.parent))
 from therock_classify import (
     classify,
     derive_architectures,
+    derive_build_variant,
     derive_deb_urls,
     derive_effective_owner_run_id,
     derive_platform_and_pipeline,
@@ -763,6 +764,11 @@ class DeriveEffectiveOwnerRunIdTest(unittest.TestCase):
         run.workflow_run_id = 29079513704
         self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
 
+    def test_top_level_asan_orchestrator_is_self(self):
+        run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
+        run.workflow_run_id = 29079513705
+        self.assertEqual(derive_effective_owner_run_id(run), 29079513705)
+
     def test_descendant_uses_quartz_tracking_id(self):
         # Every triggered workflow carries the top-level owner in the propagated
         # id, regardless of its immediate GitHub parent.
@@ -774,16 +780,25 @@ class DeriveEffectiveOwnerRunIdTest(unittest.TestCase):
         }
         self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
 
-    def test_run_id_parsed_without_release_type_suffix(self):
-        # The `;<release_type>` half must not leak into the run id, and a bare
-        # id with no separator still parses.
-        semi = _leaf_run()
-        semi.inputs = {"quartz_tracking_id": "29079513704;"}
-        self.assertEqual(derive_effective_owner_run_id(semi), 29079513704)
+    def test_three_field_id_supplies_the_owner(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "29079513704;nightly;asan"}
+        self.assertEqual(derive_effective_owner_run_id(run), 29079513704)
 
-        bare = _leaf_run()
-        bare.inputs = {"quartz_tracking_id": "29079513704"}
-        self.assertEqual(derive_effective_owner_run_id(bare), 29079513704)
+    def test_too_few_tracking_id_fields_raise(self):
+        # The release type is required; a bare run id is a producer bug.
+        for value in ("29079513704", "29079513704;"):
+            with self.subTest(value=value):
+                run = _leaf_run()
+                run.inputs = {"quartz_tracking_id": value}
+                with self.assertRaises(ValueError):
+                    derive_effective_owner_run_id(run)
+
+    def test_too_many_tracking_id_fields_raise(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "29079513704;nightly;asan;extra"}
+        with self.assertRaises(ValueError):
+            derive_effective_owner_run_id(run)
 
     def test_no_quartz_tracking_id_returns_none(self):
         # Untracked runs (CI, tracking disabled) carry no owner: the immediate
@@ -797,6 +812,62 @@ class DeriveEffectiveOwnerRunIdTest(unittest.TestCase):
         run = _leaf_run()
         run.inputs = {"quartz_tracking_id": ""}
         self.assertIsNone(derive_effective_owner_run_id(run))
+
+
+class DeriveBuildVariantTest(unittest.TestCase):
+    def test_tracking_id_wins_over_direct_input(self):
+        # A run's own `build_variant` input never picks the document: only the
+        # orchestrator-stamped id does.
+        run = _leaf_run()
+        run.inputs = {
+            "build_variant": "asan-debug",
+            "quartz_tracking_id": "123;nightly;asan",
+        }
+        self.assertEqual(derive_build_variant(run), "asan")
+
+    def test_tracking_id_supplies_descendant_variant(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "123;nightly;asan"}
+        self.assertEqual(derive_build_variant(run), "asan")
+
+    def test_two_field_tracking_id_is_release(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "123;nightly", "build_variant": "asan"}
+        self.assertEqual(derive_build_variant(run), "release")
+
+    def test_untracked_run_has_no_variant(self):
+        # A direct input without a tracking id (manual dispatch, CI) claims nothing.
+        run = _leaf_run()
+        run.inputs = {"build_variant": "asan"}
+        self.assertEqual(derive_build_variant(run), "")
+
+    def test_too_few_tracking_id_fields_raise(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "123"}
+        with self.assertRaises(ValueError):
+            derive_build_variant(run)
+
+    def test_too_many_tracking_id_fields_raise(self):
+        run = _leaf_run()
+        run.inputs = {"quartz_tracking_id": "123;nightly;asan;extra"}
+        with self.assertRaises(ValueError):
+            derive_build_variant(run)
+
+    def test_release_orchestrator_is_release(self):
+        run = _orchestrator_run()
+        run.inputs = {"build_variant": "asan"}
+        self.assertEqual(derive_build_variant(run), "release")
+
+    def test_asan_orchestrator_reads_its_declared_variant(self):
+        # The orchestrator generates the id rather than carrying it, so its own
+        # input is the only source.
+        run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
+        run.inputs = {"build_variant": "asan-debug"}
+        self.assertEqual(derive_build_variant(run), "asan-debug")
+
+    def test_asan_orchestrator_without_a_declared_variant_is_empty(self):
+        run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
+        self.assertEqual(derive_build_variant(run), "")
 
 
 class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):

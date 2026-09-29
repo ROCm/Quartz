@@ -256,34 +256,33 @@ def test_run_from_dict_release_type_resolution(raw: dict, expected: str | None) 
             {"quartz_tracking_id": "123;nightly;asan"},
             (123, "nightly", "asan"),
         ),
-        ({"quartz_tracking_id": "123"}, (123, None, None)),
-        ({"quartz_tracking_id": "123;"}, (123, None, None)),
+        ({"quartz_tracking_id": "123;nightly;"}, (123, "nightly", None)),
     ],
 )
 def test_parse_quartz_tracking_id(value: dict, expected: tuple) -> None:
-    assert parse_quartz_tracking_id(value) == expected
+    parsed = parse_quartz_tracking_id(value)
+    assert parsed == expected
+    assert parsed.owner_run_id == expected[0]
+    assert parsed.release_type == expected[1]
+    assert parsed.build_variant == expected[2]
 
 
 @pytest.mark.parametrize("value", ["123abc;nightly", ";nightly"])
 def test_parse_quartz_tracking_id_non_numeric_run_id_raises(value: str) -> None:
-    with pytest.raises(ValueError):
+    with pytest.raises(ValueError, match="non-numeric run-id"):
         parse_quartz_tracking_id({"quartz_tracking_id": value})
 
 
-def test_parse_quartz_tracking_id_surplus_fields_warn_instead_of_raising(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    # A producer emitting more than three fields is a format bug, but it must not
-    # take down the ingest: warn, and leave the surplus on the build variant so it
-    # stays unrecognized and the run is skipped rather than misrouted.
-    with caplog.at_level(logging.WARNING):
-        parsed = parse_quartz_tracking_id(
-            {"quartz_tracking_id": "123;nightly;asan;surplus"}
-        )
-    assert parsed == (123, "nightly", "asan;surplus")
-    assert any(
-        "more than the expected three fields" in r.message for r in caplog.records
-    )
+@pytest.mark.parametrize("value", ["123", "123;nightly;asan;surplus"])
+def test_parse_quartz_tracking_id_wrong_field_count_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="';'-separated fields"):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+@pytest.mark.parametrize("value", ["123;", "123; ;asan"])
+def test_parse_quartz_tracking_id_empty_release_type_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="empty release type"):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
 
 
 def test_run_from_dict_rocm_version_precedence() -> None:

@@ -43,17 +43,17 @@ For example, to know if ROCm built successfully, check
 The tree uses a handful of terms that recur throughout this guide and map
 directly to keys in the document:
 
-| Term                  | Meaning                                                                                                                                                          |
-| --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                                  |
-| **nightly**           | An automatic build produced once a day.                                                                                                                          |
-| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                                                                                             |
-| **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                          |
-| **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                                |
-| **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.                        |
-| **phase**             | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead.                                                                        |
-| **build variant**     | The release flavor, such as `release`, `asan`, or `asan-debug`. It selects the document: `status.json` for `release`, `status-asan.json` for either ASAN flavor. |
-| **variant**           | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail.           |
+| Term                  | Meaning                                                                                                                                                |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **TheRock**           | The build system that produces ROCm releases. Its CI is what Quartz reports on.                                                                        |
+| **nightly**           | An automatic build produced once a day.                                                                                                                |
+| **nightly-bkc**       | A nightly build, cut from a `release/bkc/...` branch                                                                                                   |
+| **prerelease** (`rc`) | A release candidate build for an upcoming ROCm release.                                                                                                |
+| **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                      |
+| **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.              |
+| **phase**             | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead.                                                              |
+| **build variant**     | The release flavor, `release` or `asan`. It selects the document: `status.json` for `release`, `status-<build_variant>.json` otherwise.                |
+| **variant**           | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail. |
 
 Not every pipeline runs on every platform, and `native_packages` is a special
 case with no `build` / `test` phases:
@@ -71,16 +71,13 @@ below.
 
 ## Endpoints
 
-Quartz publishes one document per build-variant family, all sharing the same
-schema. The normal release build gets the unsuffixed `status.json`; ASAN builds
-get `status-asan.json`. The suffix follows TheRock's own `build_variant_suffix`,
-which folds the debug flavor onto its base family, so both `asan` and
-`asan-debug` publish to `status-asan.json` and the document's `build_variant`
-field says which flavor produced it. Each family carries its own stable pointers,
-so consumers can follow one without a build of the other ever moving it.
+Quartz publishes one document per build variant, all sharing the same schema:
+`status.json` for the release build and `status-asan.json` for the ASAN build.
+Each variant has its own stable pointers, so a build of one never moves the
+other's.
 
-Below, `<v>` stands for that suffix: empty for the release build, `-asan` for the
-ASAN family. So `status<v>.json` is either `status.json` or `status-asan.json`.
+Below, `<v>` stands for the variant suffix: empty for the release build, `-asan`
+for ASAN. So `status<v>.json` is either `status.json` or `status-asan.json`.
 
 | Endpoint                                                  | Points to                                                                       |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -95,12 +92,6 @@ ASAN family. So `status<v>.json` is either `status.json` or `status-asan.json`.
 | `prerelease/<major.minor>/<full>/status<v>.json`          | A specific prerelease build of that variant                                     |
 | `prerelease/latest<v>.json`                               | The highest-versioned prerelease of that variant across all release lines       |
 | `prerelease/<major.minor>/latest<v>.json`                 | The highest-versioned prerelease of that variant in one release line            |
-
-> **The sanitizer endpoints are not published yet.** TheRock's
-> `multi_arch_release_asan.yml` does not report to Quartz, so an `asan` or
-> `asan-debug` document written today could never be finalized. Quartz routes and
-> tests these files but withholds them until that orchestrator is instrumented;
-> expect them to be absent until then.
 
 Each is served as raw content. The raw URL form is:
 
@@ -126,7 +117,7 @@ https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 > then falls back to the newest build of that variant still passing, and is
 > dropped entirely when none is left, so treat a missing pointer as "nothing good
 > to offer right now". Prerelease has no `latest_good.json` pointer yet, for
-> either build flavor.
+> any build variant.
 
 > These endpoints go live as TheRock release workflows are instrumented to report
 > to Quartz. Until a given release type is instrumented, its files may be absent.

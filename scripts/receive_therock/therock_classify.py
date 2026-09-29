@@ -279,20 +279,28 @@ def derive_test_type(wr: WorkflowRunRecord) -> str:
 def derive_build_variant(wr: WorkflowRunRecord) -> str:
     """The release flavor this run belongs to: "release", "asan", "asan-debug", ...
 
-    Read from the run's own `build_variant` input, else from the variant field of
-    the propagated `quartz_tracking_id`. Empty when neither carries it, notably on
-    the asan orchestrator's own record: it takes no `build_variant` input and
-    generates (but does not carry) the tracking id. Deliberately not defaulted to
-    a flavor there -- `multi_arch_release_asan.yml` dispatches `asan-debug`, so
-    guessing would stamp the document with the wrong flavor. The document it
-    routes to is resolved from its pipeline phase instead, and the precise flavor
-    is stamped by the setup run, which does carry the input.
+    Every run of a tracked release reads it from the propagated
+    `quartz_tracking_id`, never from its own `build_variant` input: only a run
+    triggered by a release orchestrator carries that id, so a manually dispatched
+    workflow cannot claim a variant. An id in the two-field form that predates
+    the variant field (`"<run_id>;<release_type>"`) is the normal release, the
+    only pipeline that emits it.
+
+    A top-level orchestrator generates the id rather than carrying it, so it
+    reads its own `build_variant` input instead. `multi_arch_release.yml` takes
+    none and is always "release"; `multi_arch_release_asan.yml` must declare
+    which ASAN flavor it builds, and stays empty (and unrouted) when it does not.
+
+    Empty for runs outside a tracked release (CI, tracking disabled).
     """
-    direct = str(wr.inputs.get("build_variant") or "").strip()
-    if direct:
-        return direct
-    _, _, tracked_variant = parse_quartz_tracking_id(wr.inputs)
-    return tracked_variant or ""
+    if is_top_level_orchestrator(wr):
+        if wr.classification.pipeline_phase == "release":
+            return "release"
+        return str(wr.inputs.get("build_variant") or "").strip()
+    tracking = parse_quartz_tracking_id(wr.inputs)
+    if tracking.owner_run_id is None:
+        return ""
+    return tracking.build_variant or "release"
 
 
 def derive_therock_commit(wr: WorkflowRunRecord) -> str:
@@ -337,8 +345,10 @@ def derive_source_run_id(wr: WorkflowRunRecord) -> str | None:
 # (e.g. python-packages) do not finalize a release either. Consumers such as
 # therock_update_status_json key off this same tuple to decide which
 # orchestrator run stamps the status.json document's completion signal.
-# Each finalizing phase routes to its own status document: `release` owns
-# `status.json`, while `release-asan` owns `status-asan.json`.
+# Each finalizing phase owns the status document of the build variant it runs:
+# `release` owns `status.json`, and `release-asan` owns
+# `status-<build_variant>.json` for the ASAN flavor it declares (e.g.
+# `status-asan.json`).
 FINALIZING_PHASES: Final = frozenset({"release", "release-asan"})
 
 
@@ -368,8 +378,7 @@ def derive_effective_owner_run_id(wr: WorkflowRunRecord) -> int | None:
     """
     if is_top_level_orchestrator(wr):
         return wr.workflow_run_id
-    run_id, _, _ = parse_quartz_tracking_id(wr.inputs)
-    return run_id
+    return parse_quartz_tracking_id(wr.inputs).owner_run_id
 
 
 def _run_output_base(wr: WorkflowRunRecord) -> str | None:

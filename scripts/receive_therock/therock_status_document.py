@@ -58,7 +58,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.1"
+SCHEMA_VERSION: Final = "2.2"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -474,10 +474,18 @@ class TestRollup(BaseModel):
 class PipelineRollup(BaseModel):
     """One pipeline's rolled-up `build` status and `test` counts.
 
+    For rocm, `build` covers the build stages, tarball/wheel packaging, and the
+    publish to the CDN-backed release buckets; it stays `in_progress` until the
+    per-platform release orchestrator completes. `build_artifacts` (rocm only)
+    covers the build stages alone and is stamped when the whole-build workflow
+    completes: a green value means the artifacts are on S3, not necessarily on
+    the CDN. It is absent until then, and on every other pipeline.
+
     `test_full` mirrors `test` for the sibling full-suite phase; it is `None`
     (and dropped from the on-disk projection) unless that phase has reported."""
 
     build: BuildRollup = Field(default_factory=BuildRollup)
+    build_artifacts: BuildRollup | None = None
     test: TestRollup = Field(default_factory=TestRollup)
     test_full: TestRollup | None = None
 
@@ -492,6 +500,14 @@ class NativePackagesRollup(BaseModel):
     deb: BuildRollup = Field(default_factory=BuildRollup)
 
 
+class PublishRollup(BaseModel):
+    """Whether this platform's artifacts reached the release buckets served by
+    the CDN."""
+
+    status: Status = Status.in_progress
+    published_at: str | None = None
+
+
 class PlatformSummary(BaseModel):
     """Per-platform rollup: overall status plus per-pipeline projections.
 
@@ -499,11 +515,14 @@ class PlatformSummary(BaseModel):
     unstarted pipeline shows its `in_progress` default). `jax` and
     `native_packages` are linux-only and stay `None` on windows, so the on-disk
     projection drops them there instead of emitting a misleading placeholder.
+    `publish` is likewise `None` until this platform's release orchestrator
+    reports its per-job results.
     Use `for_platform` to construct with the right per-platform defaults."""
 
     status: Status = Status.in_progress
     architectures: list[str] = Field(default_factory=list)
     urls: dict[str, str] = Field(default_factory=dict)
+    publish: PublishRollup | None = None
     rocm: PipelineRollup = Field(default_factory=PipelineRollup)
     pytorch: PipelineRollup = Field(default_factory=PipelineRollup)
     jax: PipelineRollup | None = None
@@ -538,6 +557,19 @@ class Summary(BaseModel):
     )
 
 
+def _summary_build_artifacts(platform_summary: JSONDict) -> JSONValue:
+    """Read `rocm.build_artifacts` back out of an on-disk platform summary.
+
+    Returns None when the platform has no rocm block or the key is absent, which
+    is every document written before this platform's whole-build workflow
+    completed.
+    """
+    rocm = platform_summary.get("rocm")
+    if not isinstance(rocm, dict):
+        return None
+    return rocm.get("build_artifacts")
+
+
 class StatusDocument(BaseModel):
     """Root status.json v2 document.
 
@@ -562,7 +594,7 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.1"] = SCHEMA_VERSION
+    schema_version: Literal["2.2"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""
@@ -601,6 +633,10 @@ class StatusDocument(BaseModel):
     windows_architectures: list[str] = Field(default_factory=list, exclude=True)
     linux_urls: dict[str, str] = Field(default_factory=dict, exclude=True)
     windows_urls: dict[str, str] = Field(default_factory=dict, exclude=True)
+    linux_publish: PublishRollup | None = Field(default=None, exclude=True)
+    windows_publish: PublishRollup | None = Field(default=None, exclude=True)
+    linux_build_artifacts: BuildRollup | None = Field(default=None, exclude=True)
+    windows_build_artifacts: BuildRollup | None = Field(default=None, exclude=True)
 
     summary: Summary = Field(default_factory=Summary)
     pipelines: Pipelines = Field(default_factory=Pipelines)
@@ -656,6 +692,12 @@ class StatusDocument(BaseModel):
         )
         out.setdefault("linux_urls", linux_summary.get("urls") or {})
         out.setdefault("windows_urls", windows_summary.get("urls") or {})
+        out.setdefault("linux_publish", linux_summary.get("publish"))
+        out.setdefault("windows_publish", windows_summary.get("publish"))
+        out.setdefault("linux_build_artifacts", _summary_build_artifacts(linux_summary))
+        out.setdefault(
+            "windows_build_artifacts", _summary_build_artifacts(windows_summary)
+        )
         # `summary` is validated into the typed `Summary` model; it is fully
         # recomputed by `rebuild_summary`, so a stale on-disk shape is harmless.
         out["summary"] = summary_raw

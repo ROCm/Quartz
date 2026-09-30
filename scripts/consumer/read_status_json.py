@@ -41,6 +41,8 @@ API overview:
        |- urls / url(kind)                        artifact base URLs
        |- pipeline_build_status(pipeline)         Status value or None
                                                   (compare to Status.success)
+       |- rocm_build_artifacts_status()            pre-CDN production status
+       |- publish_status(), published_at()         CDN publication outcome
        |- pipeline_test_counts(pipeline)          pass/fail counters
        |- native_package_status("rpm" | "deb")    Linux native package status
        `- tarball_url(version, target,            full tarball download URL
@@ -236,6 +238,30 @@ class PlatformStatus:
         if build is None:
             return None
         return build.get("status")
+
+    def rocm_build_artifacts_status(self) -> str | None:
+        """ROCm artifact-production status before CDN publication."""
+        rocm = self._data.get("rocm")
+        if rocm is None:
+            return None
+        build_artifacts = rocm.get("build_artifacts")
+        if build_artifacts is None:
+            return None
+        return build_artifacts.get("status")
+
+    def publish_status(self) -> str | None:
+        """Status of publishing this platform to CDN-backed release buckets."""
+        publish = self._data.get("publish")
+        if publish is None:
+            return None
+        return publish.get("status")
+
+    def published_at(self) -> str | None:
+        """Publication timestamp, or None when publication did not succeed."""
+        publish = self._data.get("publish")
+        if publish is None:
+            return None
+        return publish.get("published_at")
 
     def pipeline_test_counts(self, pipeline: str) -> dict[str, int] | None:
         """Per-status test counters for a pipeline, or None if absent.

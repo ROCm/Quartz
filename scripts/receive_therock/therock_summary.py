@@ -147,6 +147,12 @@ def _build_platform_summary(
         doc.linux_architectures if platform == "linux" else doc.windows_architectures
     )
     urls = doc.linux_urls if platform == "linux" else doc.windows_urls
+    publish = doc.linux_publish if platform == "linux" else doc.windows_publish
+    build_artifacts = (
+        doc.linux_build_artifacts
+        if platform == "linux"
+        else doc.windows_build_artifacts
+    )
 
     rocm_seen: list[Status] = []
     pytorch_seen: list[Status] = []
@@ -190,13 +196,21 @@ def _build_platform_summary(
             )
         )
 
+    rocm_rollup = rocm or _placeholder("rocm")
+    # `build_artifacts` and `publish` live on the document rather than in the
+    # detail tree, so every summary rebuild carries them forward.
+    if build_artifacts is not None:
+        rocm_rollup.build_artifacts = build_artifacts.model_copy()
+
     fields: dict[str, object] = {
         "status": rollup_sibling_statuses(sibling_statuses, empty_platform_status),
         "architectures": list(architectures),
         "urls": dict(urls),
-        "rocm": rocm or _placeholder("rocm"),
+        "rocm": rocm_rollup,
         "pytorch": pytorch or _placeholder("pytorch"),
     }
+    if publish is not None:
+        fields["publish"] = publish.model_copy()
     if platform == "linux":
         fields["jax"] = jax if jax is not None else _placeholder("jax")
         if native_packages is not None:

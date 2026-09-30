@@ -887,6 +887,347 @@ def test_release_platform_completion_partial_outputs_stays_capped(
     assert leaf.completed_at is None
 
 
+def _release_windows_completion(
+    captured_outputs: dict[str, dict[str, object]],
+) -> WorkflowRunRecord:
+    run = _orchestrator_run(".github/workflows/multi_arch_release_windows.yml")
+    run.captured_outputs = captured_outputs
+    return run
+
+
+def test_release_platform_completion_splits_artifacts_and_publish(
+    tmp_path: Path,
+) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build.status is Status.success
+    assert linux.rocm.build_artifacts is not None
+    assert linux.rocm.build_artifacts.status is Status.success
+    assert linux.publish is not None
+    assert linux.publish.status is Status.success
+    assert linux.publish.published_at is not None
+
+
+def test_publish_failure_keeps_build_artifacts_success(tmp_path: Path) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(
+            _release_linux_completion(
+                _release_captured_outputs(publish_to_release_buckets="failure")
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build.status is Status.failure
+    assert linux.rocm.build_artifacts is not None
+    assert linux.rocm.build_artifacts.status is Status.success
+    assert linux.publish is not None
+    assert linux.publish.status is Status.failure
+    assert linux.publish.published_at is None
+
+
+def test_build_failure_marks_artifacts_failed_and_publish_skipped(
+    tmp_path: Path,
+) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(
+            _release_linux_completion(
+                _release_captured_outputs(
+                    build_artifacts="failure",
+                    build_tarballs="skipped",
+                    build_python_packages="skipped",
+                    publish_to_release_buckets="skipped",
+                )
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build_artifacts is not None
+    assert linux.rocm.build_artifacts.status is Status.failure
+    assert linux.publish is not None
+    assert linux.publish.status is Status.skipped
+    assert linux.publish.published_at is None
+
+
+def test_partial_outputs_leave_publish_absent(tmp_path: Path) -> None:
+    # publish needs the full rollup payload; build_artifacts needs only its own
+    # job, so it is still refreshed from the `build_artifacts` result.
+    _seed_capped_build_leaf(tmp_path)
+    partial = _release_captured_outputs(build_artifacts="failure")
+    del partial["publish_to_release_buckets"]
+    tusj.update_status_json(
+        _event(_release_linux_completion(partial)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build_artifacts is not None
+    assert linux.rocm.build_artifacts.status is Status.failure
+    assert linux.publish is None
+
+
+def _whole_build(
+    *,
+    conclusion: str | None = "success",
+    attempt: int = 1,
+    path: str = ".github/workflows/multi_arch_build_portable_linux.yml",
+) -> WorkflowRunRecord:
+    run = _leaf_run()
+    run.path = path
+    run.conclusion = conclusion
+    run.run_attempt = attempt
+    return run
+
+
+def test_whole_build_completion_stamps_build_artifacts_before_publish(
+    tmp_path: Path,
+) -> None:
+    # All build stages are done and on S3, but the release orchestrator has not
+    # published yet: build_artifacts is final while rocm.build stays capped.
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(_whole_build()), repo_dir=tmp_path, commit_and_push=False
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build.status is Status.in_progress
+    assert linux.rocm.build_artifacts is not None
+    assert linux.rocm.build_artifacts.status is Status.success
+    assert linux.publish is None
+
+
+def test_whole_build_failure_marks_build_artifacts_failed(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(_whole_build(conclusion="failure")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build.status is Status.in_progress
+    assert linux.rocm.build_artifacts is not None
+    assert linux.rocm.build_artifacts.status is Status.failure
+
+
+@pytest.mark.parametrize(
+    "path,conclusion",
+    [
+        # A single stage finishing says nothing about the remaining stages.
+        (".github/workflows/multi_arch_build_portable_linux_artifacts.yml", "success"),
+        # Tarball packaging maps to rocm/build but is not a build stage.
+        (".github/workflows/multi_arch_build_tarballs.yml", "success"),
+        # The whole build is still running.
+        (".github/workflows/multi_arch_build_portable_linux.yml", None),
+    ],
+)
+def test_only_whole_build_completion_stamps_build_artifacts(
+    tmp_path: Path, path: str, conclusion: str | None
+) -> None:
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(_whole_build(path=path, conclusion=conclusion)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    linux = _load(_nightly_status_path(tmp_path)).summary.linux
+    assert linux.rocm.build_artifacts is None
+
+
+def test_superseded_attempt_completion_does_not_stamp_build_artifacts(
+    tmp_path: Path,
+) -> None:
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(_whole_build(conclusion=None, attempt=2)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    tusj.update_status_json(
+        _event(_whole_build(conclusion="success", attempt=1)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pipelines.rocm.build["linux"].run_attempt == 2
+    assert doc.summary.linux.rocm.build_artifacts is None
+
+
+def _start_orchestrator_rerun(tmp_path: Path, attempt: int = 2) -> None:
+    rerun = _orchestrator_run()
+    rerun.run_attempt = attempt
+    rerun.conclusion = None
+    rerun.status = "in_progress"
+    tusj.update_status_json(
+        _event(rerun, event_type="workflow_run_in_progress"),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+
+def test_stale_release_completion_does_not_overwrite_current_attempt(
+    tmp_path: Path,
+) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    _start_orchestrator_rerun(tmp_path)
+    tusj.update_status_json(
+        _event(_whole_build(conclusion=None, attempt=2)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    stale = _release_linux_completion(
+        _release_captured_outputs(publish_to_release_buckets="failure")
+    )
+    tusj.update_status_json(_event(stale), repo_dir=tmp_path, commit_and_push=False)
+
+    doc = _load(_nightly_status_path(tmp_path))
+    leaf = doc.pipelines.rocm.build["linux"]
+    assert leaf.run_attempt == 2
+    assert leaf.status is Status.in_progress
+    assert doc.summary.linux.rocm.build_artifacts is None
+    assert doc.summary.linux.publish is None
+
+
+def test_late_release_completion_finalizes_platform_not_rerun(
+    tmp_path: Path,
+) -> None:
+    # Linux's attempt-1 release event is delivered after a partial rerun (for
+    # windows) has started. Linux is not re-run, so this is its only finalizer.
+    _seed_capped_build_leaf(tmp_path)
+    _start_orchestrator_rerun(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.pipelines.rocm.build["linux"].run_attempt == 1
+    assert doc.summary.linux.rocm.build.status is Status.success
+    assert doc.summary.linux.publish is not None
+    assert doc.summary.linux.publish.status is Status.success
+
+
+def test_release_completion_before_whole_build_notify_stays_finalized(
+    tmp_path: Path,
+) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    _start_orchestrator_rerun(tmp_path)
+
+    release = _release_linux_completion(_release_captured_outputs())
+    release.run_attempt = 2
+    tusj.update_status_json(_event(release), repo_dir=tmp_path, commit_and_push=False)
+    tusj.update_status_json(
+        _event(_whole_build(attempt=2)), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    doc = _load(_nightly_status_path(tmp_path))
+    leaf = doc.pipelines.rocm.build["linux"]
+    assert leaf.run_attempt == 2
+    assert leaf.status is Status.success
+    assert doc.summary.linux.rocm.build_artifacts is not None
+    assert doc.summary.linux.rocm.build_artifacts.status is Status.success
+    assert doc.summary.linux.publish is not None
+    assert doc.summary.linux.publish.status is Status.success
+
+
+def test_split_is_per_platform_and_survives_later_rebuilds(tmp_path: Path) -> None:
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(
+            _release_linux_completion(
+                _release_captured_outputs(publish_to_release_buckets="failure")
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    windows_running = _windows_leaf_run()
+    windows_running.conclusion = None
+    tusj.update_status_json(
+        _event(windows_running), repo_dir=tmp_path, commit_and_push=False
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.linux.publish is not None
+    assert doc.summary.linux.publish.status is Status.failure
+    assert doc.summary.linux.rocm.build_artifacts is not None
+    assert doc.summary.windows.publish is None
+    assert doc.summary.windows.rocm.build_artifacts is None
+
+    tusj.update_status_json(
+        _event(_release_windows_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.windows.publish is not None
+    assert doc.summary.windows.publish.status is Status.success
+    assert doc.summary.linux.publish is not None
+    assert doc.summary.linux.publish.status is Status.failure
+
+
+def test_partial_orchestrator_rerun_keeps_passing_platform_rollups(
+    tmp_path: Path,
+) -> None:
+    # "Re-run failed jobs" after only windows failed: the linux release job is not
+    # re-run and never reports again, so linux must keep its build_artifacts and
+    # publish. Windows' own higher-attempt build notify clears its stale ones.
+    _seed_capped_build_leaf(tmp_path)
+    tusj.update_status_json(
+        _event(_release_linux_completion(_release_captured_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    tusj.update_status_json(
+        _event(_windows_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(
+            _release_windows_completion(
+                _release_captured_outputs(publish_to_release_buckets="failure")
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+
+    _start_orchestrator_rerun(tmp_path)
+    windows_rerun = _windows_leaf_run()
+    windows_rerun.run_attempt = 2
+    windows_rerun.conclusion = None
+    tusj.update_status_json(
+        _event(windows_rerun), repo_dir=tmp_path, commit_and_push=False
+    )
+
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.summary.linux.rocm.build.status is Status.success
+    assert doc.summary.linux.rocm.build_artifacts is not None
+    assert doc.summary.linux.rocm.build_artifacts.status is Status.success
+    assert doc.summary.linux.publish is not None
+    assert doc.summary.linux.publish.status is Status.success
+    assert doc.summary.windows.rocm.build.status is Status.in_progress
+    assert doc.summary.windows.rocm.build_artifacts is None
+    assert doc.summary.windows.publish is None
+
+
 def test_finalized_build_reopens_to_in_progress_on_rerun(tmp_path: Path) -> None:
     # #113 lifecycle end to end: the release orchestrator finalizes rocm build to
     # terminal success, then the build is re-dispatched (same run id, higher
@@ -899,24 +1240,25 @@ def test_finalized_build_reopens_to_in_progress_on_rerun(tmp_path: Path) -> None
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    assert _linux_build_leaf(tmp_path).status is Status.success
-    assert (
-        _load(_nightly_status_path(tmp_path)).summary.linux.rocm.build.status
-        is Status.success
-    )
+    finalized = _load(_nightly_status_path(tmp_path))
+    assert finalized.pipelines.rocm.build["linux"].status is Status.success
+    assert finalized.summary.linux.rocm.build.status is Status.success
+    assert finalized.summary.linux.rocm.build_artifacts is not None
+    assert finalized.summary.linux.publish is not None
 
-    # conclusion is irrelevant here: the rocm/build cap forces in_progress.
-    rerun = _linux_build(27797822902, attempt=2)
+    # The rerun's whole build is still running, so it has no build_artifacts yet
+    # and the previous attempt's ones must not linger.
+    rerun = _linux_build(27797822902, attempt=2, conclusion="")
     tusj.update_status_json(_event(rerun), repo_dir=tmp_path, commit_and_push=False)
 
-    leaf = _linux_build_leaf(tmp_path)
+    reopened = _load(_nightly_status_path(tmp_path))
+    leaf = reopened.pipelines.rocm.build["linux"]
     assert leaf.run_attempt == 2
     assert leaf.status is Status.in_progress
     assert leaf.completed_at is None
-    assert (
-        _load(_nightly_status_path(tmp_path)).summary.linux.rocm.build.status
-        is Status.in_progress
-    )
+    assert reopened.summary.linux.rocm.build.status is Status.in_progress
+    assert reopened.summary.linux.rocm.build_artifacts is None
+    assert reopened.summary.linux.publish is None
 
 
 def test_from_dict_resolves_version_from_captured_setup_output() -> None:

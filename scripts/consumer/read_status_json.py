@@ -83,7 +83,7 @@ import json
 import urllib.request
 from enum import StrEnum
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 # latest nightly status.json published by Quartz for TheRock releases.
 DEFAULT_SOURCE = (
@@ -156,7 +156,7 @@ def build_tarball_url(
     filename = f"therock-dist-{platform}-{target}{tests_segment}-{version}.tar.gz"
     if not base_url.endswith("/"):
         base_url = base_url + "/"
-    return base_url + filename
+    return base_url + quote(filename)
 
 
 class PlatformStatus:

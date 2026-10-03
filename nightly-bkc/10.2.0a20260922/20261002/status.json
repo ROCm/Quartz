@@ -13,11 +13,11 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-02T23:48:45Z",
-  "status_json_last_updated": "2026-10-03T01:12:50Z",
+  "status_json_last_updated": "2026-10-03T02:16:37Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
-      "status": "failure",
+      "status": "in_progress",
       "architectures": [
         "gfx125X-dcgpu"
       ],
@@ -28,7 +28,7 @@
       },
       "rocm": {
         "build": {
-          "status": "failure"
+          "status": "in_progress"
         },
         "test": {
           "success": 0,
@@ -40,7 +40,7 @@
       },
       "pytorch": {
         "build": {
-          "status": "skipped"
+          "status": "in_progress"
         },
         "test": {
           "success": 0,
@@ -52,7 +52,7 @@
       },
       "jax": {
         "build": {
-          "status": "skipped"
+          "status": "in_progress"
         },
         "test": {
           "success": 0,
@@ -64,10 +64,10 @@
       },
       "native_packages": {
         "rpm": {
-          "status": "skipped"
+          "status": "in_progress"
         },
         "deb": {
-          "status": "skipped"
+          "status": "in_progress"
         }
       }
     },
@@ -105,11 +105,10 @@
     "rocm": {
       "build": {
         "linux": {
-          "status": "failure",
+          "status": "in_progress",
           "run_id": 37079181135,
-          "run_attempt": 1,
-          "started_at": "2026-10-02T23:46:59Z",
-          "completed_at": "2026-10-03T01:11:12Z"
+          "run_attempt": 2,
+          "started_at": "2026-10-03T02:15:01Z"
         }
       },
       "test": {}

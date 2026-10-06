@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-06T00:02:36Z",
-  "status_json_last_updated": "2026-10-06T07:28:55Z",
+  "status_json_last_updated": "2026-10-06T07:31:33Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -135,8 +135,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 11,
-          "in_progress": 2,
+          "failure": 12,
+          "in_progress": 1,
           "cancelled": 0,
           "skipped": 0
         }
@@ -1260,18 +1260,20 @@
         },
         "windows": {
           "gfx110X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 37412574760,
             "run_attempt": 1,
             "started_at": "2026-10-06T07:05:32Z",
+            "completed_at": "2026-10-06T07:28:02Z",
             "variants": [
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 37412574760,
                 "run_attempt": 1,
-                "started_at": "2026-10-06T07:05:32Z"
+                "started_at": "2026-10-06T07:05:32Z",
+                "completed_at": "2026-10-06T07:28:02Z"
               }
             ]
           },

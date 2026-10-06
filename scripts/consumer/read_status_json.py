@@ -83,7 +83,7 @@ import json
 import urllib.request
 from enum import StrEnum
 from pathlib import Path
-from urllib.parse import urljoin
+from urllib.parse import quote, urljoin
 
 # latest nightly status.json published by Quartz for TheRock releases.
 DEFAULT_SOURCE = (
@@ -145,7 +145,9 @@ def build_tarball_url(
     TheRock names distribution tarballs
     therock-dist-{platform}-{target}[-tests]-{version}.tar.gz and publishes
     them under a shared base directory. This builds that name and joins it to
-    the base URL.
+    the base URL. Special characters in the filename (for example "+" in bkc
+    versions) are percent-encoded by urllib.parse.quote: each one becomes "%"
+    followed by two hex digits, so "+" turns into "%2B".
 
     platform is linux or windows. target is either "multiarch" or a GPU target
     exactly as it appears in the filename, for example "gfx90a", "gfx94X-dcgpu",
@@ -156,7 +158,7 @@ def build_tarball_url(
     filename = f"therock-dist-{platform}-{target}{tests_segment}-{version}.tar.gz"
     if not base_url.endswith("/"):
         base_url = base_url + "/"
-    return base_url + filename
+    return base_url + quote(filename)
 
 
 class PlatformStatus:

@@ -116,6 +116,16 @@ class BuildTarballUrlTest(unittest.TestCase):
             url, "https://host/therock-dist-windows-gfx1100-tests-1.0.tar.gz"
         )
 
+    def test_encodes_plus_in_bkc_version(self):
+        url = build_tarball_url(
+            "https://host/base/", "linux", "7.13.0a20260408+bkc20260410", "gfx942"
+        )
+        self.assertEqual(
+            url,
+            "https://host/base/"
+            "therock-dist-linux-gfx942-7.13.0a20260408%2Bbkc20260410.tar.gz",
+        )
+
 
 class StatusFromReferenceTest(unittest.TestCase):
     @classmethod
@@ -259,6 +269,14 @@ class PlatformStatusFromReferenceTest(unittest.TestCase):
     def test_tarball_url_with_tests(self):
         url = self.linux.tarball_url("1.0", "gfx942", with_tests=True)
         self.assertIn("therock-dist-linux-gfx942-tests-1.0.tar.gz", url)
+
+    def test_tarball_url_encodes_plus_in_version(self):
+        url = self.linux.tarball_url("7.13.0a20260408+bkc20260410", "gfx942")
+        self.assertEqual(
+            url,
+            "https://rocm.nightlies.amd.com/tarball-multi-arch/"
+            "therock-dist-linux-gfx942-7.13.0a20260408%2Bbkc20260410.tar.gz",
+        )
 
 
 class LoadStatusTest(unittest.TestCase):

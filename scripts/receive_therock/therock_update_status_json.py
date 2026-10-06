@@ -47,6 +47,7 @@ from pathlib import Path, PurePosixPath
 import ntplib
 
 from therock_classify import (
+    FINALIZING_PHASE_BUILD_VARIANTS,
     FINALIZING_PHASES,
     GPU_FAMILY_TOKEN,
     RELEASE_CDN_PHASES,
@@ -236,7 +237,8 @@ def _variant_filename(base: str, build_variant: str) -> str:
     """`<base>.json` for the release build, `<base>-<build_variant>.json` otherwise.
 
     Names every per-variant file: the dated document (`status.json`,
-    `status-asan.json`) and its pointers (`latest.json`, `latest_good-asan.json`).
+    `status-asan-debug.json`) and its pointers (`latest.json`,
+    `latest_good-asan-debug.json`).
     """
     suffix = "" if build_variant == "release" else f"-{build_variant}"
     return f"{base}{suffix}.json"
@@ -1345,7 +1347,8 @@ def _update_symlinks(
     Meaningful for `nightly`, `nightly-bkc`, and `prerelease`. Each build variant
     has its own pointer pair, named like its document (see `_variant_filename`):
     `latest.json`/`latest_good.json` for `release`,
-    `latest-asan.json`/`latest_good-asan.json` for `asan`. Every pointer is a
+    `latest-asan-debug.json`/`latest_good-asan-debug.json` for `asan-debug`.
+    Every pointer is a
     single-hop symlink to the concrete dated document: `latest.json` follows the
     newest build, `latest_good.json` follows the newest all-green build and is
     repointed to the next-best green build (or dropped) when the build it targets
@@ -1482,7 +1485,7 @@ def _newest_good_dated_status(latest_dir: Path, status_name: str) -> Path | None
 
     Scans the immediate `<date>` subdirectories (nightly dates, or bkc run dates
     under one nightly version) and keeps the highest date whose `status_name`
-    (e.g. `status.json` or `status-asan.json`) finalized
+    (e.g. `status.json` or `status-asan-debug.json`) finalized
     `overall_status == success`. Other variants' documents in the same dated
     directory are never considered.
     """
@@ -1548,7 +1551,7 @@ def _update_prerelease_latest(
 
     Maintains two levels, both version-key ordered so they never regress from,
     e.g., rc10 to rc2 (`latest_name` is `latest.json`, or e.g.
-    `latest-asan.json` for another build variant):
+    `latest-asan-debug.json` for another build variant):
 
       - `prerelease/latest.json`               newest candidate for the highest version
                                                across all lines
@@ -1588,7 +1591,7 @@ def _update_bkc_top_latest(
     """Update the top-level `nightly-bkc/latest.json` and `latest_good.json`.
 
     `latest_name`/`latest_good_name` carry the build variant's suffix (e.g.
-    `latest-asan.json`), so each variant keeps its own top-level pair. Both are
+    `latest-asan-debug.json`), so each variant keeps its own top-level pair. Both are
     single-hop symlinks to a concrete `<nightly-version>/<bkc-date>/status*.json`,
     ordered by `_bkc_top_key`: the largest nightly version wins across nightly
     versions, and the newest build only breaks ties within one nightly version.
@@ -1953,11 +1956,14 @@ _TRACKED_RELEASE_TYPES: frozenset[str] = frozenset(
     {"nightly", "nightly-bkc", "prerelease"}
 )
 
-# Build variants (TheRock's `build_variant` / `build_variant_suffix`) that get a
-# status document: `status.json` for `release`, `status-<build_variant>.json`
-# otherwise (see `_variant_filename`). Any other variant (e.g. `tsan`) is
-# rejected.
-_TRACKED_BUILD_VARIANTS: frozenset[str] = frozenset({"release", "asan", "asan-debug"})
+# Build variants (TheRock's `build_variant`) that get a status document: one
+# per top-level release orchestrator (see
+# `therock_classify.FINALIZING_PHASE_BUILD_VARIANTS`), `status.json` for
+# `release` and `status-asan-debug.json` for `asan-debug` (see
+# `_variant_filename`). Any other variant (e.g. `asan`, `tsan`) is rejected.
+_TRACKED_BUILD_VARIANTS: frozenset[str] = frozenset(
+    FINALIZING_PHASE_BUILD_VARIANTS.values()
+)
 
 
 def _document_build_variant(workflow_run: WorkflowRunRecord) -> str:
@@ -1966,14 +1972,14 @@ def _document_build_variant(workflow_run: WorkflowRunRecord) -> str:
     A leaf outside any tracked release carries no variant (see
     `derive_build_variant`) and resolves to `release`, the only document that can
     adopt an ownerless run (see `_is_ownerless_pytorch_leaf_for_release`). Setup
-    and the `release-asan` orchestrator own or create a document, so they stay
-    empty (and are rejected) without an explicit variant.
+    owns a document, so it stays empty (and is rejected) without an explicit
+    variant.
     """
     c = workflow_run.classification
     build_variant = c.build_variant.lower()
     if build_variant:
         return build_variant
-    if c.pipeline_type == "setup" or c.pipeline_phase == "release-asan":
+    if c.pipeline_type == "setup":
         return ""
     return "release"
 
@@ -2120,14 +2126,11 @@ def update_status_json(
 
     c = workflow_run.classification
     build_variant = _document_build_variant(workflow_run)
-    if build_variant not in _TRACKED_BUILD_VARIANTS or (
-        c.pipeline_phase == "release-asan" and build_variant == "release"
-    ):
+    if build_variant not in _TRACKED_BUILD_VARIANTS:
         log.info(
-            "build_variant=%r (orchestrator phase=%r) is not a tracked build "
-            "variant (%s; workflow_run_id=%s); skipping",
+            "build_variant=%r is not a tracked build variant (%s; "
+            "workflow_run_id=%s); skipping",
             build_variant,
-            c.pipeline_phase,
             sorted(_TRACKED_BUILD_VARIANTS),
             workflow_run.workflow_run_id,
         )

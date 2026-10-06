@@ -35,6 +35,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import therock_update_status_json as tusj  # noqa: E402
+from therock_classify import classify  # noqa: E402
 from therock_status_document import Status, StatusDocument  # noqa: E402
 from therock_types import (  # noqa: E402
     ORCHESTRATOR_SPECS,
@@ -195,8 +196,8 @@ def _nightly_status_path(repo_dir: Path) -> Path:
     return repo_dir / "nightly" / _NIGHTLY_DATE / "status.json"
 
 
-def _nightly_asan_status_path(repo_dir: Path, build_variant: str = "asan") -> Path:
-    return repo_dir / "nightly" / _NIGHTLY_DATE / f"status-{build_variant}.json"
+def _nightly_asan_status_path(repo_dir: Path) -> Path:
+    return repo_dir / "nightly" / _NIGHTLY_DATE / "status-asan-debug.json"
 
 
 def _establish_owner(
@@ -246,8 +247,8 @@ def _setup_run(
 ) -> WorkflowRunRecord:
     """A completed setup_multi_arch.yml run. It executes via `workflow_call`, so
     its run id equals the top-level orchestrator's -- letting it anchor
-    ownership before any leaf lands. `build_variant='asan'` must never own the
-    normal release document."""
+    ownership before any leaf lands. `build_variant='asan-debug'` must never own
+    the normal release document."""
     run = _run(
         path=".github/workflows/setup_multi_arch.yml",
         platform="",
@@ -785,7 +786,7 @@ def _asan_release_linux_completion(run_id: int = 600) -> WorkflowRunRecord:
     release orchestrator, run with the ASAN build variant. ASAN is Linux-only."""
     run = _release_linux_completion(_release_captured_outputs())
     run.workflow_run_id = run_id
-    run.classification.build_variant = "asan"
+    run.classification.build_variant = "asan-debug"
     return run
 
 
@@ -1076,7 +1077,7 @@ def test_finalized_release_points_latest_good_at_status(tmp_path: Path) -> None:
 def test_finalized_asan_release_updates_only_asan_pointers(
     tmp_path: Path,
 ) -> None:
-    setup = _setup_run(600, build_variant="asan")
+    setup = _setup_run(600, build_variant="asan-debug")
     setup.inputs = {"build_pytorch": False, "build_jax": False}
     tusj.update_status_json(
         _event(setup),
@@ -1085,7 +1086,7 @@ def test_finalized_asan_release_updates_only_asan_pointers(
     )
     leaf = _leaf_run()
     leaf.trigger_workflow_run_id = 600
-    leaf.classification.build_variant = "asan"
+    leaf.classification.build_variant = "asan-debug"
     tusj.update_status_json(_event(leaf), repo_dir=tmp_path, commit_and_push=False)
     tusj.update_status_json(
         _event(_asan_release_linux_completion()),
@@ -1095,16 +1096,16 @@ def test_finalized_asan_release_updates_only_asan_pointers(
 
     orchestrator = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
     orchestrator.workflow_run_id = 600
-    orchestrator.classification.build_variant = "asan"
+    orchestrator.classification.build_variant = "asan-debug"
     tusj.update_status_json(
         _event(orchestrator), repo_dir=tmp_path, commit_and_push=False
     )
 
     nightly_root = tmp_path / "nightly"
-    latest = nightly_root / "latest-asan.json"
-    latest_good = nightly_root / "latest_good-asan.json"
-    assert latest.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan.json")
-    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan.json")
+    latest = nightly_root / "latest-asan-debug.json"
+    latest_good = nightly_root / "latest_good-asan-debug.json"
+    assert latest.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan-debug.json")
+    assert latest_good.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan-debug.json")
     assert not (nightly_root / "latest.json").exists()
     assert not (nightly_root / "latest_good.json").exists()
 
@@ -1115,12 +1116,12 @@ def test_reopened_asan_build_never_falls_back_to_a_release_document(
     # The latest-good recompute stays inside one variant. A green release build
     # in the same dated directory is no substitute for the reopened ASAN one, so
     # the ASAN pointer is dropped rather than repointed at `status.json`.
-    setup = _setup_run(600, build_variant="asan")
+    setup = _setup_run(600, build_variant="asan-debug")
     setup.inputs = {"build_pytorch": False, "build_jax": False}
     tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
     asan_leaf = _leaf_run()
     asan_leaf.trigger_workflow_run_id = 600
-    asan_leaf.classification.build_variant = "asan"
+    asan_leaf.classification.build_variant = "asan-debug"
     tusj.update_status_json(_event(asan_leaf), repo_dir=tmp_path, commit_and_push=False)
     tusj.update_status_json(
         _event(_asan_release_linux_completion()),
@@ -1131,7 +1132,7 @@ def test_reopened_asan_build_never_falls_back_to_a_release_document(
         ".github/workflows/multi_arch_release_asan.yml"
     )
     asan_orchestrator.workflow_run_id = 600
-    asan_orchestrator.classification.build_variant = "asan"
+    asan_orchestrator.classification.build_variant = "asan-debug"
     tusj.update_status_json(
         _event(asan_orchestrator), repo_dir=tmp_path, commit_and_push=False
     )
@@ -1150,13 +1151,13 @@ def test_reopened_asan_build_never_falls_back_to_a_release_document(
     )
 
     nightly_root = tmp_path / "nightly"
-    asan_good = nightly_root / "latest_good-asan.json"
+    asan_good = nightly_root / "latest_good-asan-debug.json"
     release_good = nightly_root / "latest_good.json"
-    assert asan_good.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan.json")
+    assert asan_good.readlink() == Path(f"{_NIGHTLY_DATE}/status-asan-debug.json")
     assert release_good.readlink() == Path(f"{_NIGHTLY_DATE}/status.json")
 
     # A new owner reopens the ASAN build, leaving no green ASAN build anywhere.
-    reopen = _setup_run(700, build_variant="asan")
+    reopen = _setup_run(700, build_variant="asan-debug")
     reopen.inputs = {"build_pytorch": False, "build_jax": False}
     tusj.update_status_json(_event(reopen), repo_dir=tmp_path, commit_and_push=False)
 
@@ -1272,7 +1273,7 @@ def test_prerelease_asan_creates_variant_specific_latest_symlinks(
 ) -> None:
     setup = _setup_run(
         600,
-        build_variant="asan",
+        build_variant="asan-debug",
         release_type="prerelease",
         version=_PRERELEASE_VERSION,
     )
@@ -1281,14 +1282,16 @@ def test_prerelease_asan_creates_variant_specific_latest_symlinks(
         _event(setup), repo_dir=tmp_path, commit_and_push=False
     )
 
-    assert out == (tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status-asan.json")
+    assert out == (
+        tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status-asan-debug.json"
+    )
     assert not (out.parent / "status.json").exists()
     prerelease_root = tmp_path / "prerelease"
-    assert (prerelease_root / "latest-asan.json").readlink() == Path(
-        "7.14/7.14.0rc1/status-asan.json"
+    assert (prerelease_root / "latest-asan-debug.json").readlink() == Path(
+        "7.14/7.14.0rc1/status-asan-debug.json"
     )
-    assert (prerelease_root / "7.14" / "latest-asan.json").readlink() == Path(
-        "7.14.0rc1/status-asan.json"
+    assert (prerelease_root / "7.14" / "latest-asan-debug.json").readlink() == Path(
+        "7.14.0rc1/status-asan-debug.json"
     )
     assert not (prerelease_root / "latest.json").exists()
 
@@ -1500,7 +1503,7 @@ def test_bkc_asan_updates_variant_specific_pointers(
 ) -> None:
     setup = _setup_run(
         600,
-        build_variant="asan",
+        build_variant="asan-debug",
         release_type="nightly-bkc",
         version=_BKC_VERSION,
     )
@@ -1510,7 +1513,7 @@ def test_bkc_asan_updates_variant_specific_pointers(
 
     leaf = _bkc_leaf_run()
     leaf.trigger_workflow_run_id = 600
-    leaf.classification.build_variant = "asan"
+    leaf.classification.build_variant = "asan-debug"
     tusj.update_status_json(_event(leaf), repo_dir=tmp_path, commit_and_push=False)
 
     release = _asan_release_linux_completion()
@@ -1526,23 +1529,27 @@ def test_bkc_asan_updates_variant_specific_pointers(
     orchestrator.head_branch = _BKC_BRANCH
     orchestrator.rocm_version = _BKC_VERSION
     orchestrator.classification.release_version = _BKC_VERSION
-    orchestrator.classification.build_variant = "asan"
+    orchestrator.classification.build_variant = "asan-debug"
     out = tusj.update_status_json(
         _event(orchestrator), repo_dir=tmp_path, commit_and_push=False
     )
 
     assert out == (
-        tmp_path / "nightly-bkc" / _BKC_NIGHTLY_VERSION / _BKC_DATE / "status-asan.json"
+        tmp_path
+        / "nightly-bkc"
+        / _BKC_NIGHTLY_VERSION
+        / _BKC_DATE
+        / "status-asan-debug.json"
     )
     assert not (out.parent / "status.json").exists()
     bkc_root = tmp_path / "nightly-bkc"
     version_root = bkc_root / _BKC_NIGHTLY_VERSION
-    target = Path(_BKC_DATE) / "status-asan.json"
-    assert (version_root / "latest-asan.json").readlink() == target
-    assert (version_root / "latest_good-asan.json").readlink() == target
+    target = Path(_BKC_DATE) / "status-asan-debug.json"
+    assert (version_root / "latest-asan-debug.json").readlink() == target
+    assert (version_root / "latest_good-asan-debug.json").readlink() == target
     top_target = Path(_BKC_NIGHTLY_VERSION) / target
-    assert (bkc_root / "latest-asan.json").readlink() == top_target
-    assert (bkc_root / "latest_good-asan.json").readlink() == top_target
+    assert (bkc_root / "latest-asan-debug.json").readlink() == top_target
+    assert (bkc_root / "latest_good-asan-debug.json").readlink() == top_target
     assert not (bkc_root / "latest.json").exists()
 
 
@@ -2503,7 +2510,9 @@ def _assert_no_nightly_documents(repo_dir: Path) -> None:
 
 
 # Setup has no untracked fallback: an empty variant means no `quartz_tracking_id`.
-@pytest.mark.parametrize("build_variant", ["host-asan", "host-asan-debug", "tsan", ""])
+@pytest.mark.parametrize(
+    "build_variant", ["asan", "host-asan", "host-asan-debug", "tsan", ""]
+)
 def test_setup_unsupported_variant_does_not_create_document(
     tmp_path: Path, build_variant: str
 ) -> None:
@@ -2529,59 +2538,108 @@ def test_leaf_with_unsupported_variant_is_rejected(tmp_path: Path) -> None:
     assert "linux" not in _load(_nightly_status_path(tmp_path)).pipelines.rocm.build
 
 
-@pytest.mark.parametrize("build_variant", ["asan", "asan-debug"])
-def test_setup_asan_run_anchors_its_own_document(
-    tmp_path: Path, build_variant: str
-) -> None:
+def test_setup_asan_run_anchors_its_own_document(tmp_path: Path) -> None:
     out = tusj.update_status_json(
-        _event(_setup_run(600, build_variant=build_variant)),
+        _event(_setup_run(600, build_variant="asan-debug")),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    assert out == _nightly_asan_status_path(tmp_path, build_variant)
+    assert out == _nightly_asan_status_path(tmp_path)
     assert not _nightly_status_path(tmp_path).exists()
     doc = _load(out)
     assert doc.trigger_workflow_run_id == 600
-    assert doc.build_variant == build_variant
+    assert doc.build_variant == "asan-debug"
 
 
-@pytest.mark.parametrize("build_variant", ["asan", "asan-debug"])
-def test_asan_orchestrator_finalizes_its_declared_variant(
-    tmp_path: Path, build_variant: str
-) -> None:
-    setup = _setup_run(600, build_variant=build_variant)
+def test_asan_orchestrator_finalizes_asan_debug_document(tmp_path: Path) -> None:
+    setup = _setup_run(600, build_variant="asan-debug")
     tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
 
     orchestrator = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
     orchestrator.workflow_run_id = 600
-    orchestrator.classification.build_variant = build_variant
+    orchestrator.classification.build_variant = "asan-debug"
     out = tusj.update_status_json(
         _event(orchestrator), repo_dir=tmp_path, commit_and_push=False
     )
-    assert out == _nightly_asan_status_path(tmp_path, build_variant)
+    assert out == _nightly_asan_status_path(tmp_path)
     assert not _nightly_status_path(tmp_path).exists()
     doc = _load(out)
     assert doc.completed_at == "2026-06-19T15:18:00Z"
-    assert doc.build_variant == build_variant
+    assert doc.build_variant == "asan-debug"
 
 
-# The asan orchestrator must declare a sanitizer variant; it never finalizes
-# status.json.
-@pytest.mark.parametrize("build_variant", ["", "release"])
-def test_asan_orchestrator_without_a_sanitizer_variant_is_rejected(
-    tmp_path: Path, build_variant: str
+def _rockrel_scheduled_asan_release(event: str, run_id: int = 600) -> WorkflowRunRecord:
+    """rockrel's scheduled `multi_arch_release_asan.yml`, as it reports itself.
+
+    A scheduled run has no inputs, so `toJSON(inputs)` is `{}`: neither release
+    type nor build variant is declared. On completion the version arrives only
+    through `toJSON(needs)`, from TheRock's `rocm_package_version` output, and
+    carries the ASAN marker.
+    """
+    raw: dict[str, object] = {
+        "id": run_id,
+        "run_attempt": 1,
+        "event": "schedule",
+        "path": ".github/workflows/multi_arch_release_asan.yml",
+        "status": "completed" if event == "workflow_run_completed" else "in_progress",
+        "conclusion": "success" if event == "workflow_run_completed" else None,
+        "head_branch": "main",
+        "created_at": "2026-06-19T15:08:00Z",
+        "run_started_at": "2026-06-19T15:08:00Z",
+        "updated_at": "2026-06-19T15:18:00Z",
+        "inputs": {},
+    }
+    if event == "workflow_run_completed":
+        raw["captured_outputs"] = {
+            "release": {
+                "result": "success",
+                "outputs": {"rocm_package_version": f"{_RELEASE_VERSION}.asan"},
+            }
+        }
+    run = WorkflowRunRecord.from_dict(raw)
+    classify(run)
+    return run
+
+
+def test_scheduled_rockrel_asan_release_is_a_nightly_asan_debug_build() -> None:
+    run = _rockrel_scheduled_asan_release("workflow_run_completed")
+    assert run.release_type == "nightly"
+    assert run.classification.build_variant == "asan-debug"
+    assert run.classification.release_version == _RELEASE_VERSION
+    assert run.trigger_workflow_run_id == 600
+
+
+def test_scheduled_rockrel_asan_release_finalizes_asan_debug_document(
+    tmp_path: Path,
 ) -> None:
     tusj.update_status_json(
-        _event(_setup_run(500)), repo_dir=tmp_path, commit_and_push=False
+        _event(_setup_run(600, build_variant="asan-debug")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
-    orchestrator = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
-    orchestrator.workflow_run_id = 500
-    orchestrator.classification.build_variant = build_variant
+    # The started report carries no version yet, so only setup anchors the owner.
+    started = tusj.update_status_json(
+        _event(
+            _rockrel_scheduled_asan_release("workflow_run_in_progress"),
+            event_type="workflow_run_in_progress",
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert started is None
+
     out = tusj.update_status_json(
-        _event(orchestrator), repo_dir=tmp_path, commit_and_push=False
+        _event(_rockrel_scheduled_asan_release("workflow_run_completed")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
     )
-    assert out is None
-    assert _load(_nightly_status_path(tmp_path)).completed_at is None
+    assert out == _nightly_asan_status_path(tmp_path)
+    assert not _nightly_status_path(tmp_path).exists()
+    doc = _load(out)
+    assert doc.completed_at is not None
+    assert doc.build_variant == "asan-debug"
+    assert doc.rocm_version == _RELEASE_VERSION
+    assert doc.trigger_workflow_run_id == 600
 
 
 def test_asan_leaf_cannot_pollute_normally_owned_document(tmp_path: Path) -> None:
@@ -2601,7 +2659,7 @@ def test_asan_leaf_cannot_pollute_normally_owned_document(tmp_path: Path) -> Non
     )
     asan_leaf.workflow_run_id = 601
     asan_leaf.trigger_workflow_run_id = 600
-    asan_leaf.classification.build_variant = "asan"
+    asan_leaf.classification.build_variant = "asan-debug"
     tusj.update_status_json(_event(asan_leaf), repo_dir=tmp_path, commit_and_push=False)
 
     doc = _load(_nightly_status_path(tmp_path))
@@ -2616,7 +2674,7 @@ def test_release_and_asan_documents_coexist_and_finalize_independently(
         _event(_setup_run(500)), repo_dir=tmp_path, commit_and_push=False
     )
     tusj.update_status_json(
-        _event(_setup_run(600, build_variant="asan")),
+        _event(_setup_run(600, build_variant="asan-debug")),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -2631,14 +2689,14 @@ def test_release_and_asan_documents_coexist_and_finalize_independently(
     asan_leaf = _leaf_run()
     asan_leaf.workflow_run_id = 601
     asan_leaf.trigger_workflow_run_id = 600
-    asan_leaf.classification.build_variant = "asan"
+    asan_leaf.classification.build_variant = "asan-debug"
     tusj.update_status_json(_event(asan_leaf), repo_dir=tmp_path, commit_and_push=False)
 
     asan_orchestrator = _orchestrator_run(
         ".github/workflows/multi_arch_release_asan.yml"
     )
     asan_orchestrator.workflow_run_id = 600
-    asan_orchestrator.classification.build_variant = "asan"
+    asan_orchestrator.classification.build_variant = "asan-debug"
     out = tusj.update_status_json(
         _event(asan_orchestrator), repo_dir=tmp_path, commit_and_push=False
     )
@@ -2652,7 +2710,7 @@ def test_release_and_asan_documents_coexist_and_finalize_independently(
     assert release_doc.pipelines.rocm.build["linux"].run_id == 501
     assert asan_doc.completed_at == "2026-06-19T15:18:00Z"
     assert asan_doc.trigger_workflow_run_id == 600
-    assert asan_doc.build_variant == "asan"
+    assert asan_doc.build_variant == "asan-debug"
     assert asan_doc.pipelines.rocm.build["linux"].run_id == 601
 
 

@@ -254,11 +254,31 @@ def _canonicalize_bkc_version(v: str) -> str:
     return f"{m.group(1)}+bkc.{m.group(2)}" if m else v
 
 
+# ASAN wheel versions end in an `asan` marker after the regular version (see
+# TheRock#7508), joined by `.` or, when there is no local segment yet, `+`:
+#   nightly   `10.2.0a20261005.asan` / `10.2.0a20261005+asan`
+#   bkc       `10.1.0a20260811+bkc.20260813.asan`
+#   torch     `2.12.0+rocm10.1.0a20260823.asan`  (after `_rocm_version_segment`)
+_ASAN_VERSION_MARKER_RE: Final = re.compile(r"[.+]asan$")
+
+
+def has_asan_version_marker(version: str) -> bool:
+    """True when `version` (raw or ROCm segment) carries the ASAN marker."""
+    return bool(_ASAN_VERSION_MARKER_RE.search(_rocm_version_segment(version.strip())))
+
+
 def derive_release_version(wr: WorkflowRunRecord) -> str | None:
+    """The canonical release version this run belongs to.
+
+    The ASAN marker is dropped, so an ASAN build resolves to the same version
+    (and the same dated directory) as the release build it was cut alongside;
+    its build variant selects the document within that directory instead (see
+    `derive_build_variant`).
+    """
     raw = (wr.rocm_version or "").strip()
     if not raw:
         return None
-    v = _rocm_version_segment(raw)
+    v = _ASAN_VERSION_MARKER_RE.sub("", _rocm_version_segment(raw))
     v = _normalize_native_version(v, wr) if "~" in v else v
     return _canonicalize_bkc_version(v)
 
@@ -268,8 +288,20 @@ def derive_release_type(wr: WorkflowRunRecord) -> str:
 
     Independent of the version string: a bare `7.13.0` may be published to
     the dev bucket, so the version cannot be used to infer the type.
+
+    The one undeclared case is rockrel's scheduled `multi_arch_release_asan.yml`:
+    a `schedule` trigger carries no inputs, and the schedule only ever builds the
+    nightly, so that orchestrator resolves to "nightly".
     """
-    return wr.release_type or ""
+    if wr.release_type:
+        return wr.release_type
+    if (
+        is_top_level_orchestrator(wr)
+        and wr.classification.pipeline_phase == "release-asan"
+        and wr.trigger_event == "schedule"
+    ):
+        return "nightly"
+    return ""
 
 
 def derive_test_type(wr: WorkflowRunRecord) -> str:
@@ -277,28 +309,30 @@ def derive_test_type(wr: WorkflowRunRecord) -> str:
 
 
 def derive_build_variant(wr: WorkflowRunRecord) -> str:
-    """The release flavor this run belongs to: "release", "asan", "asan-debug", ...
+    """The release flavor this run belongs to: "release" or "asan-debug".
 
     Every run of a tracked release reads it from the propagated
     `quartz_tracking_id`, never from its own `build_variant` input: only a run
     triggered by a release orchestrator carries that id, so a manually dispatched
-    workflow cannot claim a variant. An id in the two-field form that predates
-    the variant field (`"<run_id>;<release_type>"`) is the normal release, the
-    only pipeline that emits it.
+    workflow cannot claim a variant. An id in the two-field form
+    (`"<run_id>;<release_type>"`) is the normal release, the only pipeline that
+    emits it.
 
-    A top-level orchestrator generates the id rather than carrying it, so it
-    reads its own `build_variant` input instead. `multi_arch_release.yml` takes
-    none and is always "release"; `multi_arch_release_asan.yml` must declare
-    which ASAN flavor it builds, and stays empty (and unrouted) when it does not.
+    A top-level orchestrator generates the id rather than carrying it, and its
+    report carries no `build_variant` input, so its variant is fixed by which
+    orchestrator it is (see `FINALIZING_PHASE_BUILD_VARIANTS`).
 
-    Empty for runs outside a tracked release (CI, tracking disabled).
+    A run outside a tracked release (CI, tracking disabled) has no variant and is
+    empty, unless its version carries the ASAN marker: such a build can only be
+    the ASAN release, so it resolves to "asan-debug" and never to the release
+    document.
     """
     if is_top_level_orchestrator(wr):
-        if wr.classification.pipeline_phase == "release":
-            return "release"
-        return str(wr.inputs.get("build_variant") or "").strip()
+        return FINALIZING_PHASE_BUILD_VARIANTS[wr.classification.pipeline_phase]
     tracking = parse_quartz_tracking_id(wr.inputs)
     if tracking.owner_run_id is None:
+        if has_asan_version_marker(wr.rocm_version or ""):
+            return FINALIZING_PHASE_BUILD_VARIANTS["release-asan"]
         return ""
     return tracking.build_variant or "release"
 
@@ -345,11 +379,15 @@ def derive_source_run_id(wr: WorkflowRunRecord) -> str | None:
 # (e.g. python-packages) do not finalize a release either. Consumers such as
 # therock_update_status_json key off this same tuple to decide which
 # orchestrator run stamps the status.json document's completion signal.
-# Each finalizing phase owns the status document of the build variant it runs:
-# `release` owns `status.json`, and `release-asan` owns
-# `status-<build_variant>.json` for the ASAN flavor it declares (e.g.
-# `status-asan.json`).
-FINALIZING_PHASES: Final = frozenset({"release", "release-asan"})
+# Each finalizing phase owns the status document of the one build variant it
+# runs: `multi_arch_release.yml` (`release`) owns `status.json`, and
+# `multi_arch_release_asan.yml` (`release-asan`) always builds `asan-debug` and
+# owns `status-asan-debug.json`.
+FINALIZING_PHASE_BUILD_VARIANTS: Final[dict[str, str]] = {
+    "release": "release",
+    "release-asan": "asan-debug",
+}
+FINALIZING_PHASES: Final = frozenset(FINALIZING_PHASE_BUILD_VARIANTS)
 
 
 def is_top_level_orchestrator(wr: WorkflowRunRecord) -> bool:

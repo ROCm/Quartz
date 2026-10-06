@@ -632,10 +632,10 @@ class Classification:
     # accepted verbatim. Empty = no value / not a test workflow.
     test_type: str = ""
 
-    # Release flavor (e.g. `"release"` | `"asan"` | `"asan-debug"`) from the
-    # propagated `quartz_tracking_id`, or the top-level orchestrator's own
-    # input (see `therock_classify.derive_build_variant`). Empty = outside a
-    # tracked release.
+    # Release flavor (`"release"` | `"asan-debug"`) from the propagated
+    # `quartz_tracking_id`, or fixed by which top-level orchestrator this is
+    # (see `therock_classify.derive_build_variant`). Empty = outside a tracked
+    # release.
     build_variant: str = ""
 
     # 40-hex TheRock commit the release was built from, resolved by the

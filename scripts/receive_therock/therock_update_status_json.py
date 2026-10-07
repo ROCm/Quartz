@@ -53,7 +53,9 @@ from therock_classify import (
     is_top_level_orchestrator,
 )
 from therock_status_document import (
+    BuildRollup,
     Pipelines,
+    PublishRollup,
     RunLeaf,
     Status,
     StatusDocument,
@@ -900,6 +902,14 @@ def _rocm_build_run_id(doc: StatusDocument, platform: str) -> int | None:
     return leaf.run_id if leaf is not None else None
 
 
+def _build_leaf_attempt(doc: StatusDocument, platform: str) -> tuple[int, int] | None:
+    """(run_id, run_attempt) of the platform's `rocm.build` leaf, or None."""
+    leaf = doc.pipelines.rocm.build.get(platform)
+    if leaf is None:
+        return None
+    return (leaf.run_id or 0, leaf.run_attempt or 0)
+
+
 def _update_platform_urls(
     doc: StatusDocument,
     workflow_run: WorkflowRunRecord,
@@ -942,16 +952,30 @@ def _update_platform_urls(
         urls["deb"] = next(iter(workflow_run.deb_urls.values()))
 
 
-# Jobs of the per-platform release orchestrator (multi_arch_release_<platform>.yml)
-# whose worst-of is the true rocm build outcome: the build itself, the tarball and
-# python packaging built from it, and the publish to the release buckets. The
-# `trigger_*` jobs in the same `needs` are downstream fan-outs, not part of the
-# build, so they are deliberately excluded.
+# Whole-build workflows, one per platform. Each calls every build stage
+# (`multi_arch_build_<platform>_artifacts.yml`) and reports `completed` once all
+# of them are done, with a conclusion derived from those stage jobs. That event
+# is the source of `rocm.build_artifacts`: the artifacts are on S3, but not
+# necessarily on the CDN yet.
+_ROCM_WHOLE_BUILD_WORKFLOWS: frozenset[str] = frozenset(
+    {"multi_arch_build_portable_linux.yml", "multi_arch_build_windows.yml"}
+)
+
+# The per-platform release orchestrator's job that calls the whole-build
+# workflow. Its result is the same outcome as the whole-build completion.
+_ROCM_ARTIFACTS_JOB: str = "build_artifacts"
+
+# This job copies the produced artifacts to release buckets served by the CDN.
+_ROCM_PUBLISH_JOB: str = "publish_to_release_buckets"
+
+# The complete rocm build outcome: the stages, the tarball and python packaging
+# built from them, and the publish. Downstream `trigger_*` fan-out jobs in the
+# same `needs` payload are not part of this rollup.
 _ROCM_BUILD_ROLLUP_JOBS: tuple[str, ...] = (
-    "build_artifacts",
+    _ROCM_ARTIFACTS_JOB,
     "build_tarballs",
     "build_python_packages",
-    "publish_to_release_buckets",
+    _ROCM_PUBLISH_JOB,
 )
 
 
@@ -968,9 +992,55 @@ def _captured_job_status(
     return _CONCLUSION_MAP.get(result, Status.failure)
 
 
-def _finalize_rocm_build_rollup(
+def _set_build_artifacts(
+    doc: StatusDocument, platform: str, artifacts: BuildRollup | None
+) -> None:
+    if platform == "linux":
+        doc.linux_build_artifacts = artifacts
+    elif platform == "windows":
+        doc.windows_build_artifacts = artifacts
+
+
+def _clear_platform_release_rollups(doc: StatusDocument, platform: str) -> None:
+    """Drop `rocm.build_artifacts` and `publish` for one platform."""
+    _set_build_artifacts(doc, platform, None)
+    if platform == "linux":
+        doc.linux_publish = None
+    elif platform == "windows":
+        doc.windows_publish = None
+
+
+def _stamp_build_artifacts_from_whole_build(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> None:
+    """Stamp `rocm.build_artifacts` from a completed whole-build workflow.
+
+    Only the whole-build workflows (`_ROCM_WHOLE_BUILD_WORKFLOWS`) qualify; a
+    single stage, the tarball workflow, or an in-progress notify never does. The
+    event must belong to the run attempt that owns the platform's rocm build
+    leaf, so a late completion from a superseded attempt cannot overwrite the
+    current one.
+    """
+    cls = workflow_run.classification
+    if cls.pipeline_type != "rocm" or cls.pipeline_phase != "build":
+        return
+    if PurePosixPath(workflow_run.path).name not in _ROCM_WHOLE_BUILD_WORKFLOWS:
+        return
+    if not workflow_run.conclusion:
+        return
+    leaf = doc.pipelines.rocm.build.get(cls.platform)
+    if leaf is None or leaf.run_id != workflow_run.workflow_run_id:
+        return
+    if (leaf.run_attempt or 0) != (workflow_run.run_attempt or 0):
+        return
+    _set_build_artifacts(
+        doc, cls.platform, BuildRollup(status=_run_status(workflow_run))
+    )
+
+
+def _finalize_rocm_build_rollup(
+    doc: StatusDocument, workflow_run: WorkflowRunRecord
+) -> bool:
     """Stamp the terminal rocm build status from a completed per-platform release
     orchestrator (multi_arch_release_<platform>.yml).
 
@@ -981,11 +1051,33 @@ def _finalize_rocm_build_rollup(
     it, and the publish to the release buckets (`_ROCM_BUILD_ROLLUP_JOBS`). A
     publish failure therefore makes rocm build fail even when compilation
     succeeded.
+
+    It also stamps `publish` (status, plus `published_at` on success) and
+    refreshes `rocm.build_artifacts` from the `build_artifacts` job, which covers
+    a whole-build completion that never arrived (see
+    `_stamp_build_artifacts_from_whole_build`). `build_artifacts` needs only its
+    own job result; `publish` and the leaf need all four.
+
+    Returns False when a newer run or attempt already owns the platform's rocm
+    build leaf. Callers use that result to keep the stale event from updating
+    release URLs or document metadata as well. Only the platform's own leaf
+    decides staleness, not the document owner's attempt: a partial rerun leaves
+    the passing platform at the earlier attempt, and that platform's release
+    event must still finalize it.
     """
     platform = workflow_run.classification.platform
     if platform not in ("linux", "windows"):
-        return
-    statuses: list[Status] = []
+        return False
+    leaf = doc.pipelines.rocm.build.get(platform)
+    current = _build_leaf_attempt(doc, platform)
+    incoming = (workflow_run.workflow_run_id or 0, workflow_run.run_attempt or 0)
+    if current is not None and incoming < current:
+        return False
+
+    artifacts_status = _captured_job_status(workflow_run, _ROCM_ARTIFACTS_JOB)
+    if artifacts_status is not None:
+        _set_build_artifacts(doc, platform, BuildRollup(status=artifacts_status))
+    job_statuses: dict[str, Status] = {}
     for job in _ROCM_BUILD_ROLLUP_JOBS:
         s = _captured_job_status(workflow_run, job)
         if s is None:
@@ -993,26 +1085,35 @@ def _finalize_rocm_build_rollup(
             # finalize on a subset: greening the build while one of build /
             # tarball / python / publish is missing.
             # Leave the leaf capped in_progress.
-            return
-        statuses.append(s)
-    status = rollup_statuses(statuses, Status.in_progress)
+            return True
+        job_statuses[job] = s
+    status = rollup_statuses(job_statuses.values(), Status.in_progress)
     ts_start = workflow_run.run_started_at or workflow_run.created_at
     started_at = _datetime_to_z(ts_start) if ts_start is not None else None
     ts_done = workflow_run.updated_at
     completed_at = _datetime_to_z(ts_done) if ts_done is not None else None
-    leaf = doc.pipelines.rocm.build.get(platform)
-    if leaf is None:
-        doc.pipelines.rocm.build[platform] = RunLeaf(
-            run_id=workflow_run.workflow_run_id,
-            run_attempt=workflow_run.run_attempt,
-            status=status,
-            started_at=started_at,
-            completed_at=completed_at,
-        )
-        return
-    leaf.status = status
-    if completed_at is not None:
-        leaf.completed_at = completed_at
+
+    finalized_leaf = RunLeaf(
+        run_id=workflow_run.workflow_run_id,
+        run_attempt=workflow_run.run_attempt,
+        status=status,
+        started_at=started_at,
+        completed_at=completed_at,
+    )
+    if leaf is not None and not leaf.should_replace(finalized_leaf):
+        return False
+    doc.pipelines.rocm.build[platform] = finalized_leaf
+
+    publish_status = job_statuses[_ROCM_PUBLISH_JOB]
+    publish = PublishRollup(
+        status=publish_status,
+        published_at=completed_at if publish_status is Status.success else None,
+    )
+    if platform == "linux":
+        doc.linux_publish = publish
+    else:
+        doc.windows_publish = publish
+    return True
 
 
 def _update_release_cdn_urls(
@@ -1137,6 +1238,10 @@ def _reset_document_for_new_owner(doc: StatusDocument) -> None:
     doc.windows_architectures.clear()
     doc.linux_urls.clear()
     doc.windows_urls.clear()
+    doc.linux_build_artifacts = None
+    doc.windows_build_artifacts = None
+    doc.linux_publish = None
+    doc.windows_publish = None
     doc.pipelines = Pipelines()
     rebuild_summary(doc)
 
@@ -1255,6 +1360,10 @@ def _merge_run_into_document(
     # Capture the run that owns the URL block *before* the upsert, so
     # `_update_platform_urls` can tell whether this event's build supersedes it.
     prev_url_owner = _rocm_build_run_id(doc, cls.platform)
+    is_rocm_build = cls.pipeline_type == "rocm" and cls.pipeline_phase == "build"
+    previous_build_attempt = (
+        _build_leaf_attempt(doc, cls.platform) if is_rocm_build else None
+    )
     targets = (
         list(cls.architectures) if cls.pipeline_phase in ("test", "test-full") else [""]
     )
@@ -1289,6 +1398,16 @@ def _merge_run_into_document(
                 workflow_run.run_attempt,
                 arch_leaf.status,
             )
+
+    if is_rocm_build:
+        # `build_artifacts` and `publish` describe one (run id, attempt) of this
+        # platform's build. A newer run or attempt taking over the leaf makes
+        # them stale until that run reports its own.
+        if previous_build_attempt is not None and previous_build_attempt != (
+            _build_leaf_attempt(doc, cls.platform)
+        ):
+            _clear_platform_release_rollups(doc, cls.platform)
+        _stamp_build_artifacts_from_whole_build(doc, workflow_run)
 
     # URLs are updated only after the leaf upsert, gated on acceptance: a stale
     # event that lost the guard must not clobber the block.
@@ -1889,11 +2008,11 @@ def _build_and_write(
             applied = True
     elif finalize_platform_release:
         if _gate_to_document_owner(doc, workflow_run):
-            _update_document_metadata(doc, workflow_run, now)
-            _finalize_rocm_build_rollup(doc, workflow_run)
-            _update_release_cdn_urls(doc, workflow_run)
-            rebuild_summary(doc)
-            applied = True
+            if _finalize_rocm_build_rollup(doc, workflow_run):
+                _update_document_metadata(doc, workflow_run, now)
+                _update_release_cdn_urls(doc, workflow_run)
+                rebuild_summary(doc)
+                applied = True
     else:
         if _gate_to_document_owner(doc, workflow_run):
             _update_document_metadata(doc, workflow_run, now)

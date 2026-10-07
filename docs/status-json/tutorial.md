@@ -37,6 +37,14 @@ kick off your own work. Concretely:
    downstream work.
 1. **Grab the artifacts.** Build the download URLs from `summary.<platform>.urls`.
 
+`rocm.build.status` is the CDN-safe gate: it becomes terminal only after
+production, tarball/wheel packaging, and publication finish. Consumers that
+only need the S3 build artifacts can read `rocm.build_artifacts.status`, which
+becomes terminal as soon as every build stage has finished; a successful value
+there means the artifacts are on S3 but does not guarantee the CDN URLs are
+ready. `summary.<platform>.publish` exposes the publication status and its
+successful `published_at` timestamp.
+
 You do not have to write the fetching and parsing yourself. The
 [Reading it in Python](#reading-it-in-python) section below ships a small helper
 that does steps 1 to 3 for you.

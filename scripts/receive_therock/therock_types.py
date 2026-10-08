@@ -22,7 +22,8 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from enum import StrEnum
+from typing import Any, NamedTuple
 
 log = logging.getLogger(__name__)
 
@@ -71,34 +72,104 @@ def _parse_bool(value: Any) -> bool | None:
     return None
 
 
-def parse_quartz_tracking_id(inputs: dict[str, Any]) -> tuple[int | None, str | None]:
-    """Split the propagated `quartz_tracking_id` into (owner_run_id, release_type).
+class TheRockReleaseType(StrEnum):
+    """Release channels as TheRock spells them on the wire, mirroring the
+    orchestrator's own `release_type` choice in multi_arch_release.yml."""
 
-    The top-level `multi_arch_release.yml` orchestrator stamps every workflow it
-    triggers with `quartz_tracking_id: "<github.run_id>;<release_type>"` (empty
-    when tracking is disabled). `github.run_id` is the orchestrator's own run, the
-    top-level owner of the whole release lineage, and `release_type` is the
-    channel it published to. Both are authoritative for every descendant run, so
-    they are read straight from here rather than reconstructed from artifact ids,
-    URLs, or the immediate GitHub parent.
+    dev = "dev"
+    dev_bkc = "dev-bkc"
+    nightly = "nightly"
+    nightly_bkc = "nightly-bkc"
+    prerelease = "prerelease"
 
-    Returns `(None, None)` when the input is absent or empty (CI runs, manual
-    TheRock dispatches, and the orchestrator's own record, which generates the id
-    but does not carry it on its own inputs). A present but non-numeric run-id is
-    a producer-side format bug and raises rather than coercing to None.
+
+class TheRockBuildVariant(StrEnum):
+    """Build variants as TheRock spells them on the wire, mirroring
+    `all_build_variants` in TheRock's build_tools/github_actions/amdgpu_family_matrix.py.
+    """
+
+    release = "release"
+    asan = "asan"
+    host_asan = "host-asan"
+    asan_debug = "asan-debug"
+    host_asan_debug = "host-asan-debug"
+    tsan = "tsan"
+
+
+class QuartzTrackingId(NamedTuple):
+    """The fields of a propagated `quartz_tracking_id`; all None when untracked."""
+
+    owner_run_id: int | None
+    release_type: TheRockReleaseType | None
+    build_variant: TheRockBuildVariant | None
+
+
+# `quartz_tracking_id` fields, in order. New fields are only ever appended, so an
+# id is valid with the required prefix alone (producers that predate a trailing
+# field) and up to every known field. More than that means the producer is ahead
+# of this parser; Quartz must learn a field before TheRock/rockrel emit it.
+_TRACKING_ID_REQUIRED_FIELDS = 2  # run id, release type
+_TRACKING_ID_KNOWN_FIELDS = 3  # + build variant
+
+
+def parse_quartz_tracking_id(inputs: dict[str, Any]) -> QuartzTrackingId:
+    """Split `quartz_tracking_id` into owner, release type, and build variant.
+
+    The top-level orchestrator (e.g. `multi_arch_release.yml`) stamps every
+    workflow it triggers with `quartz_tracking_id`, e.g. `"12345;nightly;release"`
+    or `"12345;nightly;asan-debug"` (empty when tracking is disabled). The run id
+    and release type are required; the build variant is None when absent or
+    empty.
+
+    Returns all-None when the input is absent or empty (CI runs, manual TheRock
+    dispatches, and the orchestrator's own record, which generates the id but
+    does not carry it on its own inputs). A present id is a producer contract, so
+    a non-numeric run id, an empty required field, a release type outside
+    `TheRockReleaseType`, a build variant outside `TheRockBuildVariant`, or a
+    field count outside `_TRACKING_ID_REQUIRED_FIELDS`..`_TRACKING_ID_KNOWN_FIELDS`
+    raises rather than guessing at what the producer meant.
     """
     raw = inputs.get("quartz_tracking_id")
     if not isinstance(raw, str) or not raw.strip():
-        return None, None
-    run_id_part, _, release_type_part = raw.partition(";")
+        return QuartzTrackingId(None, None, None)
+    parts = [part.strip() for part in raw.split(";")]
+    if not _TRACKING_ID_REQUIRED_FIELDS <= len(parts) <= _TRACKING_ID_KNOWN_FIELDS:
+        raise ValueError(
+            f"parse_quartz_tracking_id: expected {_TRACKING_ID_REQUIRED_FIELDS} to "
+            f"{_TRACKING_ID_KNOWN_FIELDS} ';'-separated fields, got {len(parts)} "
+            f"in quartz_tracking_id={raw!r}"
+        )
+    parts += [""] * (_TRACKING_ID_KNOWN_FIELDS - len(parts))
+    run_id_part, release_type_part, build_variant_part = parts
     try:
-        run_id = int(run_id_part.strip())
+        run_id = int(run_id_part)
     except ValueError as exc:
         raise ValueError(
             f"parse_quartz_tracking_id: non-numeric run-id {run_id_part!r} "
             f"in quartz_tracking_id={raw!r}"
         ) from exc
-    return run_id, release_type_part.strip() or None
+    if not release_type_part:
+        raise ValueError(
+            f"parse_quartz_tracking_id: empty release type in "
+            f"quartz_tracking_id={raw!r}"
+        )
+    try:
+        release_type = TheRockReleaseType(release_type_part)
+    except ValueError as exc:
+        raise ValueError(
+            f"parse_quartz_tracking_id: unknown release type {release_type_part!r} "
+            f"in quartz_tracking_id={raw!r}"
+        ) from exc
+    build_variant: TheRockBuildVariant | None = None
+    if build_variant_part:
+        try:
+            build_variant = TheRockBuildVariant(build_variant_part)
+        except ValueError as exc:
+            raise ValueError(
+                f"parse_quartz_tracking_id: unknown build variant "
+                f"{build_variant_part!r} in quartz_tracking_id={raw!r}"
+            ) from exc
+    return QuartzTrackingId(run_id, release_type, build_variant)
 
 
 # Allow-list of `event_type` values the ingest pipeline accepts on a
@@ -123,20 +194,12 @@ KNOWN_EVENT_TYPES = WORKFLOW_RUN_EVENT_TYPES | frozenset(
 )
 
 
-# The release channels this pipeline recognizes, mirroring the orchestrator's
-# own `release_type` enum in multi_arch_release.yml. Anything outside this set
-# (a producer typo or a channel we do not model yet) is coerced to None. This is
-# broader than `_TRACKED_RELEASE_TYPES` in therock_update_status_json.py, which
-# is the narrower subset that actually gets a status.json document.
-KNOWN_RELEASE_TYPES = frozenset(
-    {
-        "dev",
-        "dev-bkc",
-        "nightly",
-        "nightly-bkc",
-        "prerelease",
-    }
-)
+# The release channels this pipeline recognizes (see `TheRockReleaseType`).
+# Anything outside this set (a producer typo or a channel we do not model yet)
+# is coerced to None. This is broader than `_TRACKED_RELEASE_TYPES` in
+# therock_update_status_json.py, which is the narrower subset that actually gets
+# a status.json document.
+KNOWN_RELEASE_TYPES: frozenset[str] = frozenset(TheRockReleaseType)
 
 
 @dataclass(frozen=True)
@@ -603,9 +666,10 @@ class Classification:
     # accepted verbatim. Empty = no value / not a test workflow.
     test_type: str = ""
 
-    # Free-form build variant from `inputs.build_variant` /
-    # `inputs.variant` (e.g. `"release"` | `"debug"` | `"asan"`),
-    # accepted verbatim. Empty = no value / not a build workflow.
+    # Release flavor (`"release"` | `"asan-debug"`) from the propagated
+    # `quartz_tracking_id`, or fixed by which top-level orchestrator this is
+    # (see `therock_classify.derive_build_variant`). Empty = outside a tracked
+    # release.
     build_variant: str = ""
 
     # 40-hex TheRock commit the release was built from, resolved by the
@@ -622,6 +686,14 @@ class Classification:
     #   else  -- e.g. `7.13.0a20260415` (nightly), `7.13.0rc1`
     #            (prerelease), `7.13.0.dev0+<sha>` (dev)
     release_version: str | None = None
+
+    # The ASAN marker TheRock appends to the package version, verbatim: `+asan`
+    # when the version has no local segment (e.g. `7.13.0a20260415+asan`), or
+    # `.asan` after an existing one (e.g. `7.13.0a20260415+bkc.20260417.asan`);
+    # "" when absent. `release_version` omits it, so
+    # the release and ASAN builds of one release route to the same folder; the
+    # status document's `rocm_version` is `release_version` plus this marker.
+    version_marker: str = ""
 
     # GitHub Actions run id whose artifacts/outputs this record points to:
     # `inputs.artifact_run_id` (child test runs) -> `trigger_workflow_run_id`
@@ -807,7 +879,7 @@ class WorkflowRunRecord:
         # `inputs.release_type` is the direct declared input that feeds that id
         # and is the only source on the orchestrator's own record and manual
         # dispatches. "" (CI) / absent both normalize to None.
-        _, quartz_release_type = parse_quartz_tracking_id(inputs)
+        quartz_release_type = parse_quartz_tracking_id(inputs).release_type
         explicit_rt = quartz_release_type or inputs.get("release_type") or None
         if explicit_rt and explicit_rt not in KNOWN_RELEASE_TYPES:
             log.warning(

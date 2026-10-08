@@ -20,6 +20,7 @@ from therock_types import (  # noqa: E402
     RELEASE_VERSION_PRERELEASE_RE,
     PullRequestInput,
     PushEventInput,
+    TheRockBuildVariant,
     TheRockDispatchEvent,
     WorkflowJobRecord,
     WorkflowRunRecord,
@@ -249,21 +250,60 @@ def test_run_from_dict_release_type_resolution(raw: dict, expected: str | None) 
 @pytest.mark.parametrize(
     "value,expected",
     [
-        ({}, (None, None)),
-        ({"quartz_tracking_id": ""}, (None, None)),
-        ({"quartz_tracking_id": "123;nightly"}, (123, "nightly")),
-        ({"quartz_tracking_id": "123"}, (123, None)),
-        ({"quartz_tracking_id": "123;"}, (123, None)),
+        ({}, (None, None, None)),
+        ({"quartz_tracking_id": ""}, (None, None, None)),
+        ({"quartz_tracking_id": "123;nightly"}, (123, "nightly", None)),
+        (
+            {"quartz_tracking_id": "123;nightly;asan"},
+            (123, "nightly", "asan"),
+        ),
+        ({"quartz_tracking_id": "123;nightly;"}, (123, "nightly", None)),
     ],
 )
 def test_parse_quartz_tracking_id(value: dict, expected: tuple) -> None:
-    assert parse_quartz_tracking_id(value) == expected
+    parsed = parse_quartz_tracking_id(value)
+    assert parsed == expected
+    assert parsed.owner_run_id == expected[0]
+    assert parsed.release_type == expected[1]
+    assert parsed.build_variant == expected[2]
 
 
 @pytest.mark.parametrize("value", ["123abc;nightly", ";nightly"])
-def test_parse_quartz_tracking_id_malformed_run_id_raises(value: str) -> None:
-    with pytest.raises(ValueError):
+def test_parse_quartz_tracking_id_non_numeric_run_id_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="non-numeric run-id"):
         parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+@pytest.mark.parametrize("value", ["123", "123;nightly;asan;surplus"])
+def test_parse_quartz_tracking_id_wrong_field_count_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="';'-separated fields"):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+@pytest.mark.parametrize("value", ["123;", "123; ;asan"])
+def test_parse_quartz_tracking_id_empty_release_type_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="empty release type"):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+@pytest.mark.parametrize("value", ["123;bogus", "123;ci;release", "123;Nightly"])
+def test_parse_quartz_tracking_id_unknown_release_type_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="unknown release type"):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+@pytest.mark.parametrize("value", ["123;nightly;bogus", "123;nightly;ASAN-DEBUG"])
+def test_parse_quartz_tracking_id_unknown_build_variant_raises(value: str) -> None:
+    with pytest.raises(ValueError, match="unknown build variant"):
+        parse_quartz_tracking_id({"quartz_tracking_id": value})
+
+
+@pytest.mark.parametrize("variant", [v.value for v in TheRockBuildVariant])
+def test_parse_quartz_tracking_id_accepts_every_therock_build_variant(
+    variant: str,
+) -> None:
+    parsed = parse_quartz_tracking_id({"quartz_tracking_id": f"123;nightly;{variant}"})
+    assert parsed.build_variant == variant
 
 
 def test_run_from_dict_rocm_version_precedence() -> None:

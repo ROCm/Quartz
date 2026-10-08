@@ -234,13 +234,13 @@ def _nightly_root(date_suffix: str) -> str:
 
 
 def _variant_filename(base: str, build_variant: str) -> str:
-    """`<base>.json` for the release build, `<base>-<build_variant>.json` otherwise.
+    """`<base>.json` for the release build, `<base>_<build_variant>.json` otherwise.
 
     Names every per-variant file: the dated document (`status.json`,
-    `status-asan-debug.json`) and its pointers (`latest.json`,
-    `latest_good-asan-debug.json`).
+    `status_asan-debug.json`) and its pointers (`latest.json`,
+    `latest_good_asan-debug.json`).
     """
-    suffix = "" if build_variant == "release" else f"-{build_variant}"
+    suffix = "" if build_variant == "release" else f"_{build_variant}"
     return f"{base}{suffix}.json"
 
 
@@ -370,7 +370,7 @@ def _load_or_create_document(
     return (
         StatusDocument(
             release_type=_doc_release_type(release_type),
-            rocm_version=workflow_run.classification.release_version or "",
+            rocm_version=_document_rocm_version(workflow_run),
             build_date=build_date,
             status_json_created=now,
             status_json_last_updated=now,
@@ -391,14 +391,23 @@ def _update_document_metadata(
     if not doc.created_at and workflow_run.created_at is not None:
         doc.created_at = _datetime_to_z(workflow_run.created_at)
 
-    if workflow_run.classification.release_version and not doc.rocm_version:
-        doc.rocm_version = workflow_run.classification.release_version
+    if not doc.rocm_version:
+        doc.rocm_version = _document_rocm_version(workflow_run)
 
     bkc_build_date = _bkc_build_date(workflow_run)
     if bkc_build_date:
         doc.build_date = bkc_build_date
     elif workflow_run.created_at is not None:
         doc.build_date = workflow_run.created_at.strftime("%Y%m%d")
+
+
+def _document_rocm_version(workflow_run: WorkflowRunRecord) -> str:
+    """The document's `rocm_version`: the release version with the run's ASAN
+    marker kept"""
+    c = workflow_run.classification
+    if not c.release_version:
+        return ""
+    return f"{c.release_version}{c.version_marker}"
 
 
 def _bkc_build_date(workflow_run: WorkflowRunRecord) -> str:
@@ -1079,8 +1088,8 @@ def _apply_pipeline_enable_flags(
 def _apply_build_metadata(doc: StatusDocument, workflow_run: WorkflowRunRecord) -> None:
     """Stamp build_variant / therock_commit off the owning run's classification.
 
-    Both are recorded by the owner-writer runs: `build_variant` from the
-    `quartz_tracking_id` (see `therock_classify.derive_build_variant`) and
+    Both are recorded by the owner-writer runs: `build_variant` from the run's
+    declared variant (see `therock_classify.derive_build_variant`) and
     `therock_commit` from the setup checkout's captured `commit` output (see
     `therock_classify.derive_therock_commit`). Each is written only when
     non-empty.
@@ -1171,23 +1180,6 @@ def _reset_finalization_for_rerun(doc: StatusDocument) -> None:
     rebuild_summary(doc)
 
 
-def _is_ownerless_pytorch_leaf_for_release(
-    doc: StatusDocument, workflow_run: WorkflowRunRecord
-) -> bool:
-    """True for a pytorch leaf with no derivable owner that pins to this release.
-
-    pytorch test runs carry only the rocm version (inside the torch version), no
-    artifact_run_id or parent to derive an owner from, so a pytorch leaf whose
-    release version matches the document is accepted as part of that release.
-    Restricting to `pipeline_type == "pytorch"` keeps this the sole
-    ownerless-acceptance path.
-    """
-    if workflow_run.classification.pipeline_type != "pytorch":
-        return False
-    release_version = workflow_run.classification.release_version
-    return bool(release_version) and release_version == doc.rocm_version
-
-
 def _gate_to_document_owner(
     doc: StatusDocument, workflow_run: WorkflowRunRecord
 ) -> bool:
@@ -1214,11 +1206,6 @@ def _gate_to_document_owner(
     # parent; accept them when their own run id is the owner.
     if parent in (None, 0):
         if workflow_run.workflow_run_id == owner:
-            return True
-        # A pytorch leaf carries only the rocm version and cannot prove ownership
-        # by run id; admit it when its version pins to this release. A mismatched
-        # version, or any non-pytorch ownerless leaf, is still refused.
-        if _is_ownerless_pytorch_leaf_for_release(doc, workflow_run):
             return True
         log.info(
             "skipping workflow_run_id=%s with no derived owner run; status.json "
@@ -1347,13 +1334,13 @@ def _update_symlinks(
     Meaningful for `nightly`, `nightly-bkc`, and `prerelease`. Each build variant
     has its own pointer pair, named like its document (see `_variant_filename`):
     `latest.json`/`latest_good.json` for `release`,
-    `latest-asan-debug.json`/`latest_good-asan-debug.json` for `asan-debug`.
-    Every pointer is a
-    single-hop symlink to the concrete dated document: `latest.json` follows the
-    newest build, `latest_good.json` follows the newest all-green build and is
-    repointed to the next-best green build (or dropped) when the build it targets
-    stops being green (see `_recompute_latest_good`). The version-ordered
-    top-level `nightly-bkc/latest.json`/`latest_good.json` (for the highest
+    `latest_asan-debug.json`/`latest_good_asan-debug.json` for `asan-debug`.
+    Every pointer is a single-hop symlink to the concrete dated document:
+    `latest.json` follows the newest build, `latest_good.json` follows the
+    newest all-green build and is repointed to the next-best green build
+    (or dropped) when the build it targets stops being green
+    (see `_recompute_latest_good`). The version-ordered top-level
+    `nightly-bkc/latest.json`/`latest_good.json` (for the highest
     nightly version) are maintained by `_update_bkc_top_latest`.
     """
     latest_name = _variant_filename("latest", build_variant)
@@ -1453,7 +1440,7 @@ def _recompute_latest_good(latest_good: Path, target_relative: Path) -> Path | N
     return latest_good
 
 
-def _recompute_bkc_top_good(good: Path, target_relative: Path) -> Path | None:
+def _recompute_bkc_top_good(latest_good: Path, target_relative: Path) -> Path | None:
     """Repoint the top-level `nightly-bkc` `latest_good` pointer after its target
     reopens.
 
@@ -1464,19 +1451,19 @@ def _recompute_bkc_top_good(good: Path, target_relative: Path) -> Path | None:
     anywhere, so the top pointer is deleted. Returns the pointer path for the
     caller to stage, or None when its target was some other build.
     """
-    if not good.is_symlink():
+    if not latest_good.is_symlink():
         return None
     try:
-        if good.readlink() != target_relative:
+        if latest_good.readlink() != target_relative:
             return None
     except OSError:
         return None
-    replacement = _highest_subdir_good(good.parent, good.name)
-    good.unlink()
+    replacement = _highest_subdir_good(latest_good.parent, latest_good.name)
+    latest_good.unlink()
     if replacement is None:
-        return good
-    good.symlink_to(replacement)
-    return good
+        return latest_good
+    latest_good.symlink_to(replacement)
+    return latest_good
 
 
 def _newest_good_dated_status(latest_dir: Path, status_name: str) -> Path | None:
@@ -1485,7 +1472,7 @@ def _newest_good_dated_status(latest_dir: Path, status_name: str) -> Path | None
 
     Scans the immediate `<date>` subdirectories (nightly dates, or bkc run dates
     under one nightly version) and keeps the highest date whose `status_name`
-    (e.g. `status.json` or `status-asan-debug.json`) finalized
+    (e.g. `status.json` or `status_asan-debug.json`) finalized
     `overall_status == success`. Other variants' documents in the same dated
     directory are never considered.
     """
@@ -1502,8 +1489,8 @@ def _newest_good_dated_status(latest_dir: Path, status_name: str) -> Path | None
     return None
 
 
-def _highest_subdir_good(bkc_root: Path, pointer_name: str) -> Path | None:
-    """Highest-version target across the per-nightly-version `pointer_name`
+def _highest_subdir_good(bkc_root: Path, latest_good_name: str) -> Path | None:
+    """Highest-version target across the per-nightly-version `latest_good_name`
     pointers under `bkc_root` (e.g. `latest_good.json`), as a path relative to
     `bkc_root` (`<nightly-version>/<bkc-date>/status*.json`), or None when none
     survive.
@@ -1521,11 +1508,11 @@ def _highest_subdir_good(bkc_root: Path, pointer_name: str) -> Path | None:
     for child in sorted(bkc_root.iterdir()):
         if not child.is_dir():
             continue
-        pointer = child / pointer_name
-        if not pointer.is_symlink():
+        latest_good = child / latest_good_name
+        if not latest_good.is_symlink():
             continue
         try:
-            dated = pointer.readlink()  # <bkc-date>/status*.json
+            dated = latest_good.readlink()  # <bkc-date>/status*.json
             key = _bkc_top_key(child.name, dated.parts[0])
         except (IndexError, OSError):
             continue
@@ -1551,7 +1538,7 @@ def _update_prerelease_latest(
 
     Maintains two levels, both version-key ordered so they never regress from,
     e.g., rc10 to rc2 (`latest_name` is `latest.json`, or e.g.
-    `latest-asan-debug.json` for another build variant):
+    `latest_asan-debug.json` for another build variant):
 
       - `prerelease/latest.json`               newest candidate for the highest version
                                                across all lines
@@ -1591,7 +1578,7 @@ def _update_bkc_top_latest(
     """Update the top-level `nightly-bkc/latest.json` and `latest_good.json`.
 
     `latest_name`/`latest_good_name` carry the build variant's suffix (e.g.
-    `latest-asan-debug.json`), so each variant keeps its own top-level pair. Both are
+    `latest_asan-debug.json`), so each variant keeps its own top-level pair. Both are
     single-hop symlinks to a concrete `<nightly-version>/<bkc-date>/status*.json`,
     ordered by `_bkc_top_key`: the largest nightly version wins across nightly
     versions, and the newest build only breaks ties within one nightly version.
@@ -1622,12 +1609,14 @@ def _update_bkc_top_latest(
         latest.symlink_to(new_target_relative)
         files_written.append(latest)
 
-    good = bkc_root / latest_good_name
+    latest_good = bkc_root / latest_good_name
     if doc.summary.overall_status == Status.success:
-        if _bkc_top_should_update(good, new_key):
-            files_written.append(_write_latest_good_symlink(good, new_target_relative))
+        if _bkc_top_should_update(latest_good, new_key):
+            files_written.append(
+                _write_latest_good_symlink(latest_good, new_target_relative)
+            )
     else:
-        recomputed = _recompute_bkc_top_good(good, new_target_relative)
+        recomputed = _recompute_bkc_top_good(latest_good, new_target_relative)
         if recomputed is not None:
             files_written.append(recomputed)
 
@@ -1959,29 +1948,12 @@ _TRACKED_RELEASE_TYPES: frozenset[str] = frozenset(
 # Build variants (TheRock's `build_variant`) that get a status document: one
 # per top-level release orchestrator (see
 # `therock_classify.FINALIZING_PHASE_BUILD_VARIANTS`), `status.json` for
-# `release` and `status-asan-debug.json` for `asan-debug` (see
-# `_variant_filename`). Any other variant (e.g. `asan`, `tsan`) is rejected.
+# `release` and `status_asan-debug.json` for `asan-debug` (see
+# `_variant_filename`). Any other variant (e.g. `asan`, `tsan`), or none (a run
+# outside a tracked release), is rejected.
 _TRACKED_BUILD_VARIANTS: frozenset[str] = frozenset(
     FINALIZING_PHASE_BUILD_VARIANTS.values()
 )
-
-
-def _document_build_variant(workflow_run: WorkflowRunRecord) -> str:
-    """The build variant whose status document this run updates.
-
-    A leaf outside any tracked release carries no variant (see
-    `derive_build_variant`) and resolves to `release`, the only document that can
-    adopt an ownerless run (see `_is_ownerless_pytorch_leaf_for_release`). Setup
-    owns a document, so it stays empty (and is rejected) without an explicit
-    variant.
-    """
-    c = workflow_run.classification
-    build_variant = c.build_variant.lower()
-    if build_variant:
-        return build_variant
-    if c.pipeline_type == "setup":
-        return ""
-    return "release"
 
 
 # status.json is only produced for the release-tracking repository; runs from
@@ -2125,7 +2097,7 @@ def update_status_json(
         return None
 
     c = workflow_run.classification
-    build_variant = _document_build_variant(workflow_run)
+    build_variant = c.build_variant
     if build_variant not in _TRACKED_BUILD_VARIANTS:
         log.info(
             "build_variant=%r is not a tracked build variant (%s; "
@@ -2146,8 +2118,9 @@ def update_status_json(
         # The setup run executes via `workflow_call`, so it shares the top-level
         # orchestrator's run id and can anchor document ownership before any leaf
         # arrives (owner writer: `_record_orchestrator_owner`). Its build variant
-        # comes from the `quartz_tracking_id` its orchestrator stamps, so release
-        # and ASAN setup events can never own each other's document.
+        # is the `build_variant` input its orchestrator passes, checked against
+        # the `quartz_tracking_id` (see `therock_classify.derive_build_variant`),
+        # so release and ASAN setup events can never own each other's document.
         record_owner_only = True
     else:
         finalize = _is_release_completion(payload, workflow_run)

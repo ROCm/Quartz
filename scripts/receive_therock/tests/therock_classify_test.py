@@ -24,6 +24,7 @@ from therock_classify import (
     derive_rpm_urls,
     derive_tarball_url,
     derive_therock_commit,
+    derive_version_marker,
 )
 from therock_types import ORCHESTRATOR_SPECS, WorkflowJobRecord, WorkflowRunRecord
 
@@ -107,6 +108,28 @@ class DeriveReleaseVersionTest(unittest.TestCase):
     def test_asan_inside_a_version_is_not_a_marker(self):
         rec = _make_record(rocm_version="7.10.0.dev0+asanfeature")
         self.assertEqual(derive_release_version(rec), "7.10.0.dev0+asanfeature")
+        self.assertEqual(derive_version_marker(rec), "")
+
+
+class DeriveVersionMarkerTest(unittest.TestCase):
+    def test_marker_is_kept_verbatim(self):
+        cases = {
+            "10.2.0a20261005.asan": ".asan",
+            "10.2.0a20261005+asan": "+asan",
+            "10.2.0rc1+asan": "+asan",
+            "10.1.0a20260811+bkc.20260813.asan": ".asan",
+            "2.12.0+rocm10.1.0a20260823.asan": ".asan",
+        }
+        for raw, expected in cases.items():
+            with self.subTest(raw=raw):
+                rec = _make_record(rocm_version=raw)
+                self.assertEqual(derive_version_marker(rec), expected)
+
+    def test_no_marker_is_empty(self):
+        for raw in ("", "10.2.0a20261005", "2.12.0+rocm10.1.0a20260823"):
+            with self.subTest(raw=raw):
+                rec = _make_record(rocm_version=raw)
+                self.assertEqual(derive_version_marker(rec), "")
 
     def test_torch_version_fallback_end_to_end(self):
         # test_pytorch_wheels_full.yml only carries `torch_version` (see
@@ -186,26 +209,19 @@ class DeriveReleaseTypeTest(unittest.TestCase):
         rec = _make_record(rocm_version="7.13.0", release_type="dev")
         self.assertEqual(derive_release_type(rec), "dev")
 
-    def test_scheduled_asan_orchestrator_is_nightly(self):
-        # rockrel's scheduled run reports `toJSON(inputs) == {}`.
+    def test_asan_orchestrator_keeps_its_declared_type(self):
         run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
-        run.trigger_event = "schedule"
-        self.assertEqual(derive_release_type(run), "nightly")
-
-    def test_dispatched_asan_orchestrator_keeps_its_declared_type(self):
-        run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
-        run.trigger_event = "workflow_dispatch"
         run.release_type = "prerelease"
         self.assertEqual(derive_release_type(run), "prerelease")
 
-    def test_undeclared_type_is_only_inferred_for_scheduled_asan_orchestrator(self):
-        dispatched = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
-        dispatched.trigger_event = "workflow_dispatch"
+    def test_undeclared_type_is_empty_for_every_run(self):
+        asan = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
+        asan.trigger_event = "schedule"
         release = _orchestrator_run()
         release.trigger_event = "schedule"
         leaf = _leaf_run()
         leaf.trigger_event = "schedule"
-        for run in (dispatched, release, leaf):
+        for run in (asan, release, leaf):
             with self.subTest(path=run.path, event=run.trigger_event):
                 self.assertEqual(derive_release_type(run), "")
 
@@ -876,27 +892,21 @@ class DeriveBuildVariantTest(unittest.TestCase):
         run.inputs = {"quartz_tracking_id": "123;nightly;asan-debug"}
         self.assertEqual(derive_build_variant(run), "asan-debug")
 
-    def test_two_field_tracking_id_is_release(self):
+    def test_two_field_tracking_id_has_no_variant(self):
         run = _leaf_run()
         run.inputs = {
             "quartz_tracking_id": "123;nightly",
             "build_variant": "asan-debug",
         }
-        self.assertEqual(derive_build_variant(run), "release")
-
-    def test_untracked_run_has_no_variant(self):
-        # A direct input without a tracking id (manual dispatch, CI) claims nothing.
-        run = _leaf_run()
-        run.inputs = {"build_variant": "asan-debug"}
         self.assertEqual(derive_build_variant(run), "")
 
-    def test_untracked_run_with_asan_version_is_asan_debug(self):
-        # e.g. an ownerless PyTorch test leaf carrying only an ASAN torch version.
-        for version in ("2.12.0+rocm10.1.0a20260823.asan", "10.2.0a20261005+asan"):
-            with self.subTest(version=version):
-                run = _leaf_run()
-                run.rocm_version = version
-                self.assertEqual(derive_build_variant(run), "asan-debug")
+    def test_untracked_run_has_no_variant(self):
+        # A direct input without a tracking id (manual dispatch, CI) claims nothing,
+        # and neither does an ASAN version marker.
+        run = _leaf_run()
+        run.inputs = {"build_variant": "asan-debug"}
+        run.rocm_version = "2.12.0+rocm10.1.0a20260823.asan"
+        self.assertEqual(derive_build_variant(run), "")
 
     def test_too_few_tracking_id_fields_raise(self):
         run = _leaf_run()
@@ -910,19 +920,112 @@ class DeriveBuildVariantTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             derive_build_variant(run)
 
-    def test_release_orchestrator_is_release(self):
-        run = _orchestrator_run()
-        run.inputs = {"build_variant": "asan-debug"}
-        self.assertEqual(derive_build_variant(run), "release")
+    def test_orchestrator_without_input_uses_its_phase_variant(self):
+        for path, expected in (
+            (".github/workflows/multi_arch_release.yml", "release"),
+            (".github/workflows/multi_arch_release_asan.yml", "asan-debug"),
+        ):
+            with self.subTest(path=path):
+                run = _orchestrator_run(path)
+                run.inputs = {}
+                self.assertEqual(derive_build_variant(run), expected)
 
-    def test_asan_orchestrator_is_always_asan_debug(self):
-        # rockrel's report carries no `build_variant` input (a scheduled run
-        # carries no inputs at all); any input it does carry is ignored.
-        for inputs in ({}, {"build_variant": "asan"}):
-            with self.subTest(inputs=inputs):
-                run = _orchestrator_run(".github/workflows/multi_arch_release_asan.yml")
-                run.inputs = inputs
+    def test_orchestrator_input_is_taken_verbatim(self):
+        for path in (
+            ".github/workflows/multi_arch_release.yml",
+            ".github/workflows/multi_arch_release_asan.yml",
+        ):
+            with self.subTest(path=path):
+                run = _orchestrator_run(path)
+                run.inputs = {"build_variant": "asan"}
+                self.assertEqual(derive_build_variant(run), "asan")
+
+    def test_orchestrator_input_matching_its_phase_is_returned(self):
+        for path, variant in (
+            (".github/workflows/multi_arch_release.yml", "release"),
+            (".github/workflows/multi_arch_release_asan.yml", "asan-debug"),
+        ):
+            with self.subTest(path=path):
+                run = _orchestrator_run(path)
+                run.inputs = {"build_variant": variant}
+                self.assertEqual(derive_build_variant(run), variant)
+
+    def test_orchestrator_tracked_input_conflicting_with_its_phase_raises(self):
+        for path, variant, phase_variant in (
+            (".github/workflows/multi_arch_release.yml", "asan-debug", "release"),
+            (".github/workflows/multi_arch_release_asan.yml", "release", "asan-debug"),
+        ):
+            with self.subTest(path=path):
+                run = _orchestrator_run(path)
+                run.workflow_run_id = 4242
+                run.inputs = {"build_variant": variant}
+                with self.assertRaisesRegex(
+                    ValueError,
+                    f"run 4242 declares build_variant='{variant}' but its phase "
+                    f"builds '{phase_variant}'",
+                ):
+                    derive_build_variant(run)
+
+    def test_orchestrator_unknown_input_raises(self):
+        for path in (
+            ".github/workflows/multi_arch_release.yml",
+            ".github/workflows/multi_arch_release_asan.yml",
+        ):
+            with self.subTest(path=path):
+                run = _orchestrator_run(path)
+                run.workflow_run_id = 4242
+                run.inputs = {"build_variant": "bogus"}
+                with self.assertRaisesRegex(
+                    ValueError, "run 4242 declares unknown build_variant='bogus'"
+                ):
+                    derive_build_variant(run)
+
+    def test_setup_unknown_input_raises(self):
+        run = _make_record(
+            inputs={
+                "build_variant": "bogus",
+                "quartz_tracking_id": "123;nightly;release",
+            }
+        )
+        run.path = ".github/workflows/setup_multi_arch.yml"
+        run.classification.pipeline_type = "setup"
+        run.classification.pipeline_phase = "setup"
+        with self.assertRaisesRegex(ValueError, "unknown build_variant='bogus'"):
+            derive_build_variant(run)
+
+    def test_setup_input_is_taken_verbatim(self):
+        for tracking_id in ("123;nightly;asan-debug", "123;nightly", ""):
+            with self.subTest(tracking_id=tracking_id):
+                run = _make_record(
+                    inputs={
+                        "build_variant": "asan-debug",
+                        "quartz_tracking_id": tracking_id,
+                    }
+                )
+                run.path = ".github/workflows/setup_multi_arch.yml"
+                run.classification.pipeline_type = "setup"
+                run.classification.pipeline_phase = "setup"
                 self.assertEqual(derive_build_variant(run), "asan-debug")
+
+    def test_setup_input_conflicting_with_tracking_id_raises(self):
+        run = _make_record(
+            inputs={
+                "build_variant": "asan-debug",
+                "quartz_tracking_id": "123;nightly;release",
+            }
+        )
+        run.path = ".github/workflows/setup_multi_arch.yml"
+        run.classification.pipeline_type = "setup"
+        run.classification.pipeline_phase = "setup"
+        with self.assertRaisesRegex(ValueError, "build_variant='asan-debug'"):
+            derive_build_variant(run)
+
+    def test_setup_without_input_falls_back_to_tracking_id(self):
+        run = _make_record(inputs={"quartz_tracking_id": "123;nightly;asan-debug"})
+        run.path = ".github/workflows/setup_multi_arch.yml"
+        run.classification.pipeline_type = "setup"
+        run.classification.pipeline_phase = "setup"
+        self.assertEqual(derive_build_variant(run), "asan-debug")
 
 
 class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):
@@ -941,7 +1044,7 @@ class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):
             # `quartz_tracking_id` carries the top-level owner (999) without an
             # `artifact_run_id`, which would otherwise short-circuit
             # derive_source_run_id and mask the ordering it depends on.
-            inputs={"quartz_tracking_id": "999;nightly"},
+            inputs={"quartz_tracking_id": "999;nightly;release"},
         )
         run.path = ".github/workflows/multi_arch_build_portable_linux.yml"
         run.trigger_workflow_run_id = 111  # immediate GitHub parent

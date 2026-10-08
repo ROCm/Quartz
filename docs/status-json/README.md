@@ -52,7 +52,7 @@ directly to keys in the document:
 | **architecture**      | A GPU target, for example `gfx942` or `gfx1201` (the same identifiers ROCm uses).                                                                      |
 | **pipeline**          | One product built from a release: `rocm` (the ROCm stack itself), `pytorch`, `jax`, and `native_packages`. A release can produce several.              |
 | **phase**             | A stage of a pipeline: `build` and `test`. For `native_packages`, `rpm` or `deb` instead.                                                              |
-| **build variant**     | The release flavor, `release` or `asan-debug`. It selects the document: `status.json` for `release`, `status-<build_variant>.json` otherwise.          |
+| **build variant**     | The release flavor, `release` or `asan-debug`. It selects the document: `status.json` for `release`, `status_<build_variant>.json` otherwise.          |
 | **variant**           | For PyTorch/JAX, one cell of the version matrix (for example Python 3.12 with a given Torch branch). Relevant only to consumers of PyTorch/JAX detail. |
 
 Not every pipeline runs on every platform, and `native_packages` is a special
@@ -72,17 +72,19 @@ below.
 ## Endpoints
 
 Quartz publishes one document per build variant, all sharing the same schema:
-`status.json` for the release build and `status-asan-debug.json` for the ASAN
-build. Each variant has its own stable pointers, so a build of one never moves
-the other's.
+`status.json` for the release build and `status_asan-debug.json` for the ASAN
+build. Each variant has its own `latest` / `latest_good` pointers (for example
+`latest.json` and `latest_asan-debug.json`) to its most recent runs, so a build
+of one never moves the other's.
 
 Below, `<v>` stands for the variant suffix: empty for the release build,
-`-asan-debug` for ASAN. So `status<v>.json` is either `status.json` or
-`status-asan-debug.json`.
+`_asan-debug` for ASAN. So `status<v>.json` is either `status.json` or
+`status_asan-debug.json`.
 
 The ASAN build is filed under the same version and date as the release build
-it was cut alongside: its `rocm_version` omits the `.asan` / `+asan` marker its
-packages carry (for example `10.2.0a20261005`, not `10.2.0a20261005.asan`).
+it was cut alongside, but its `rocm_version` keeps the `.asan` / `+asan` marker
+its packages carry (for example `10.2.0a20261005+asan` in
+`nightly/20261005/status_asan-debug.json`).
 
 | Endpoint                                                  | Points to                                                                       |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
@@ -104,11 +106,11 @@ Each is served as raw content. The raw URL form is:
 https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json
 ```
 
-> **Note on the pointer files:** Every `latest*.json` and `latest_good*.json`
-> pointer is a git symlink to the concrete `status*.json` it currently points
+> **Note on the pointer files:** Every `latest<v>.json` and `latest_good<v>.json`
+> pointer is a git symlink to the concrete `status<v>.json` it currently points
 > at. Raw GitHub serves a symlink as its target path (a one-line body like
-> `20260707/status-asan-debug.json`), not the file it points to, so a plain fetch
-> returns that path rather than JSON. The Python helper `load_status` follows
+> `20260707/status_asan-debug.json`), not the file it points to, so a plain fetch
+> returns that path rather than JSON. The Python helper `read_status_json.load_status()` follows
 > this pointer for you transparently; if you fetch it yourself, resolve the
 > returned path against the pointer URL and fetch again.
 

@@ -568,7 +568,7 @@ class StatusDocument(BaseModel):
     build_date: str = ""
     # Build metadata carried from the orchestrator's setup run. `build_variant`
     # is `"release"` in `status.json` and `"asan-debug"` in
-    # `status-asan-debug.json`; `therock_commit` is the 40-hex TheRock commit
+    # `status_asan-debug.json`; `therock_commit` is the 40-hex TheRock commit
     # the release was built from, resolved by the setup checkout.
     build_variant: str = ""
     therock_commit: str = ""

@@ -595,7 +595,7 @@ def _native_package_urls(
 # bucket, and release-triggered devreleases are out of scope for now.
 _RELEASE_CDN_BASE: Final[dict[str, str]] = {
     "nightly": "https://nightly.repo.amd.com/rocm/",
-    "nightly-bkc": "https://d2f0ijhovwa9ap.cloudfront.net/rocm/",
+    "nightly-bkc": "https://bkc.repo.amd.com/rocm/",
     "prerelease": "https://rc.repo.amd.com/rocm/",
 }
 

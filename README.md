@@ -43,3 +43,7 @@ policies.
   in ROCm/TheRock. Discussion:
   [ROCm/TheRock#3782](https://github.com/ROCm/TheRock/discussions/3782).
 - **[docs/status-json/](docs/status-json/)** - the consumer guide for `status.json`.
+- **[docs/changelogs/](docs/changelogs/)** - version history for the `status.json`
+  schema, the consumer reader, and the `notify_quartz` action. Released
+  components are tagged on `main` (`consumer/vX.Y.Z`, `notify_quartz/vX.Y.Z`); the
+  `status.json` contract is versioned in-band by its `schema_version` field.

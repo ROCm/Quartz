@@ -319,7 +319,7 @@ class DeriveReleaseCdnUrlsTest(unittest.TestCase):
             source_run_id="27797822902",
         )
         urls = derive_release_cdn_urls(rec)
-        base = "https://d2f0ijhovwa9ap.cloudfront.net/rocm/"
+        base = "https://bkc.repo.amd.com/rocm/"
         self.assertEqual(urls.tarball_url, f"{base}core/tarball/")
         self.assertEqual(urls.wheels_url, f"{base}whl-next/")
         seg = f"{base}core/packages/<os-profile>"

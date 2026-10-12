@@ -175,6 +175,9 @@ def main(argv: list[str]) -> int:
     log.info("Step 2: Enriching payload (fetch_jobs=%s)", args.fetch_jobs)
     payload = enrich_payload(payload, fetch_jobs=args.fetch_jobs)
     wr = payload.workflow_run
+    if wr is None:
+        log.error("Enrichment returned a payload without its workflow_run")
+        return 1
 
     if wr.enrichment_errors:
         total = len(wr.enrichment_errors)
@@ -183,7 +186,13 @@ def main(argv: list[str]) -> int:
 
     # Step 3: Classify derived fields on the workflow_run record.
     log.info("Step 3: Classifying derived fields")
-    classify(wr)
+    try:
+        classify(wr)
+    except ValueError as exc:
+        log.error(
+            "Classification failed for workflow_run %s: %s", wr.workflow_run_id, exc
+        )
+        return 1
     log.debug(
         "Classified: platform=%s pipeline_type=%s pipeline_phase=%s release_type=%s "
         "architectures=%s test_type=%s build_variant=%s",

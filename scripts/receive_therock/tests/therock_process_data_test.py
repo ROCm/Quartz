@@ -228,6 +228,79 @@ def test_main_status_repo_dry_run_passes_commit_and_push_false(
     )
 
 
+_FIXTURES = SCRIPT_DIR / "tests" / "therock_data"
+
+
+def _fixture_payload(name: str, **inputs: str) -> dict:
+    payload = json.loads((_FIXTURES / name).read_text(encoding="utf-8"))
+    payload["workflow_run"]["inputs"].update(inputs)
+    return payload
+
+
+@pytest.mark.parametrize(
+    "fixture,inputs,step,expected",
+    [
+        (
+            "nightly_build_portable_linux_completed.json",
+            {"quartz_tracking_id": "27797822900;weekly;release"},
+            "Payload validation failed",
+            "unknown release type 'weekly'",
+        ),
+        (
+            "nightly_build_portable_linux_completed.json",
+            {"quartz_tracking_id": "27797822900;nightly;ubsan"},
+            "Payload validation failed",
+            "unknown build variant 'ubsan'",
+        ),
+        (
+            "nightly_build_portable_linux_completed.json",
+            {"quartz_tracking_id": "27797822900;nightly;release;extra"},
+            "Payload validation failed",
+            "got 4 in quartz_tracking_id",
+        ),
+        (
+            "nightly_setup_completed.json",
+            {"build_variant": "asan-debug"},
+            "Classification failed",
+            "declares build_variant='asan-debug' but its quartz_tracking_id "
+            "carries 'release'",
+        ),
+    ],
+)
+def test_main_rejects_malformed_event_without_updating_status(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    caplog: pytest.LogCaptureFixture,
+    capsys: pytest.CaptureFixture[str],
+    fixture: str,
+    inputs: dict[str, str],
+    step: str,
+    expected: str,
+) -> None:
+    monkeypatch.setenv(
+        "DISPATCH_PAYLOAD", json.dumps(_fixture_payload(fixture, **inputs))
+    )
+    update_mock = MagicMock()
+    monkeypatch.setattr(tpd, "update_status_json", update_mock)
+    status_repo = tmp_path / "status-repo"
+    status_repo.mkdir()
+
+    assert tpd.main(["--status-repo", str(status_repo)]) == 1
+
+    update_mock.assert_not_called()
+    assert not any(status_repo.iterdir())
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1
+    message = errors[0].getMessage()
+    assert message.startswith(step)
+    assert "27797822900" in message
+    assert expected in message
+    assert errors[0].exc_info is None
+    captured = capsys.readouterr()
+    assert "Traceback" not in captured.err
+    assert captured.out == ""
+
+
 def test_build_parser_defaults() -> None:
     args = tpd.build_parser().parse_args([])
 

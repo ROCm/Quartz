@@ -300,8 +300,8 @@ class StatusDocument:
 
     @property
     def build_variant(self) -> str | None:
-        """Build flavor this release was produced with: "release", or a
-        sanitizer build such as "asan" (added in schema 2.1).
+        """Build flavor this release was produced with: "release", or
+        "asan-debug" for the ASAN build (added in schema 2.1).
 
         Three states, deliberately distinct: None means the key is absent -- a
         pre-2.1 document that predates the field, so the producer cannot tell

@@ -567,10 +567,9 @@ class StatusDocument(BaseModel):
     rocm_version: str = ""
     build_date: str = ""
     # Build metadata carried from the orchestrator's setup run. `build_variant`
-    # distinguishes release from asan/etc builds (the workflow always sends a
-    # value, defaulting to `"release"` until an asan variant lands);
-    # `therock_commit` is the 40-hex TheRock commit the release was built from,
-    # resolved by the setup checkout.
+    # is `"release"` in `status.json` and `"asan-debug"` in
+    # `status_asan-debug.json`; `therock_commit` is the 40-hex TheRock commit
+    # the release was built from, resolved by the setup checkout.
     build_variant: str = ""
     therock_commit: str = ""
     trigger_workflow_run_id: int | None = None

@@ -62,6 +62,15 @@ def _frozen_clock(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
+@pytest.fixture
+def asan_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    # `asan-debug` documents are implemented but not produced (see
+    # `tusj._TRACKED_BUILD_VARIANTS`); tests of that implementation track it.
+    monkeypatch.setattr(
+        tusj, "_TRACKED_BUILD_VARIANTS", frozenset({"release", "asan-debug"})
+    )
+
+
 def _run(
     *,
     path: str,
@@ -1023,6 +1032,7 @@ def test_finalized_release_points_latest_good_at_status(tmp_path: Path) -> None:
     assert resolved.build_date == _NIGHTLY_DATE
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_finalized_asan_release_updates_only_asan_pointers(
     tmp_path: Path,
 ) -> None:
@@ -1059,6 +1069,7 @@ def test_finalized_asan_release_updates_only_asan_pointers(
     assert not (nightly_root / "latest_good.json").exists()
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_reopened_asan_build_never_falls_back_to_a_release_document(
     tmp_path: Path,
 ) -> None:
@@ -1217,6 +1228,7 @@ def test_prerelease_creates_latest_symlink(tmp_path: Path) -> None:
     assert not (tmp_path / "prerelease" / "latest_good.json").exists()
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_prerelease_asan_creates_variant_specific_latest_symlinks(
     tmp_path: Path,
 ) -> None:
@@ -1447,6 +1459,7 @@ def test_bkc_finalized_points_latest_good_at_status(tmp_path: Path) -> None:
     assert resolved.summary.overall_status is Status.success
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_bkc_asan_updates_variant_specific_pointers(
     tmp_path: Path,
 ) -> None:
@@ -2487,6 +2500,7 @@ def test_leaf_with_unsupported_variant_is_rejected(tmp_path: Path) -> None:
     assert "linux" not in _load(_nightly_status_path(tmp_path)).pipelines.rocm.build
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_setup_asan_run_anchors_its_own_document(tmp_path: Path) -> None:
     out = tusj.update_status_json(
         _event(_setup_run(600, build_variant="asan-debug")),
@@ -2500,6 +2514,7 @@ def test_setup_asan_run_anchors_its_own_document(tmp_path: Path) -> None:
     assert doc.build_variant == "asan-debug"
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_asan_orchestrator_finalizes_asan_debug_document(tmp_path: Path) -> None:
     setup = _setup_run(600, build_variant="asan-debug")
     tusj.update_status_json(_event(setup), repo_dir=tmp_path, commit_and_push=False)
@@ -2561,6 +2576,7 @@ def test_scheduled_asan_release_is_a_nightly_asan_debug_build() -> None:
     assert run.trigger_workflow_run_id == 600
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_scheduled_asan_release_finalizes_asan_debug_document(
     tmp_path: Path,
 ) -> None:
@@ -2595,6 +2611,7 @@ def test_scheduled_asan_release_finalizes_asan_debug_document(
     assert doc.trigger_workflow_run_id == 600
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_asan_leaf_cannot_pollute_normally_owned_document(tmp_path: Path) -> None:
     # Core #65 regression: the normal setup run (500) owns the document. The asan
     # release runs later as run 600; its test leaves name 600 as their parent.
@@ -2620,6 +2637,7 @@ def test_asan_leaf_cannot_pollute_normally_owned_document(tmp_path: Path) -> Non
     assert doc.summary.linux.rocm.test.success == 0
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_release_and_asan_documents_coexist_and_finalize_independently(
     tmp_path: Path,
 ) -> None:
@@ -2859,6 +2877,7 @@ def test_classified_events_route_by_tracking_id_variant() -> None:
         assert {run.trigger_workflow_run_id for run in events} == {release.owner}
 
 
+@pytest.mark.usefixtures("asan_enabled")
 def test_nightly_variants_own_and_finalize_independently(tmp_path: Path) -> None:
     release_path = _nightly_status_path(tmp_path)
     asan_path = _nightly_asan_status_path(tmp_path)
@@ -2888,6 +2907,23 @@ def test_nightly_variants_own_and_finalize_independently(tmp_path: Path) -> None
     assert (nightly_root / "latest_good_asan-debug.json").readlink() == asan_target
 
 
+def test_asan_documents_are_not_produced(tmp_path: Path) -> None:
+    asan_events = [*_ASAN_RUN.progress_events(), _ASAN_RUN.orchestrator()]
+    assert _deliver(tmp_path, asan_events) == [None] * len(asan_events)
+    release_events = [*_RELEASE_RUN.progress_events(), _RELEASE_RUN.orchestrator()]
+    assert set(_deliver(tmp_path, release_events)) == {_nightly_status_path(tmp_path)}
+
+    _assert_owned_and_finalized(_load(_nightly_status_path(tmp_path)), _RELEASE_RUN)
+    nightly_root = tmp_path / "nightly"
+    assert sorted(p.name for p in nightly_root.iterdir()) == [
+        _NIGHTLY_DATE,
+        "latest.json",
+        "latest_good.json",
+    ]
+    assert not _nightly_asan_status_path(tmp_path).exists()
+
+
+@pytest.mark.usefixtures("asan_enabled")
 def test_bkc_variants_keep_version_and_top_level_pointers_apart(
     tmp_path: Path,
 ) -> None:

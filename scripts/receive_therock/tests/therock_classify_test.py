@@ -994,6 +994,7 @@ class DeriveBuildVariantTest(unittest.TestCase):
             derive_build_variant(run)
 
     def test_setup_input_is_taken_verbatim(self):
+        # TODO: drop the 2-field "123;nightly" case with 2-field id support.
         for tracking_id in ("123;nightly;asan-debug", "123;nightly", ""):
             with self.subTest(tracking_id=tracking_id):
                 run = _make_record(

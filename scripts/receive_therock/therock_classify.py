@@ -256,6 +256,10 @@ def _canonicalize_bkc_version(v: str) -> str:
     return f"{m.group(1)}+bkc.{m.group(2)}" if m else v
 
 
+# TODO: decide whether the marker should follow the `quartz_tracking_id`
+# build variant instead of the version string, together with the ASAN
+# `rocm_version` scheme (see `_TRACKED_BUILD_VARIANTS` in
+# therock_update_status_json).
 _ASAN_VERSION_MARKER_RE: Final = re.compile(r"[.+]asan$")
 
 
@@ -306,12 +310,14 @@ def derive_build_variant(wr: WorkflowRunRecord) -> str:
 
     Every other run reads it from the third field of the propagated
     `quartz_tracking_id` (`"<run_id>;<release_type>;<build_variant>"`), never
-    from its own `build_variant` input: only a run triggered by a release
-    orchestrator carries that id, so a manually dispatched workflow cannot claim
-    a variant. A run without the field (CI, tracking disabled) is empty.
+    from its own `build_variant` input. A run without the field (CI, tracking
+    disabled) is empty.
     """
     c = wr.classification
     top_level = is_top_level_orchestrator(wr)
+    # TODO: drop the handling of a 2-field `"<run_id>;<release_type>"` id (no
+    # variant) once rockrel stamps the build variant on every id, setup's
+    # included.
     tracked = str(parse_quartz_tracking_id(wr.inputs).build_variant or "")
     if top_level or c.pipeline_type == "setup":
         declared = str(wr.inputs.get("build_variant") or "").strip()

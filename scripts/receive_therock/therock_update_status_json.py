@@ -47,7 +47,6 @@ from pathlib import Path, PurePosixPath
 import ntplib
 
 from therock_classify import (
-    FINALIZING_PHASE_BUILD_VARIANTS,
     FINALIZING_PHASES,
     GPU_FAMILY_TOKEN,
     RELEASE_CDN_PHASES,
@@ -402,8 +401,13 @@ def _update_document_metadata(
 
 
 def _document_rocm_version(workflow_run: WorkflowRunRecord) -> str:
-    """The document's `rocm_version`: the release version with the run's ASAN
-    marker kept"""
+    """The document's `rocm_version`: the canonical release version followed by
+    the run's version marker, e.g. `7.14.0a20260619+asan`.
+
+    The marker is the suffix on the version string (see
+    `therock_classify.derive_version_marker`), not the build variant; "" when
+    the run carries no version.
+    """
     c = workflow_run.classification
     if not c.release_version:
         return ""
@@ -1945,15 +1949,14 @@ _TRACKED_RELEASE_TYPES: frozenset[str] = frozenset(
     {"nightly", "nightly-bkc", "prerelease"}
 )
 
-# Build variants (TheRock's `build_variant`) that get a status document: one
-# per top-level release orchestrator (see
-# `therock_classify.FINALIZING_PHASE_BUILD_VARIANTS`), `status.json` for
-# `release` and `status_asan-debug.json` for `asan-debug` (see
-# `_variant_filename`). Any other variant (e.g. `asan`, `tsan`), or none (a run
-# outside a tracked release), is rejected.
-_TRACKED_BUILD_VARIANTS: frozenset[str] = frozenset(
-    FINALIZING_PHASE_BUILD_VARIANTS.values()
-)
+# Build variants (TheRock's `build_variant`) that get a status document:
+# `status.json` for `release` (see `_variant_filename`). Any other variant
+# (e.g. `asan-debug`, `asan`, `tsan`), or none (a run outside a tracked
+# release), is rejected.
+# TODO: enable `asan-debug` (`status_asan-debug.json`) once the ASAN
+# `rocm_version` schema is decided; the routing, ownership and pointer
+# handling for it are already in place.
+_TRACKED_BUILD_VARIANTS: frozenset[str] = frozenset({"release"})
 
 
 # status.json is only produced for the release-tracking repository; runs from

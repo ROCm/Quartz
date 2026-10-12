@@ -86,6 +86,11 @@ it was cut alongside, but its `rocm_version` keeps the `.asan` / `+asan` marker
 its packages carry (for example `10.2.0a20261005+asan` in
 `nightly/20261005/status_asan-debug.json`).
 
+> **Note:** ASAN documents are not produced yet. Until the ASAN `rocm_version`
+> scheme is settled, only `status.json` and its `latest.json` /
+> `latest_good.json` pointers are written; the `_asan-debug` files described
+> here do not exist.
+
 | Endpoint                                                  | Points to                                                                       |
 | --------------------------------------------------------- | ------------------------------------------------------------------------------- |
 | `nightly/<date>/status<v>.json`                           | A specific nightly build of that variant                                        |

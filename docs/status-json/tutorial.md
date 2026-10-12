@@ -99,6 +99,13 @@ dependency-free read helper do it for you:
 > `python3 read_status_json.py` prints a summary of the latest nightly, or pass a
 > specific endpoint or a local file (`python3 read_status_json.py status.json`).
 
+> **Pinning a version.** Because you copy `read_status_json.py` into your own
+> project, pin the version you copied. The reader is released under
+> `consumer/vX.Y.Z` tags on `main`; each tag points at the exact commit of the
+> script. Its [changelog](../changelogs/consumer.md) records what changed between
+> versions. Note that this version is independent of the `status.json`
+> `schema_version` the reader understands.
+
 Import it in your own code. The helper also resolves the artifact URLs, so you
 can go straight from a passing build to installing wheels or checking a tarball.
 A complete, runnable example lives next to this guide:

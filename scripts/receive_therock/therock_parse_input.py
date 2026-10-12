@@ -41,7 +41,9 @@ def validate_payload(raw: dict[str, object]) -> TheRockDispatchEvent:
       - `push_event`         -> top-level `ref` is non-empty (fields are
                                   flattened onto the envelope root)
 
-    Raises PayloadValidationError when a required field is missing or invalid.
+    Raises PayloadValidationError when a required field is missing or invalid,
+    including a field the typed record cannot be built from (e.g. a malformed
+    `workflow_run.inputs.quartz_tracking_id`).
     """
     event_type = raw.get("event_type")
     if not event_type:
@@ -93,8 +95,14 @@ def validate_payload(raw: dict[str, object]) -> TheRockDispatchEvent:
             "structural validation branch in validate_payload()"
         )
 
+    try:
+        event = TheRockDispatchEvent.from_dict(raw)
+    except ValueError as exc:
+        wr_raw = raw.get("workflow_run")
+        run_id = wr_raw.get("id") if isinstance(wr_raw, dict) else None
+        raise PayloadValidationError(f"workflow_run {run_id}: {exc}") from exc
     log.info("Payload validated: event_type=%s repository=%s", event_type, repo)
-    return TheRockDispatchEvent.from_dict(raw)
+    return event
 
 
 def load_and_validate(payload_path: Path) -> TheRockDispatchEvent:

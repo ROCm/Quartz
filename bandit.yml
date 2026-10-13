@@ -13,3 +13,11 @@ exclude_dirs:
   - release-nightly
   - prerelease
   - nightly
+
+# `assert` is pytest's assertion mechanism, so B101 ("assert used") is pure
+# noise in test files. Skip it there only; B101 still fires on production code,
+# where asserts are stripped under `python -O` and must not be used as guards.
+assert_used:
+  skips:
+    - "*/tests/*"
+    - "*_test.py"

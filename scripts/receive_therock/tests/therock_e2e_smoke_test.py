@@ -79,9 +79,17 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
     mid = _load(tmp_path)
     # Build leaves are capped `in_progress` until the per-platform release
     # orchestrator finalizes their rollup (#113); only native_packages, which
-    # is a distinct pipeline, is terminal-success at this point.
+    # is a distinct pipeline, is terminal-success at this point. The whole-build
+    # workflows have completed, so build_artifacts is already final: the
+    # artifacts are on S3 even though nothing is published yet.
     assert mid.summary.linux.rocm.build.status is Status.in_progress
     assert mid.summary.windows.rocm.build.status is Status.in_progress
+    assert mid.summary.linux.rocm.build_artifacts is not None
+    assert mid.summary.linux.rocm.build_artifacts.status is Status.success
+    assert mid.summary.windows.rocm.build_artifacts is not None
+    assert mid.summary.windows.rocm.build_artifacts.status is Status.success
+    assert mid.summary.linux.publish is None
+    assert mid.summary.windows.publish is None
     assert mid.summary.linux.native_packages.deb.status is Status.success
     assert mid.completed_at is None
     assert mid.summary.overall_status is Status.in_progress
@@ -96,6 +104,14 @@ def test_full_nightly_sequence_finalizes_to_success(tmp_path: Path) -> None:
     rolled = _load(tmp_path)
     assert rolled.summary.linux.rocm.build.status is Status.success
     assert rolled.summary.windows.rocm.build.status is Status.success
+    assert rolled.summary.linux.rocm.build_artifacts is not None
+    assert rolled.summary.linux.rocm.build_artifacts.status is Status.success
+    assert rolled.summary.windows.rocm.build_artifacts is not None
+    assert rolled.summary.windows.rocm.build_artifacts.status is Status.success
+    assert rolled.summary.linux.publish is not None
+    assert rolled.summary.linux.publish.status is Status.success
+    assert rolled.summary.windows.publish is not None
+    assert rolled.summary.windows.publish.status is Status.success
     assert rolled.completed_at is None
     assert rolled.summary.overall_status is Status.in_progress
 

@@ -108,8 +108,9 @@ class QuartzTrackingId(NamedTuple):
 # id is valid with the required prefix alone (producers that predate a trailing
 # field) and up to every known field. More than that means the producer is ahead
 # of this parser; Quartz must learn a field before TheRock/rockrel emit it.
-# TODO: require all 3 fields (and drop the optional build variant) once rockrel
-# stamps the build variant on every id; 2-field ids are accepted until then.
+# TODO: require all 3 fields (and drop the optional build variant) once no
+# tracked release branch still runs a TheRock release workflow that stamps the
+# 2-field id; see `therock_classify.derive_build_variant`.
 _TRACKING_ID_REQUIRED_FIELDS = 2  # run id, release type
 _TRACKING_ID_KNOWN_FIELDS = 3  # + build variant
 

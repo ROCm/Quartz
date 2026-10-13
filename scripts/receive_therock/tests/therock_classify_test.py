@@ -892,13 +892,14 @@ class DeriveBuildVariantTest(unittest.TestCase):
         run.inputs = {"quartz_tracking_id": "123;nightly;asan-debug"}
         self.assertEqual(derive_build_variant(run), "asan-debug")
 
-    def test_two_field_tracking_id_has_no_variant(self):
+    def test_two_field_tracking_id_is_release(self):
+        # TODO: drop with 2-field `quartz_tracking_id` support.
         run = _leaf_run()
         run.inputs = {
             "quartz_tracking_id": "123;nightly",
             "build_variant": "asan-debug",
         }
-        self.assertEqual(derive_build_variant(run), "")
+        self.assertEqual(derive_build_variant(run), "release")
 
     def test_untracked_run_has_no_variant(self):
         # A direct input without a tracking id (manual dispatch, CI) claims nothing,

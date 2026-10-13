@@ -2986,17 +2986,14 @@ def test_untracked_variant_events_create_no_document(tmp_path: Path) -> None:
     assert not (tmp_path / "nightly").exists()
 
 
-def test_two_field_tracking_id_event_is_skipped(tmp_path: Path) -> None:
-    assert _deliver(tmp_path, [_RELEASE_RUN.setup()]) == [
-        _nightly_status_path(tmp_path)
-    ]
-    snapshot = _nightly_status_path(tmp_path).read_bytes()
-
+def test_two_field_tracking_id_release_populates_its_document(tmp_path: Path) -> None:
+    # TODO: drop with 2-field `quartz_tracking_id` support.
     two_field = _ReleaseRun(500, "release", _RELEASE_VERSION, tracking_id="500;nightly")
-    leaves = [two_field.build_leaf(), two_field.pytorch_leaf()]
-    assert {run.classification.build_variant for run in leaves} == {""}
-    assert _deliver(tmp_path, leaves) == [None, None]
-    assert _nightly_status_path(tmp_path).read_bytes() == snapshot
+    events = [*two_field.progress_events(), two_field.orchestrator()]
+    assert {run.classification.build_variant for run in events} == {"release"}
+    assert set(_deliver(tmp_path, events)) == {_nightly_status_path(tmp_path)}
+
+    _assert_owned_and_finalized(_load(_nightly_status_path(tmp_path)), two_field)
     assert not _nightly_asan_status_path(tmp_path).exists()
 
 

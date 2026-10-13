@@ -9,6 +9,18 @@ on `main` as `notify_quartz/vMAJOR.MINOR.PATCH` (plus a moving
 `notify_quartz/vMAJOR` tag). Entries reference the pull request that introduced
 the change.
 
+## v1.1.3 - 2026-10-13
+
+### Security
+
+- Set `persist-credentials: false` on the Quartz script checkout so the job
+  token is not written to `.git/config` and left in the workspace after
+  checkout, closing the credential persistence flagged by the zizmor
+  `artipacked` audit (#122).
+- Select the Python interpreter through an intermediate `PYTHON` environment
+  variable instead of inlining the `runner.os` expression in `run:`, clearing
+  the CodeQL code-injection warning. Behavior is unchanged (#122).
+
 ## v1.1.2 - 2026-09-10
 
 ### Security

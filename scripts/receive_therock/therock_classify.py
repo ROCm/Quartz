@@ -310,27 +310,31 @@ def derive_build_variant(wr: WorkflowRunRecord) -> str:
 
     Every other run reads it from the third field of the propagated
     `quartz_tracking_id` (`"<run_id>;<release_type>;<build_variant>"`), never
-    from its own `build_variant` input. A run without the field (CI, tracking
-    disabled) is empty.
+    from its own `build_variant` input. A 2-field `"<run_id>;<release_type>"`
+    id carries no variant and is `release`: it is stamped only by the release
+    build of TheRock versions that predate the build variant field (e.g. older
+    release branches). A run without an id (CI, tracking disabled) is empty.
     """
     c = wr.classification
     top_level = is_top_level_orchestrator(wr)
-    # TODO: drop the handling of a 2-field `"<run_id>;<release_type>"` id (no
-    # variant) once rockrel stamps the build variant on every id, setup's
-    # included.
-    tracked = str(parse_quartz_tracking_id(wr.inputs).build_variant or "")
+    tracking = parse_quartz_tracking_id(wr.inputs)
+    tracked_build_variant = str(tracking.build_variant or "")
     if top_level or c.pipeline_type == "setup":
         declared = str(wr.inputs.get("build_variant") or "").strip()
         if declared:
-            _check_declared_build_variant(wr, declared, tracked)
+            _check_declared_build_variant(wr, declared, tracked_build_variant)
             return declared
     if top_level:
         return FINALIZING_PHASE_BUILD_VARIANTS[c.pipeline_phase]
-    return tracked
+    # TODO: drop the 2-field `"<run_id>;<release_type>"` id once no tracked
+    # release branch still runs a TheRock release workflow that stamps it.
+    if tracking.owner_run_id is not None and not tracked_build_variant:
+        return "release"
+    return tracked_build_variant
 
 
 def _check_declared_build_variant(
-    wr: WorkflowRunRecord, declared: str, tracked: str
+    wr: WorkflowRunRecord, declared: str, tracked_build_variant: str
 ) -> None:
     """Raise when a declared `build_variant` input would misroute the run.
 
@@ -352,11 +356,11 @@ def _check_declared_build_variant(
             f"build_variant={declared!r}"
         ) from exc
     if c.pipeline_type == "setup":
-        if tracked and declared != tracked:
+        if tracked_build_variant and declared != tracked_build_variant:
             raise ValueError(
                 f"derive_build_variant: setup run {wr.workflow_run_id} declares "
                 f"build_variant={declared!r} but its quartz_tracking_id "
-                f"carries {tracked!r}"
+                f"carries {tracked_build_variant!r}"
             )
         return
     phase_variant = FINALIZING_PHASE_BUILD_VARIANTS[c.pipeline_phase]

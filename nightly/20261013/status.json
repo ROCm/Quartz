@@ -13,20 +13,20 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-13T00:02:21Z",
-  "status_json_last_updated": "2026-10-13T04:53:49Z",
+  "status_json_last_updated": "2026-10-13T21:04:23Z",
   "summary": {
-    "overall_status": "success",
+    "overall_status": "failure",
     "linux": {
-      "status": "skipped",
+      "status": "failure",
       "architectures": [],
       "urls": {},
       "rocm": {
         "build": {
-          "status": "skipped"
+          "status": "failure"
         },
         "test": {
           "success": 0,
-          "failure": 0,
+          "failure": 1,
           "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
@@ -95,5 +95,20 @@
       }
     }
   },
-  "pipelines": {}
+  "pipelines": {
+    "rocm": {
+      "build": {},
+      "test": {
+        "linux": {
+          "gfx125X-dcgpu": {
+            "status": "failure",
+            "run_id": 38332796401,
+            "run_attempt": 1,
+            "started_at": "2026-10-13T01:34:48Z",
+            "completed_at": "2026-10-13T21:03:44Z"
+          }
+        }
+      }
+    }
+  }
 }

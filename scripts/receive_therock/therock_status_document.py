@@ -15,7 +15,8 @@ see docs/status_json/status_json_reference.jsonc for a full example):
   │       ├── status
   │       ├── architectures
   │       ├── urls
-  │       ├── <rocm|pytorch|jax>      -> build {status} + test {status counts}
+  │       ├── <rocm|pytorch|jax>      -> build {status [+ cell counts]}
+  │       │                              + test {status counts}
   │       └── native_packages
   │           └── <rpm|deb>           -> {status}
   └── pipelines                       detail tree (typed; absent slots -> null)
@@ -58,7 +59,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.1"
+SCHEMA_VERSION: Final = "2.2"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -456,9 +457,14 @@ def merge_matrix_test_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLe
 
 
 class BuildRollup(BaseModel):
-    """A build phase rolled up to a single status (variants collapse into it)."""
+    """A build phase rolled up to a single worst-of `status`."""
 
     status: Status = Status.in_progress
+    success: int | None = None
+    failure: int | None = None
+    in_progress: int | None = None
+    cancelled: int | None = None
+    skipped: int | None = None
 
 
 class TestRollup(BaseModel):
@@ -562,7 +568,7 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.1"] = SCHEMA_VERSION
+    schema_version: Literal["2.2"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""

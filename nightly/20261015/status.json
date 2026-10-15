@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-15T00:02:43Z",
-  "status_json_last_updated": "2026-10-15T02:48:53Z",
+  "status_json_last_updated": "2026-10-15T02:48:56Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -102,13 +102,13 @@
         "gfx1153"
       ],
       "urls": {
-        "tarballs": "https://therock-nightly-artifacts.s3.amazonaws.com/38657564782-windows/tarballs/",
-        "wheels": "https://therock-nightly-artifacts.s3.amazonaws.com/38657564782-windows/python/",
+        "tarballs": "https://nightly.repo.amd.com/rocm/core/tarball/",
+        "wheels": "https://nightly.repo.amd.com/rocm/whl-next/",
         "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/38657564782-windows/index.html"
       },
       "rocm": {
         "build": {
-          "status": "in_progress"
+          "status": "success"
         },
         "test": {
           "success": 0,
@@ -136,10 +136,11 @@
     "rocm": {
       "build": {
         "windows": {
-          "status": "in_progress",
+          "status": "success",
           "run_id": 38657564782,
           "run_attempt": 1,
-          "started_at": "2026-10-15T00:01:15Z"
+          "started_at": "2026-10-15T00:01:15Z",
+          "completed_at": "2026-10-15T00:16:24Z"
         },
         "linux": {
           "status": "in_progress",

@@ -78,7 +78,7 @@ class StripJsoncCommentsTest(unittest.TestCase):
 
     def test_reference_parses(self):
         data = _load_reference()
-        self.assertEqual(data["schema_version"], "2.1")
+        self.assertEqual(data["schema_version"], "2.2")
 
 
 class StatusEnumTest(unittest.TestCase):
@@ -138,7 +138,7 @@ class StatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.status.rocm_version, "7.13.0a20260408")
         self.assertEqual(self.status.build_date, "20260408")
         self.assertEqual(self.status.release_type, "nightly")
-        self.assertEqual(self.status.schema_version, "2.1")
+        self.assertEqual(self.status.schema_version, "2.2")
 
     def test_build_provenance(self):
         self.assertEqual(self.status.build_variant, "release")
@@ -174,6 +174,13 @@ class StatusFromReferenceTest(unittest.TestCase):
         run_id = self.status.pipelines["rocm"]["build"]["linux"]["run_id"]
         self.assertEqual(run_id, 12345678)
 
+    def test_full_test_failure_metrics_are_variant_scoped(self):
+        leaf = self.status.pipelines["pytorch"]["test_full"]["linux"]["gfx942"]
+        self.assertNotIn("test_failure_count", leaf)
+        variant = leaf["variants"][0]
+        self.assertEqual(variant["test_failure_count"], 20)
+        self.assertIs(variant["test_results_complete"], True)
+
 
 class MissingMetadataFieldsTest(unittest.TestCase):
     """A pre-2.1 document lacks the build-provenance keys entirely; the accessors
@@ -203,6 +210,37 @@ class MissingMetadataFieldsTest(unittest.TestCase):
     def test_absent_trigger_ownership_is_none(self):
         self.assertIsNone(self.status.trigger_workflow_run_id)
         self.assertIsNone(self.status.trigger_run_attempt)
+
+    def test_pre_2_2_variant_metrics_can_be_absent(self):
+        from read_status_json import StatusDocument
+
+        status = StatusDocument(
+            {
+                "schema_version": "2.1",
+                "pipelines": {
+                    "pytorch": {
+                        "test_full": {
+                            "linux": {
+                                "gfx942": {
+                                    "variants": [
+                                        {
+                                            "py": "3.12",
+                                            "torch": "release/2.10",
+                                            "run_attempt": 1,
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                },
+            }
+        )
+        variant = status.pipelines["pytorch"]["test_full"]["linux"]["gfx942"][
+            "variants"
+        ][0]
+        self.assertNotIn("test_failure_count", variant)
+        self.assertNotIn("test_results_complete", variant)
 
 
 class PlatformStatusFromReferenceTest(unittest.TestCase):

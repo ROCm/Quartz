@@ -675,16 +675,93 @@ def _variants_from_inputs(
         if workflow_run.conclusion and workflow_run.updated_at is not None
         else None
     )
+    test_failure_count: int | None = None
+    test_results_complete: bool | None = None
+    cls = workflow_run.classification
+    if cls.pipeline_type == "pytorch" and cls.pipeline_phase == "test-full":
+        test_failure_count, test_results_complete = _full_test_results(workflow_run)
     return [
         Variant(
             matrix=matrix,
             run_id=workflow_run.workflow_run_id,
             run_attempt=workflow_run.run_attempt,
+            test_failure_count=test_failure_count,
+            test_results_complete=test_results_complete,
             status=_run_status(workflow_run),
             started_at=_datetime_to_z(started) if started else None,
             completed_at=_datetime_to_z(completed) if completed else None,
         )
     ]
+
+
+_FULL_TEST_OUTPUT_KEYS: frozenset[str] = frozenset(
+    {
+        "failed_test_count",
+        "expected_report_count",
+        "observed_report_count",
+        "results_complete",
+    }
+)
+
+
+def _nonnegative_output_int(value: object) -> int | None:
+    """Parse a nonnegative integer output without accepting bools or decimals."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped.isdigit():
+        return None
+    return int(stripped)
+
+
+def _full_test_results(
+    workflow_run: WorkflowRunRecord,
+) -> tuple[int | None, bool | None]:
+    """Read one full-suite workflow's report metrics from captured outputs.
+
+    The failure count is trustworthy only when the reusable workflow says its
+    report set is complete and the positive expected/observed counts agree.
+    """
+    captured = workflow_run.captured_outputs
+    if not isinstance(captured, dict):
+        return None, None
+
+    output_sets: list[dict[str, object]] = []
+    if _FULL_TEST_OUTPUT_KEYS.intersection(captured):
+        output_sets.append(captured)
+    for need in captured.values():
+        if not isinstance(need, dict):
+            continue
+        outputs = need.get("outputs")
+        if isinstance(outputs, dict) and _FULL_TEST_OUTPUT_KEYS.intersection(outputs):
+            output_sets.append(outputs)
+
+    # More than one reporting job would make attribution to this variant
+    # ambiguous; fail closed instead of combining their counts.
+    if len(output_sets) != 1:
+        return None, None
+    outputs = output_sets[0]
+
+    complete = _parse_bool(outputs.get("results_complete"))
+    if complete is None:
+        return None, None
+    failed = _nonnegative_output_int(outputs.get("failed_test_count"))
+    expected = _nonnegative_output_int(outputs.get("expected_report_count"))
+    observed = _nonnegative_output_int(outputs.get("observed_report_count"))
+    if (
+        complete
+        and failed is not None
+        and expected is not None
+        and observed is not None
+        and expected > 0
+        and observed == expected
+    ):
+        return failed, complete
+    return None, complete
 
 
 def _derive_variants(

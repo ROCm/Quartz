@@ -12,6 +12,14 @@ the same major can ignore. Layout and path changes are listed under the date
 they shipped even when they do not move `schema_version`. Entries reference the
 pull request that introduced the change.
 
+## schema_version 2.2 - 2026-10-14
+
+### Added
+
+- Per-matrix-cell (Python x framework version) `success` / `failure` /
+  `in_progress` / `cancelled` / `skipped` counters on the PyTorch and JAX
+  `summary.<platform>.<pipeline>.build`, next to its worst-of `status`.
+
 ## schema_version 2.1 - 2026-09-08
 
 ### Added

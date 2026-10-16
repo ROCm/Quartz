@@ -58,7 +58,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.1"
+SCHEMA_VERSION: Final = "2.2"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -74,7 +74,15 @@ def _strip_none(value: JSONValue) -> JSONValue:
 
 
 _VARIANT_STATE_KEYS: frozenset[str] = frozenset(
-    {"run_id", "run_attempt", "status", "started_at", "completed_at"}
+    {
+        "run_id",
+        "run_attempt",
+        "test_failure_count",
+        "test_results_complete",
+        "status",
+        "started_at",
+        "completed_at",
+    }
 )
 
 
@@ -160,6 +168,8 @@ class Variant(BaseModel):
     status: Status = Status.in_progress
     run_id: int | None = None
     run_attempt: int | None = None
+    test_failure_count: int | None = Field(default=None, ge=0)
+    test_results_complete: bool | None = None
     started_at: str | None = None
     completed_at: str | None = None
     matrix: dict[str, str] = Field(default_factory=dict)
@@ -192,6 +202,10 @@ class Variant(BaseModel):
             out["run_id"] = self.run_id
         if self.run_attempt is not None:
             out["run_attempt"] = self.run_attempt
+        if self.test_failure_count is not None:
+            out["test_failure_count"] = self.test_failure_count
+        if self.test_results_complete is not None:
+            out["test_results_complete"] = self.test_results_complete
         if self.started_at is not None:
             out["started_at"] = self.started_at
             out["completed_at"] = self.completed_at
@@ -562,7 +576,7 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.1"] = SCHEMA_VERSION
+    schema_version: Literal["2.2"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""

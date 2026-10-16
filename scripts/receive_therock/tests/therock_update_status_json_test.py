@@ -128,6 +128,42 @@ def _leaf_run() -> WorkflowRunRecord:
     )
 
 
+def _pytorch_full_test_run(
+    *,
+    run_id: int = 27797822903,
+    torch_version: str = "release/2.10",
+    outputs: dict[str, object] | None = None,
+) -> WorkflowRunRecord:
+    run = _run(
+        path=".github/workflows/test_pytorch_wheels_full.yml",
+        platform="linux",
+        pipeline_type="pytorch",
+        pipeline_phase="test-full",
+        architectures=["gfx942"],
+    )
+    run.workflow_run_id = run_id
+    run.trigger_workflow_run_id = 27797822902
+    run.inputs = {"python_version": "3.12", "torch_version": torch_version}
+    if outputs is not None:
+        run.captured_outputs = {"test": {"result": "success", "outputs": outputs}}
+    return run
+
+
+def _full_test_outputs(
+    *,
+    failed: object = "20",
+    expected: object = "100",
+    observed: object = "100",
+    complete: object = "true",
+) -> dict[str, object]:
+    return {
+        "failed_test_count": failed,
+        "expected_report_count": expected,
+        "observed_report_count": observed,
+        "results_complete": complete,
+    }
+
+
 def _orchestrator_run(
     path: str = ".github/workflows/multi_arch_release.yml",
 ) -> WorkflowRunRecord:
@@ -290,6 +326,91 @@ def test_leaf_event_leaves_release_in_progress(tmp_path: Path) -> None:
     # share the run and any one finishing early must not flip it success. Only
     # the per-platform release orchestrator finalizes it.
     assert doc.summary.linux.rocm.build.status is Status.in_progress
+
+
+def test_full_test_complete_run_publishes_failure_count(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    out = tusj.update_status_json(
+        _event(_pytorch_full_test_run(outputs=_full_test_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    doc = _load(out)
+    leaf = doc.pipelines.pytorch.test_full["linux"]["gfx942"]
+    assert not hasattr(leaf, "test_failure_count")
+    assert leaf.variants is not None
+    assert leaf.variants[0].test_failure_count == 20
+    assert leaf.variants[0].test_results_complete is True
+
+
+def test_full_test_complete_zero_publishes_zero(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    out = tusj.update_status_json(
+        _event(
+            _pytorch_full_test_run(
+                outputs=_full_test_outputs(failed="0", expected=12, observed=12)
+            )
+        ),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    variant = _load(out).pipelines.pytorch.test_full["linux"]["gfx942"].variants[0]
+    assert variant.test_failure_count == 0
+    assert variant.test_results_complete is True
+
+
+@pytest.mark.parametrize(
+    ("outputs", "complete"),
+    [
+        (None, None),
+        (_full_test_outputs(complete="false"), False),
+        (_full_test_outputs(expected="0", observed="0"), True),
+        (_full_test_outputs(expected="100", observed="99"), True),
+        (_full_test_outputs(failed="-1"), True),
+        (_full_test_outputs(expected="-1", observed="-1"), True),
+        (_full_test_outputs(failed="not-an-int"), True),
+        (_full_test_outputs(complete="not-a-bool"), None),
+    ],
+)
+def test_full_test_untrusted_outputs_omit_failure_count(
+    tmp_path: Path,
+    outputs: dict[str, object] | None,
+    complete: bool | None,
+) -> None:
+    _establish_owner(tmp_path)
+    out = tusj.update_status_json(
+        _event(_pytorch_full_test_run(outputs=outputs)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    variant = _load(out).pipelines.pytorch.test_full["linux"]["gfx942"].variants[0]
+    assert variant.test_failure_count is None
+    assert variant.test_results_complete is complete
+
+
+def test_full_test_merged_variants_keep_independent_counts(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    for run in (
+        _pytorch_full_test_run(
+            run_id=27797822903,
+            torch_version="release/2.10",
+            outputs=_full_test_outputs(failed=20),
+        ),
+        _pytorch_full_test_run(
+            run_id=27797822904,
+            torch_version="main",
+            outputs=_full_test_outputs(failed=0),
+        ),
+    ):
+        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+
+    leaf = _load(_nightly_status_path(tmp_path)).pipelines.pytorch.test_full["linux"][
+        "gfx942"
+    ]
+    assert leaf.variants is not None
+    assert {
+        variant.matrix["torch"]: variant.test_failure_count for variant in leaf.variants
+    } == {"release/2.10": 20, "main": 0}
 
 
 def test_rocm_test_events_populate_test_rollup(tmp_path: Path) -> None:

@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-18T00:02:06Z",
-  "status_json_last_updated": "2026-10-18T05:51:53Z",
+  "status_json_last_updated": "2026-10-18T05:53:00Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -135,8 +135,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 23,
-          "in_progress": 29,
+          "failure": 24,
+          "in_progress": 28,
           "cancelled": 0,
           "skipped": 0
         }
@@ -382,9 +382,6 @@
         },
         "windows": {
           "status": "in_progress",
-          "run_id": 39091638028,
-          "run_attempt": 1,
-          "started_at": "2026-10-18T02:53:39Z",
           "variants": [
             {
               "py": "3.12",
@@ -1261,6 +1258,7 @@
             "run_id": 39091638028,
             "run_attempt": 1,
             "started_at": "2026-10-18T05:38:37Z",
+            "completed_at": "2026-10-18T05:45:20Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1301,15 +1299,16 @@
             "run_id": 39091638028,
             "run_attempt": 1,
             "started_at": "2026-10-18T05:26:24Z",
-            "completed_at": "2026-10-18T05:47:27Z",
+            "completed_at": "2026-10-18T05:45:20Z",
             "variants": [
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 39091638028,
                 "run_attempt": 1,
-                "started_at": "2026-10-18T05:26:24Z"
+                "started_at": "2026-10-18T05:26:24Z",
+                "completed_at": "2026-10-18T05:51:35Z"
               },
               {
                 "py": "3.11",
@@ -1343,7 +1342,7 @@
             "run_id": 39091638028,
             "run_attempt": 1,
             "started_at": "2026-10-18T05:26:26Z",
-            "completed_at": "2026-10-18T05:48:56Z",
+            "completed_at": "2026-10-18T05:45:20Z",
             "variants": [
               {
                 "py": "3.11",

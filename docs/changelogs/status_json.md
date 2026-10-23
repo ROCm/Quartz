@@ -12,6 +12,14 @@ the same major can ignore. Layout and path changes are listed under the date
 they shipped even when they do not move `schema_version`. Entries reference the
 pull request that introduced the change.
 
+## schema_version 2.2 - 2026-10-16
+
+### Added
+
+- Optional `test_failure_count` and `test_results_complete` fields on each
+  PyTorch `test_full` variant. Counts are published only for complete,
+  non-empty report sets whose observed and expected report counts match.
+
 ## schema_version 2.1 - 2026-09-08
 
 ### Added

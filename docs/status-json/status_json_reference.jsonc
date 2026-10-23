@@ -19,7 +19,7 @@
 // - Tarball URLs are not enumerated; consumers use the Quartz Python helper
 //   to construct per-arch tarball filenames from the base URL + version.
 {
-  "schema_version": "2.1",
+  "schema_version": "2.2",
   "release_type": "nightly",                    // "nightly" | "rc" | "dev"
   "rocm_version": "7.13.0a20260408",            // the release version; an ASAN document keeps its `.asan` / `+asan` package marker (e.g. "7.13.0a20260408+asan") but is filed under the same folder as the release build
   "build_date": "20260408",                     // the date this build is filed under; for nightly-bkc it is the bkc run date from the version's `+bkc.<date>` suffix, not the nightly date the build was cut from
@@ -73,7 +73,7 @@
         // Present ONLY when the full PyTorch suite (test_pytorch_wheels_full) ran;
         // omitted otherwise. Same counter shape as "test"; kept separate so the
         // full suite and the smoke "test" phase don't clobber each other.
-        "test_full": { "success": 0, "failure": 0, "in_progress": 1, "cancelled": 0, "skipped": 0 }
+        "test_full": { "success": 0, "failure": 1, "in_progress": 0, "cancelled": 0, "skipped": 0 }
       },
       "jax": {                                  // linux-only pipeline;
         "build": { "status": "in_progress" },
@@ -238,16 +238,18 @@
       // suite ran (dispatched on a cadence, e.g. nightly gfx94X-dcgpu py3.12).
       // Kept separate from "test" so smoke and full results don't overwrite
       // each other on the shared linux/pytorch leaf.
+      // test_results_complete records the workflow's validated completeness flag;
+      // test_failure_count appears only when observed == expected > 0 and complete.
       "test_full": {
         "linux": {
           "gfx942": {
             "run_id":       12346900,
             "run_attempt":  1,
-            "status":       "in_progress",
+            "status":       "failure",
             "started_at":   "2026-04-08T13:00:00Z",
-            "completed_at": null,
+            "completed_at": "2026-04-08T18:00:00Z",
             "variants": [
-              { "py": "3.12", "torch": "release/2.10", "run_id": 12346900, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T13:00:00Z", "completed_at": null }
+              { "py": "3.12", "torch": "release/2.10", "run_id": 12346900, "run_attempt": 1, "test_failure_count": 20, "test_results_complete": true, "status": "failure", "started_at": "2026-04-08T13:00:00Z", "completed_at": "2026-04-08T18:00:00Z" }
             ]
           }
         }

@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-26T00:02:02Z",
-  "status_json_last_updated": "2026-10-26T02:44:47Z",
+  "status_json_last_updated": "2026-10-26T02:44:50Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -104,13 +104,13 @@
         "gfx117X-all"
       ],
       "urls": {
-        "tarballs": "https://therock-nightly-artifacts.s3.amazonaws.com/40247321302-windows/tarballs/",
-        "wheels": "https://therock-nightly-artifacts.s3.amazonaws.com/40247321302-windows/python/",
+        "tarballs": "https://nightly.repo.amd.com/rocm/core/tarball/",
+        "wheels": "https://nightly.repo.amd.com/rocm/whl-next/",
         "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/40247321302-windows/index.html"
       },
       "rocm": {
         "build": {
-          "status": "in_progress"
+          "status": "success"
         },
         "test": {
           "success": 0,
@@ -145,10 +145,11 @@
           "completed_at": "2026-10-26T01:08:16Z"
         },
         "windows": {
-          "status": "in_progress",
+          "status": "success",
           "run_id": 40247321302,
           "run_attempt": 1,
-          "started_at": "2026-10-26T00:01:09Z"
+          "started_at": "2026-10-26T00:01:09Z",
+          "completed_at": "2026-10-26T02:44:14Z"
         }
       },
       "test": {

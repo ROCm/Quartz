@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-28T00:02:35Z",
-  "status_json_last_updated": "2026-10-28T22:10:24Z",
+  "status_json_last_updated": "2026-10-28T22:13:52Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -61,9 +61,9 @@
           "status": "success"
         },
         "test": {
-          "success": 40,
+          "success": 52,
           "failure": 1,
-          "in_progress": 27,
+          "in_progress": 15,
           "cancelled": 0,
           "skipped": 0
         },
@@ -1188,7 +1188,7 @@
             "status": "in_progress",
             "run_id": 40751130344,
             "run_attempt": 1,
-            "started_at": "2026-10-28T19:05:29Z",
+            "started_at": "2026-10-28T21:22:36Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1213,7 +1213,7 @@
                 "status": "in_progress",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T21:45:18Z"
               },
               {
                 "py": "3.11",
@@ -1271,7 +1271,7 @@
             "status": "in_progress",
             "run_id": 40751130344,
             "run_attempt": 1,
-            "started_at": "2026-10-28T19:05:29Z",
+            "started_at": "2026-10-28T21:25:18Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1296,7 +1296,7 @@
                 "status": "in_progress",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T22:09:22Z"
               },
               {
                 "py": "3.11",
@@ -1312,7 +1312,7 @@
             "status": "in_progress",
             "run_id": 40751130344,
             "run_attempt": 1,
-            "started_at": "2026-10-28T19:05:29Z",
+            "started_at": "2026-10-28T21:30:53Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1337,7 +1337,7 @@
                 "status": "in_progress",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T21:52:26Z"
               },
               {
                 "py": "3.11",
@@ -1350,10 +1350,11 @@
             ]
           },
           "gfx125X-dcgpu": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1385,10 +1386,11 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
@@ -1396,7 +1398,7 @@
             "status": "failure",
             "run_id": 40751130344,
             "run_attempt": 1,
-            "started_at": "2026-10-28T19:05:29Z",
+            "started_at": "2026-10-28T21:22:52Z",
             "completed_at": "2026-10-28T22:06:02Z",
             "variants": [
               {
@@ -1422,7 +1424,7 @@
                 "status": "in_progress",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T22:12:01Z"
               },
               {
                 "py": "3.11",
@@ -1452,10 +1454,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.15",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T21:45:35Z"
+                "started_at": "2026-10-28T21:45:35Z",
+                "completed_at": "2026-10-28T22:09:45Z"
               },
               {
                 "py": "3.11",
@@ -1477,10 +1480,11 @@
             ]
           },
           "gfx900": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1512,18 +1516,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx90c": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1555,18 +1561,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx906": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1598,18 +1606,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx908": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1641,18 +1651,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx101X-dgpu": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1684,18 +1696,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx103X-all": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1727,18 +1741,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx1150": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1770,18 +1786,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx1152": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1813,18 +1831,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx1153": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1856,18 +1876,20 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           },
           "gfx117X-all": {
-            "status": "in_progress",
+            "status": "success",
             "run_id": 40751130344,
             "run_attempt": 1,
             "started_at": "2026-10-28T19:05:29Z",
+            "completed_at": "2026-10-28T21:22:22Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1899,10 +1921,11 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40751130344,
                 "run_attempt": 1,
-                "started_at": "2026-10-28T19:05:29Z"
+                "started_at": "2026-10-28T19:05:29Z",
+                "completed_at": "2026-10-28T21:22:22Z"
               }
             ]
           }

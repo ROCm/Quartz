@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-10-29T00:02:10Z",
-  "status_json_last_updated": "2026-10-29T07:00:28Z",
+  "status_json_last_updated": "2026-10-29T07:00:54Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -80,9 +80,9 @@
           "status": "failure"
         },
         "test": {
-          "success": 14,
+          "success": 15,
           "failure": 0,
-          "in_progress": 2,
+          "in_progress": 1,
           "cancelled": 0,
           "skipped": 0
         }
@@ -1118,10 +1118,6 @@
       "build": {
         "linux": {
           "status": "failure",
-          "run_id": 40819662645,
-          "run_attempt": 1,
-          "started_at": "2026-10-29T04:47:32Z",
-          "completed_at": "2026-10-29T06:59:00Z",
           "variants": [
             {
               "py": "3.14",
@@ -1331,6 +1327,7 @@
             "run_id": 40819662645,
             "run_attempt": 1,
             "started_at": "2026-10-29T05:29:41Z",
+            "completed_at": "2026-10-29T07:00:15Z",
             "variants": [
               {
                 "py": "3.14",
@@ -1416,10 +1413,11 @@
               {
                 "py": "3.14",
                 "jax_version": "0.12.0",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 40819662645,
                 "run_attempt": 1,
-                "started_at": "2026-10-29T05:47:43Z"
+                "started_at": "2026-10-29T05:47:43Z",
+                "completed_at": "2026-10-29T06:59:56Z"
               },
               {
                 "py": "3.13",

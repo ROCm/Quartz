@@ -213,25 +213,6 @@ def _release_version_suffix(release_version: str) -> str:
     )
 
 
-# --- TEMPORARY: nightly folder-rename bridge (remove after ~2026-09-11) ---
-# The nightly tree moved release-nightly/ -> nightly/ (#93). The nightly already
-# in flight on the cutover day wrote its early events to release-nightly/, so
-# routing its late events (e.g. the pytorch tests that finish hours later) to
-# nightly/ would split one run across two folders. Pin just the cutover date's
-# nightly to the old folder; every later date uses the new one. Keyed on the
-# document's own date suffix, not wall-clock now(), so late or rerun events for
-# the straddling run still land in the old folder. Delete this, `_nightly_root`,
-# and its use in `_status_json_path` once that nightly has aged out of consumers.
-_NIGHTLY_LEGACY_FOLDER_DATE = "20260908"
-
-
-def _nightly_root(date_suffix: str) -> str:
-    """Old vs new nightly root during the folder-rename transition."""
-    if date_suffix == _NIGHTLY_LEGACY_FOLDER_DATE:
-        return "release-nightly"
-    return "nightly"
-
-
 def _variant_filename(base: str, build_variant: str) -> str:
     """`<base>.json` for the release build, `<base>_<build_variant>.json` otherwise.
 
@@ -246,33 +227,89 @@ def _variant_filename(base: str, build_variant: str) -> str:
 def _status_json_path(
     repo_dir: Path,
     release_type: str,
-    workflow_run: WorkflowRunRecord,
+    release_version: str,
     build_variant: str,
 ) -> Path:
-    release_version = workflow_run.classification.release_version or ""
+    if not release_version:
+        raise ValueError(
+            "Cannot route a status.json without a release_version "
+            f"(repo_dir={str(repo_dir)!r}, release_type={release_type!r}, "
+            f"release_version={release_version!r}, build_variant={build_variant!r}); "
+            "version-less events must be routed through their owner "
+            "(see `_leaf_status_path`)."
+        )
     filename = _variant_filename("status", build_variant)
-    # bkc carries two dates (the nightly base build date + the bkc run date) that
-    # cannot be reconstructed from `created_at`, and its version is not one of the
-    # nightly/prerelease forms `_release_version_suffix` accepts, so route it
-    # before that call.
+    # bkc carries two dates (the nightly base build date + the bkc run date), and
+    # its version is not one of the nightly/prerelease forms
+    # `_release_version_suffix` accepts, so route it before that call.
     if release_type == "nightly-bkc":
         nightly_version, bkc_date = _bkc_dirs(release_version)
         return repo_dir / "nightly-bkc" / nightly_version / bkc_date / filename
 
-    # Test workflows are dispatched without a version input, so their events
-    # carry no release_version.
-    if not release_version and release_type == "nightly" and workflow_run.created_at:
-        suffix = workflow_run.created_at.strftime("%Y%m%d")
-    else:
-        suffix = _release_version_suffix(release_version)
-
+    suffix = _release_version_suffix(release_version)
     if release_type == "nightly":
-        return repo_dir / _nightly_root(suffix) / suffix / filename
+        return repo_dir / "nightly" / suffix / filename
     if release_type == "prerelease":
         major_minor, full = _prerelease_dirs(release_version)
         return repo_dir / "prerelease" / major_minor / full / filename
 
-    raise ValueError(f"Unexpected release_type: {release_type!r}")
+    raise ValueError(
+        f"Unexpected release_type (repo_dir={str(repo_dir)!r}, "
+        f"release_type={release_type!r}, release_version={release_version!r}, "
+        f"build_variant={build_variant!r})"
+    )
+
+
+# Where each release tier keeps its status documents, as globs relative
+# to the status repo.
+_STATUS_DIR_GLOBS: dict[str, str] = {
+    "nightly": "nightly/*",
+    "nightly-bkc": "nightly-bkc/*/*",
+    "prerelease": "prerelease/*/*",
+}
+
+
+def _leaf_status_path(
+    repo_dir: Path,
+    release_type: str,
+    workflow_run: WorkflowRunRecord,
+    build_variant: str,
+) -> Path | None:
+    """The existing status document a non-owner event belongs to, or None.
+
+    Only the owner-writer events (setup, top-level orchestrator) create a
+    document; every other event updates one that already exists. With a
+    version, its path follows directly from it. Without one (e.g.
+    `test_artifacts.yml` is dispatched without a version input), the document
+    is found through the `quartz_tracking_id` owner (normalized into
+    `trigger_workflow_run_id` by `therock_classify.classify`). Either way,
+    `_gate_to_document_owner` then rejects an event its document's owner does
+    not own.
+    """
+    release_version = workflow_run.classification.release_version
+    if release_version:
+        path = _status_json_path(repo_dir, release_type, release_version, build_variant)
+        return path if path.is_file() else None
+
+    owner = workflow_run.trigger_workflow_run_id
+    if owner in (None, 0):
+        return None
+    filename = _variant_filename("status", build_variant)
+    matches = [
+        path
+        for path in repo_dir.glob(f"{_STATUS_DIR_GLOBS[release_type]}/{filename}")
+        if json.loads(path.read_text(encoding="utf-8")).get("trigger_workflow_run_id")
+        == owner
+    ]
+    if len(matches) > 1:
+        raise ValueError(
+            f"owner run {owner} owns more than one status document "
+            f"(repo_dir={str(repo_dir)!r}, release_type={release_type!r}, "
+            f"workflow_run_id={workflow_run.workflow_run_id}, "
+            f"build_variant={build_variant!r}): "
+            f"{sorted(str(m.relative_to(repo_dir)) for m in matches)}"
+        )
+    return matches[0] if matches else None
 
 
 def _bkc_dirs(release_version: str) -> tuple[str, str]:
@@ -359,9 +396,6 @@ def _load_or_create_document(
         data = json.loads(status_path.read_text(encoding="utf-8"))
         return StatusDocument.from_dict(data), False
 
-    build_date = _bkc_build_date(workflow_run) or (
-        workflow_run.created_at.strftime("%Y%m%d") if workflow_run.created_at else ""
-    )
     created_at_str = (
         _datetime_to_z(workflow_run.created_at) if workflow_run.created_at else None
     )
@@ -370,7 +404,6 @@ def _load_or_create_document(
         StatusDocument(
             release_type=_doc_release_type(release_type),
             rocm_version=_document_rocm_version(workflow_run),
-            build_date=build_date,
             status_json_created=now,
             status_json_last_updated=now,
             created_at=created_at_str,
@@ -393,12 +426,6 @@ def _update_document_metadata(
     if not doc.rocm_version:
         doc.rocm_version = _document_rocm_version(workflow_run)
 
-    bkc_build_date = _bkc_build_date(workflow_run)
-    if bkc_build_date:
-        doc.build_date = bkc_build_date
-    elif workflow_run.created_at is not None:
-        doc.build_date = workflow_run.created_at.strftime("%Y%m%d")
-
 
 def _document_rocm_version(workflow_run: WorkflowRunRecord) -> str:
     """The document's `rocm_version`: the canonical release version followed by
@@ -412,16 +439,6 @@ def _document_rocm_version(workflow_run: WorkflowRunRecord) -> str:
     if not c.release_version:
         return ""
     return f"{c.release_version}{c.version_marker}"
-
-
-def _bkc_build_date(workflow_run: WorkflowRunRecord) -> str:
-    """Returns build date for bkc is the bkc suffix date from the version
-    <nightly>+bkc.<bkc-date>, or "" for any other version.
-    """
-    bkc = RELEASE_VERSION_BKC_RE.match(
-        workflow_run.classification.release_version or ""
-    )
-    return bkc.group(2) if bkc else ""
 
 
 _CONCLUSION_MAP: dict[str, Status] = {
@@ -1090,14 +1107,22 @@ def _apply_pipeline_enable_flags(
 
 
 def _apply_build_metadata(doc: StatusDocument, workflow_run: WorkflowRunRecord) -> None:
-    """Stamp build_variant / therock_commit off the owning run's classification.
+    """Stamp build_date / build_variant / therock_commit off the owning run.
 
-    Both are recorded by the owner-writer runs: `build_variant` from the run's
-    declared variant (see `therock_classify.derive_build_variant`) and
-    `therock_commit` from the setup checkout's captured `commit` output (see
-    `therock_classify.derive_therock_commit`). Each is written only when
-    non-empty.
+    All are recorded by the owner-writer runs only, so a leaf finishing after
+    midnight never moves them, while a newer owner taking over the document
+    (see `_reset_document_for_new_owner`) restamps them:
+      - `build_date`: the date the owning top-level orchestrator was created
+        (the setup run shares its run and `created_at`, which a re-run attempt
+        keeps);
+      - `build_variant`: the run's declared variant (see
+        `therock_classify.derive_build_variant`);
+      - `therock_commit`: the setup checkout's captured `commit` output (see
+        `therock_classify.derive_therock_commit`).
+    Each is written only when non-empty.
     """
+    if workflow_run.created_at is not None:
+        doc.build_date = workflow_run.created_at.strftime("%Y%m%d")
     c = workflow_run.classification
     if c.build_variant:
         doc.build_variant = c.build_variant
@@ -1355,9 +1380,8 @@ def _update_symlinks(
         return []
 
     # Root follows wherever the document was written, two levels up from the
-    # dated status.json: nightly/<date>/ (or the legacy release-nightly/<date>/
-    # during the #93 rename bridge), and nightly-bkc/<nightly-version>/<bkc-date>/. Deriving it
-    # from the target keeps the pointer in the same folder as its target.
+    # dated status.json: nightly/<date>/ and nightly-bkc/<nightly-version>/<bkc-date>/.
+    # Deriving it from the target keeps the pointer in the same folder as its target.
     latest_dir = status_path.parent.parent
     new_target_relative = status_path.relative_to(latest_dir)
     new_date = new_target_relative.parts[0]
@@ -2186,7 +2210,28 @@ def update_status_json(
                 "input or extend the architecture-extraction regex."
             )
 
-    status_path = _status_json_path(repo_dir, release_type, workflow_run, build_variant)
+    # The owner writers create the document; every other event only updates an
+    # existing one (see `_leaf_status_path`).
+    if finalize or record_owner_only:
+        status_path = _status_json_path(
+            repo_dir, release_type, c.release_version or "", build_variant
+        )
+    else:
+        leaf_path = _leaf_status_path(
+            repo_dir, release_type, workflow_run, build_variant
+        )
+        if leaf_path is None:
+            log.info(
+                "no %s status document exists yet for release_version=%r / "
+                "trigger_workflow_run_id=%s (workflow_run_id=%s); only a setup or "
+                "top-level orchestrator run may create one, skipping",
+                release_type,
+                workflow_run.classification.release_version,
+                workflow_run.trigger_workflow_run_id,
+                workflow_run.workflow_run_id,
+            )
+            return None
+        status_path = leaf_path
 
     if not commit_and_push:
         doc, _file_created, _files, _msg = _build_and_write(

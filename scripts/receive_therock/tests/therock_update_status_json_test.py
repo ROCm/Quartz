@@ -26,7 +26,7 @@ import subprocess
 import sys
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -105,7 +105,7 @@ def _run(
         env={},
         parent_workflow=None,
         referenced_workflows=[],
-        trigger_workflow_run_id=None,
+        trigger_workflow_run_id=27797822902,
         jobs=[],
         classification=Classification(
             platform=platform,
@@ -169,13 +169,16 @@ def _prerelease_leaf_run() -> WorkflowRunRecord:
 def _run_nightly_build_good(repo_dir: Path, date: str) -> None:
     """Emit a full leaf+orchestrator nightly build that finalizes all-green under
     nightly/<date>/. build_date follows created_at (not the version), so the date
-    is set there."""
+    is set there. Each build is its own release run, so the date doubles as its
+    owner run id: leaves route through it."""
     version = f"7.14.0a{date}"
     when = datetime(
         int(date[:4]), int(date[4:6]), int(date[6:8]), 15, 8, tzinfo=timezone.utc
     )
     for factory in (_leaf_run, _orchestrator_run):
         run = factory()
+        run.workflow_run_id = int(date)
+        run.trigger_workflow_run_id = int(date)
         run.rocm_version = version
         run.classification.release_version = version
         run.created_at = when
@@ -331,14 +334,9 @@ def test_rocm_test_events_populate_test_rollup(tmp_path: Path) -> None:
     assert set(doc.pipelines.rocm.test["linux"].keys()) == {"gfx942", "gfx1201"}
 
 
-def test_version_less_test_event_routes_by_run_date(tmp_path: Path) -> None:
-    # Test workflows are dispatched without a version input, so their events
-    # carry no release_version. Routing falls back to the run date (created_at),
-    # landing in the same dated document a build leaf seeded.
-    _establish_owner(tmp_path)
-    tusj.update_status_json(
-        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
-    )
+def _version_less_test_run(release_type: str, head_branch: str) -> WorkflowRunRecord:
+    """A `test_artifacts.yml` run: dispatched without a version input, so it
+    carries no release_version and reaches its document only through its owner."""
     test_run = _run(
         path=".github/workflows/test_artifacts.yml",
         platform="linux",
@@ -346,8 +344,22 @@ def test_version_less_test_event_routes_by_run_date(tmp_path: Path) -> None:
         pipeline_phase="test",
         architectures=["gfx942"],
     )
+    test_run.release_type = release_type
+    test_run.head_branch = head_branch
     test_run.rocm_version = ""
     test_run.classification.release_version = ""
+    return test_run
+
+
+def test_version_less_test_event_routes_through_owner(tmp_path: Path) -> None:
+    # The test run starts after UTC midnight, so its run date is a day past the
+    # nightly it tests; routing through its owner still lands it in that nightly.
+    _establish_owner(tmp_path)
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    test_run = _version_less_test_run("nightly", "main")
+    test_run.created_at = datetime(2026, 6, 20, 0, 12, tzinfo=timezone.utc)
 
     out = tusj.update_status_json(
         _event(test_run), repo_dir=tmp_path, commit_and_push=False
@@ -357,11 +369,66 @@ def test_version_less_test_event_routes_by_run_date(tmp_path: Path) -> None:
     # The build leaf's version is preserved; the test rollup is populated.
     assert doc.rocm_version == _RELEASE_VERSION
     assert doc.summary.linux.rocm.test.success == 1
+    # Only the owner stamps build_date; the post-midnight test does not move it.
+    assert doc.build_date == _NIGHTLY_DATE
+
+
+def test_version_less_prerelease_test_event_routes_through_owner(
+    tmp_path: Path,
+) -> None:
+    # Issue #130: a prerelease test_artifacts.yml event raised on its empty
+    # release_version instead of recording its result.
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
+
+    out = tusj.update_status_json(
+        _event(_version_less_test_run("prerelease", _PRERELEASE_BRANCH)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert out == tmp_path / "prerelease" / "7.14" / "7.14.0rc1" / "status.json"
+    assert _load(out).summary.linux.rocm.test.success == 1
+
+
+def test_version_less_bkc_test_event_routes_through_owner(tmp_path: Path) -> None:
+    # Issue #130: the bkc twin of the prerelease case above.
+    _establish_owner(tmp_path, release_type="nightly-bkc", version=_BKC_VERSION)
+
+    out = tusj.update_status_json(
+        _event(_version_less_test_run("nightly-bkc", _BKC_BRANCH)),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert out == _bkc_status_path(tmp_path)
+    assert _load(out).summary.linux.rocm.test.success == 1
+
+
+def test_leaf_never_creates_a_document(tmp_path: Path) -> None:
+    # Only a setup or top-level orchestrator run creates a document; a versioned
+    # leaf arriving before its owner anchored one writes nothing.
+    out = tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out is None
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_version_less_leaf_without_owned_document_is_skipped(tmp_path: Path) -> None:
+    # The only document belongs to another run (e.g. a newer re-dispatch took it
+    # over), so a version-less test of the superseded run has nowhere to land.
+    _establish_owner(tmp_path, 29079513704)
+    out = tusj.update_status_json(
+        _event(_version_less_test_run("nightly", "main")),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    assert out is None
+    assert _load(_nightly_status_path(tmp_path)).pipelines.rocm.test == {}
 
 
 def test_version_less_in_progress_test_event_does_not_crash(tmp_path: Path) -> None:
-    # The started (in_progress) event also carries no version; it must route by
-    # run date instead of raising on an empty release_version.
+    # The started (in_progress) event also carries no version; it must route
+    # through its owner instead of raising on an empty release_version.
+    _establish_owner(tmp_path)
     test_run = _run(
         path=".github/workflows/test_artifacts.yml",
         platform="linux",
@@ -744,6 +811,7 @@ def _asan_release_linux_completion(run_id: int = 600) -> WorkflowRunRecord:
     release orchestrator, run with the ASAN build variant. ASAN is Linux-only."""
     run = _release_linux_completion(_release_captured_outputs())
     run.workflow_run_id = run_id
+    run.trigger_workflow_run_id = run_id
     run.classification.build_variant = "asan-debug"
     return run
 
@@ -877,7 +945,7 @@ def test_finalized_build_reopens_to_in_progress_on_rerun(tmp_path: Path) -> None
     )
 
     # conclusion is irrelevant here: the rocm/build cap forces in_progress.
-    rerun = _linux_build(27797822902, attempt=2)
+    rerun = _linux_build(27797822902, attempt=2, parent_run_id=27797822902)
     tusj.update_status_json(_event(rerun), repo_dir=tmp_path, commit_and_push=False)
 
     leaf = _linux_build_leaf(tmp_path)
@@ -937,6 +1005,7 @@ def test_wrong_repository_is_skipped(tmp_path: Path) -> None:
 
 
 def test_repository_match_is_case_insensitive(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
     out = tusj.update_status_json(
         _event(_leaf_run(), repository="ROCm/RockRel"),
         repo_dir=tmp_path,
@@ -973,6 +1042,14 @@ def test_release_version_suffix_extracts_release_suffixes(
     release_version: str, expected: str
 ) -> None:
     assert tusj._release_version_suffix(release_version) == expected
+
+
+@pytest.mark.parametrize("release_type", ["nightly", "nightly-bkc", "prerelease"])
+def test_status_json_path_rejects_empty_version(
+    tmp_path: Path, release_type: str
+) -> None:
+    with pytest.raises(ValueError, match="without a release_version"):
+        tusj._status_json_path(tmp_path, release_type, "", "release")
 
 
 def test_unclassified_leaf_is_skipped(tmp_path: Path) -> None:
@@ -1196,14 +1273,16 @@ def test_nightly_reopen_repoints_latest_good_to_previous_green(
     assert latest_good.readlink() == Path(older_date) / "status.json"
 
 
-def _prerelease_leaf_run_version(version: str) -> WorkflowRunRecord:
+def _prerelease_leaf_run_version(version: str, owner_run_id: int) -> WorkflowRunRecord:
     run = _prerelease_leaf_run()
+    run.trigger_workflow_run_id = owner_run_id
     run.rocm_version = version
     run.classification.release_version = version
     return run
 
 
 def test_prerelease_routes_to_nested_version_tree(tmp_path: Path) -> None:
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
     out = tusj.update_status_json(
         _event(_prerelease_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -1258,15 +1337,15 @@ def test_prerelease_asan_creates_variant_specific_latest_symlinks(
 
 
 def test_prerelease_latest_advances_to_newer_candidate(tmp_path: Path) -> None:
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc1")
+    _establish_owner(tmp_path, 100, release_type="prerelease", version="7.14.0rc1")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.0rc1")),
+        _event(_prerelease_leaf_run_version("7.14.0rc1", 100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
+    _establish_owner(tmp_path, 200, release_type="prerelease", version="7.14.0rc2")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.0rc2")),
+        _event(_prerelease_leaf_run_version("7.14.0rc2", 200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1278,15 +1357,15 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
     tmp_path: Path,
 ) -> None:
     # rc10 is numerically newer than rc2 even though it sorts lower lexically.
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc10")
+    _establish_owner(tmp_path, 100, release_type="prerelease", version="7.14.0rc10")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.0rc10")),
+        _event(_prerelease_leaf_run_version("7.14.0rc10", 100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
+    _establish_owner(tmp_path, 200, release_type="prerelease", version="7.14.0rc2")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.0rc2")),
+        _event(_prerelease_leaf_run_version("7.14.0rc2", 200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1297,15 +1376,15 @@ def test_prerelease_latest_does_not_regress_to_older_candidate(
 def test_prerelease_line_latest_advances_across_patches(tmp_path: Path) -> None:
     # Patch releases of one line share a major.minor directory; its latest.json
     # advances from the .0 candidate to the .1 candidate.
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc2")
+    _establish_owner(tmp_path, 100, release_type="prerelease", version="7.14.0rc2")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.0rc2")),
+        _event(_prerelease_leaf_run_version("7.14.0rc2", 100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.1rc1")
+    _establish_owner(tmp_path, 200, release_type="prerelease", version="7.14.1rc1")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.1rc1")),
+        _event(_prerelease_leaf_run_version("7.14.1rc1", 200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1319,15 +1398,15 @@ def test_prerelease_line_latest_advances_across_patches(tmp_path: Path) -> None:
 def test_prerelease_line_latest_isolated_per_line(tmp_path: Path) -> None:
     # Two release lines coexist. Each major.minor pointer tracks its own line;
     # the top-level pointer tracks the highest version overall.
-    _establish_owner(tmp_path, release_type="prerelease", version="10.0.0rc1")
+    _establish_owner(tmp_path, 100, release_type="prerelease", version="10.0.0rc1")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("10.0.0rc1")),
+        _event(_prerelease_leaf_run_version("10.0.0rc1", 100)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    _establish_owner(tmp_path, release_type="prerelease", version="7.14.0rc1")
+    _establish_owner(tmp_path, 200, release_type="prerelease", version="7.14.0rc1")
     tusj.update_status_json(
-        _event(_prerelease_leaf_run_version("7.14.0rc1")),
+        _event(_prerelease_leaf_run_version("7.14.0rc1", 200)),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
@@ -1351,8 +1430,11 @@ _BKC_DATE = "20260831"
 _BKC_VERSION = f"{_BKC_NIGHTLY_VERSION}+bkc.{_BKC_DATE}"
 
 
-def _bkc_leaf_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
+def _bkc_leaf_run(
+    version: str = _BKC_VERSION, owner_run_id: int = 27797822902
+) -> WorkflowRunRecord:
     run = _leaf_run()
+    run.trigger_workflow_run_id = owner_run_id
     run.release_type = "nightly-bkc"
     run.head_branch = _BKC_BRANCH
     run.rocm_version = version
@@ -1360,8 +1442,12 @@ def _bkc_leaf_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
     return run
 
 
-def _bkc_orchestrator_run(version: str = _BKC_VERSION) -> WorkflowRunRecord:
+def _bkc_orchestrator_run(
+    version: str = _BKC_VERSION, run_id: int = 27797822902
+) -> WorkflowRunRecord:
     run = _orchestrator_run()
+    run.workflow_run_id = run_id
+    run.trigger_workflow_run_id = run_id
     run.release_type = "nightly-bkc"
     run.head_branch = _BKC_BRANCH
     run.rocm_version = version
@@ -1373,6 +1459,11 @@ def _bkc_status_path(repo_dir: Path) -> Path:
     return repo_dir / "nightly-bkc" / _BKC_NIGHTLY_VERSION / _BKC_DATE / "status.json"
 
 
+# The bkc helpers below emit one release run per (nightly_version, bkc_date)
+# build. Each needs its own owner run id, since leaves route through it; every
+# build these tests emit has a distinct bkc date, so the date doubles as the id.
+
+
 def _run_bkc_leaf(repo_dir: Path, nightly_version: str, bkc_date: str) -> None:
     """Establish ownership then emit a leaf for one bkc (nightly_version, bkc_date)
     build, writing its status.json and refreshing every latest.json pointer.
@@ -1380,12 +1471,15 @@ def _run_bkc_leaf(repo_dir: Path, nightly_version: str, bkc_date: str) -> None:
     version = f"{nightly_version}+bkc.{bkc_date}"
     _establish_owner(
         repo_dir,
+        int(bkc_date),
         release_type="nightly-bkc",
         version=version,
         head_branch=_BKC_BRANCH,
     )
     tusj.update_status_json(
-        _event(_bkc_leaf_run(version)), repo_dir=repo_dir, commit_and_push=False
+        _event(_bkc_leaf_run(version, int(bkc_date))),
+        repo_dir=repo_dir,
+        commit_and_push=False,
     )
 
 
@@ -1394,10 +1488,14 @@ def _run_bkc_build_good(repo_dir: Path, nightly_version: str, bkc_date: str) -> 
     top-level `latest_good.json` gate fires."""
     version = f"{nightly_version}+bkc.{bkc_date}"
     tusj.update_status_json(
-        _event(_bkc_leaf_run(version)), repo_dir=repo_dir, commit_and_push=False
+        _event(_bkc_leaf_run(version, int(bkc_date))),
+        repo_dir=repo_dir,
+        commit_and_push=False,
     )
     tusj.update_status_json(
-        _event(_bkc_orchestrator_run(version)), repo_dir=repo_dir, commit_and_push=False
+        _event(_bkc_orchestrator_run(version, int(bkc_date))),
+        repo_dir=repo_dir,
+        commit_and_push=False,
     )
 
 
@@ -1411,11 +1509,12 @@ def _run_bkc_build_good(repo_dir: Path, nightly_version: str, bkc_date: str) -> 
 )
 def test_bkc_routes_to_nightly_version_date_tree(tmp_path: Path, version: str) -> None:
     # All three producer separators normalize to the same (nightly_version, bkc_date) dir.
+    _establish_owner(tmp_path, release_type="nightly-bkc", version=_BKC_VERSION)
     out = tusj.update_status_json(
         _event(_bkc_leaf_run(version)), repo_dir=tmp_path, commit_and_push=False
     )
     assert out == _bkc_status_path(tmp_path)
-    assert not (tmp_path / "release-nightly").exists()
+    assert not (tmp_path / "nightly").exists()
 
 
 def test_bkc_leaf_creates_latest_symlink_but_not_latest_good(
@@ -1515,23 +1614,37 @@ def test_bkc_asan_updates_variant_specific_pointers(
     assert not (bkc_root / "latest.json").exists()
 
 
-def test_bkc_build_date_is_the_bkc_date_not_each_run_start(tmp_path: Path) -> None:
-    # Both bkc dates are fixed by the version, so build_date stays on the
-    # <bkc-date> the document is filed under instead of following whichever run
-    # last reported -- a child dispatched after midnight would otherwise move it,
-    # and consumers deduplicate on (rocm_version, build_date).
-    _run_bkc_build_good(tmp_path, _BKC_NIGHTLY_VERSION, _BKC_DATE)
-    assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
-
-    later = _bkc_orchestrator_run()
-    later.run_attempt = 2
-    later.created_at = datetime(2026, 6, 20, 0, 12, tzinfo=timezone.utc)
+def test_bkc_build_date_is_the_owner_start_not_each_run_start(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # build_date is the date the owning orchestrator was created, so a child
+    # dispatched after midnight does not move it; consumers deduplicate on
+    # (rocm_version, build_date).
+    bkc_day = datetime.strptime(_BKC_DATE, "%Y%m%d").replace(tzinfo=timezone.utc)
+    # The fixtures' clock predates the bkc date; move it past both runs.
+    monkeypatch.setattr(tusj, "_utc_now", lambda: bkc_day + timedelta(days=2))
+    owner = _bkc_orchestrator_run()
+    owner.status = "in_progress"
+    owner.conclusion = None
+    owner.created_at = bkc_day + timedelta(hours=22)
     tusj.update_status_json(
-        _event(later, event_type="workflow_run_in_progress"),
+        _event(owner, event_type="workflow_run_in_progress"),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
     assert _load(_bkc_status_path(tmp_path)).build_date == _BKC_DATE
+
+    later = _bkc_leaf_run()
+    later.created_at = bkc_day + timedelta(days=1, minutes=12)  # after midnight
+    later.run_started_at = later.created_at
+    later.updated_at = later.created_at
+    out = tusj.update_status_json(
+        _event(later), repo_dir=tmp_path, commit_and_push=False
+    )
+    assert out == _bkc_status_path(tmp_path)
+    doc = _load(out)
+    assert "linux" in doc.pipelines.rocm.build  # the leaf landed...
+    assert doc.build_date == _BKC_DATE  # ...without moving build_date
 
 
 def test_bkc_reopen_drops_good_pointers_when_no_green_remains(
@@ -1777,6 +1890,7 @@ def test_prerelease_off_main_branch_raises(tmp_path: Path) -> None:
 
 
 def test_prerelease_from_release_therock_branch_routes(tmp_path: Path) -> None:
+    _establish_owner(tmp_path, release_type="prerelease", version=_PRERELEASE_VERSION)
     run = _prerelease_leaf_run()
     run.head_branch = "release/therock-7.14"
     out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
@@ -1931,6 +2045,7 @@ def test_dry_run_performs_no_git_operations(
     monkeypatch.setattr(tusj, "_git", _boom)
     monkeypatch.setattr(tusj, "_commit_and_push", _boom)
 
+    _establish_owner(tmp_path)
     out = tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
     )
@@ -2088,6 +2203,7 @@ def test_update_status_json_retries_until_deadline_then_raises(
         tusj, "_commit_and_push", lambda *a, **k: tusj._PushOutcome.RETRY
     )
 
+    _establish_owner(tmp_path)
     with pytest.raises(RuntimeError, match="deadline exceeded"):
         tusj.update_status_json(
             _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=True
@@ -2108,6 +2224,7 @@ def test_update_status_json_succeeds_after_transient_retries(
     )
     monkeypatch.setattr(tusj, "_commit_and_push", lambda *a, **k: next(outcomes))
 
+    _establish_owner(tmp_path)
     out = tusj.update_status_json(
         _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=True
     )

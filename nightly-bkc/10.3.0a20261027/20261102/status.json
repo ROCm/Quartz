@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": false,
   "status_json_created": "2026-11-02T19:27:00Z",
-  "status_json_last_updated": "2026-11-02T23:48:59Z",
+  "status_json_last_updated": "2026-11-02T23:49:07Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -22,11 +22,11 @@
         "gfx125X-dcgpu"
       ],
       "urls": {
-        "tarballs": "https://therock-bkc-artifacts.s3.amazonaws.com/41509859906-linux/tarballs/",
-        "wheels": "https://therock-bkc-artifacts.s3.amazonaws.com/41509859906-linux/python/",
+        "tarballs": "https://bkc.repo.amd.com/rocm/core/tarball/",
+        "wheels": "https://bkc.repo.amd.com/rocm/whl-next/",
         "artifacts": "https://therock-bkc-artifacts.s3.amazonaws.com/41509859906-linux/index.html",
-        "rpm": "https://therock-bkc-artifacts.s3.amazonaws.com/41509859906-linux/packages/rpm/x86_64",
-        "deb": "https://therock-bkc-artifacts.s3.amazonaws.com/41509859906-linux/packages/deb"
+        "rpm": "https://bkc.repo.amd.com/rocm/core/packages/<os-profile>/20261102-41509859906/",
+        "deb": "https://bkc.repo.amd.com/rocm/core/packages/<os-profile>/20261102-41509859906/"
       },
       "rocm": {
         "build": {
@@ -111,7 +111,7 @@
           "run_id": 41509859906,
           "run_attempt": 1,
           "started_at": "2026-11-02T19:25:53Z",
-          "completed_at": "2026-11-02T22:38:28Z"
+          "completed_at": "2026-11-02T23:48:20Z"
         }
       },
       "test": {}

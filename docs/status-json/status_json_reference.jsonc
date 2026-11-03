@@ -195,6 +195,9 @@
         }
       },
       // pytorch.test: per-arch run with variants (py x torch) inside each.
+      // (schema 2.2) A finished cell carries test_run_count / test_passed_count /
+      // test_failure_count (includes errors) / test_skipped_count only when
+      // test_results_complete is true and passed + failed == run > 0.
       "test": {
         "linux": {
           "gfx942": {
@@ -204,7 +207,7 @@
             "started_at":   "2026-04-08T11:30:00Z",
             "completed_at": null,
             "variants": [
-              { "py": "3.10", "torch": "release/2.10", "run_id": 12345900, "run_attempt": 1, "status": "success", "started_at": "2026-04-08T11:30:00Z", "completed_at": "2026-04-08T12:15:00Z" },
+              { "py": "3.10", "torch": "release/2.10", "run_id": 12345900, "run_attempt": 1, "test_run_count": 10278, "test_passed_count": 10278, "test_failure_count": 0, "test_skipped_count": 9117, "test_results_complete": true, "status": "success", "started_at": "2026-04-08T11:30:00Z", "completed_at": "2026-04-08T12:15:00Z" },
               { "py": "3.12", "torch": "release/2.10", "run_id": 12345900, "run_attempt": 1, "status": "in_progress", "started_at": "2026-04-08T11:30:00Z", "completed_at": null }
             ]
           },

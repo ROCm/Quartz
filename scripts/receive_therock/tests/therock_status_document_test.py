@@ -32,6 +32,7 @@ from therock_status_document import (  # noqa: E402
     Variant,
     _merge_variant_leaf,
     merge_matrix_test_leaf,
+    merge_variant,
     rollup_sibling_statuses,
 )
 
@@ -200,6 +201,55 @@ def test_variant_serializes_test_metrics_after_run_attempt() -> None:
 def test_variant_rejects_negative_test_failure_count() -> None:
     with pytest.raises(ValidationError):
         Variant(test_failure_count=-1)
+
+
+_STANDARD_METRICS = {
+    "test_run_count": 100,
+    "test_passed_count": 90,
+    "test_failure_count": 10,
+    "test_skipped_count": 40,
+    "test_results_complete": True,
+}
+
+
+def test_variant_standard_test_metrics_round_trip_in_order() -> None:
+    variant = Variant(matrix={"py": "3.12"}, run_id=7, **_STANDARD_METRICS)
+    flat = variant.model_dump()
+    keys = list(flat)
+    attempt = keys.index("run_id")
+    assert keys[attempt + 1 : attempt + 6] == list(_STANDARD_METRICS)
+    restored = Variant.model_validate(flat)
+    assert restored.test_results() == _STANDARD_METRICS
+    # Metrics are cell state, never matrix axes: they must not change identity.
+    assert restored.matrix == {"py": "3.12"}
+    assert restored.key() == Variant(matrix={"py": "3.12"}).key()
+
+
+@pytest.mark.parametrize(
+    "field", ["test_run_count", "test_passed_count", "test_skipped_count"]
+)
+def test_variant_rejects_negative_standard_counts(field: str) -> None:
+    with pytest.raises(ValidationError):
+        Variant(**{field: -1})
+
+
+def test_merge_variant_keeps_metrics_from_the_same_attempt() -> None:
+    counted = _variant(
+        run_id=7, status=Status.in_progress, completed_at=None
+    ).model_copy(update=_STANDARD_METRICS)
+    snapshot = _variant(run_id=7, status=Status.failure)
+    for existing, new in ((counted, snapshot), (snapshot, counted)):
+        merged = merge_variant(existing, new)
+        assert merged.status is Status.failure
+        assert merged.test_results() == _STANDARD_METRICS
+
+
+def test_merge_variant_drops_metrics_from_an_older_attempt() -> None:
+    counted = _variant(run_id=7, run_attempt=1).model_copy(update=_STANDARD_METRICS)
+    rerun = _variant(
+        run_id=7, run_attempt=2, status=Status.in_progress, completed_at=None
+    )
+    assert merge_variant(counted, rerun).test_results() == {}
 
 
 # --- Variant.key ------------------------------------------------------------

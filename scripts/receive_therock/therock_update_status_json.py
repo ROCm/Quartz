@@ -651,10 +651,8 @@ def _variants_from_jobs(
     return variants
 
 
-def _variants_from_inputs(
-    workflow_run: WorkflowRunRecord, axis_key: str
-) -> list[Variant]:
-    """Single-cell variant from the dispatch inputs"""
+def _input_cell(workflow_run: WorkflowRunRecord, axis_key: str) -> dict[str, str]:
+    """The (py, ref) matrix cell named by the dispatch inputs; may be partial."""
     inputs = workflow_run.inputs or {}
     py = inputs.get("python_version")
     ref = next(
@@ -666,6 +664,14 @@ def _variants_from_inputs(
         matrix["py"] = str(py)
     if ref:
         matrix[axis_key] = _normalize_ref(axis_key, str(ref))
+    return matrix
+
+
+def _variants_from_inputs(
+    workflow_run: WorkflowRunRecord, axis_key: str
+) -> list[Variant]:
+    """Single-cell variant from the dispatch inputs"""
+    matrix = _input_cell(workflow_run, axis_key)
     if not matrix:
         return []
 
@@ -675,18 +681,11 @@ def _variants_from_inputs(
         if workflow_run.conclusion and workflow_run.updated_at is not None
         else None
     )
-    test_failure_count: int | None = None
-    test_results_complete: bool | None = None
-    cls = workflow_run.classification
-    if cls.pipeline_type == "pytorch" and cls.pipeline_phase == "test-full":
-        test_failure_count, test_results_complete = _full_test_results(workflow_run)
     return [
         Variant(
             matrix=matrix,
             run_id=workflow_run.workflow_run_id,
             run_attempt=workflow_run.run_attempt,
-            test_failure_count=test_failure_count,
-            test_results_complete=test_results_complete,
             status=_run_status(workflow_run),
             started_at=_datetime_to_z(started) if started else None,
             completed_at=_datetime_to_z(completed) if completed else None,
@@ -694,11 +693,17 @@ def _variants_from_inputs(
     ]
 
 
-_FULL_TEST_OUTPUT_KEYS: frozenset[str] = frozenset(
+# TheRock test-result outputs. The full suite (test_pytorch_wheels_full.yml)
+# reports a failure count gated on expected/observed shard reports; the
+# standard suite (test_pytorch_wheels.yml) is one job and reports every count.
+_TEST_OUTPUT_KEYS: frozenset[str] = frozenset(
     {
         "failed_test_count",
         "expected_report_count",
         "observed_report_count",
+        "run_test_count",
+        "passed_test_count",
+        "skipped_test_count",
         "results_complete",
     }
 )
@@ -718,50 +723,116 @@ def _nonnegative_output_int(value: object) -> int | None:
     return int(stripped)
 
 
-def _full_test_results(
-    workflow_run: WorkflowRunRecord,
-) -> tuple[int | None, bool | None]:
-    """Read one full-suite workflow's report metrics from captured outputs.
+def _test_results(workflow_run: WorkflowRunRecord) -> dict[str, int | bool]:
+    """Read one PyTorch test workflow's result metrics from captured outputs.
 
-    The failure count is trustworthy only when the reusable workflow says its
-    report set is complete and the positive expected/observed counts agree.
+    Returns `Variant` test-metric fields. `test_results_complete` is recorded
+    whenever it parses; counts are published only when complete and
+    trustworthy, so consumers never read a partial count as a clean run:
+
+      test-full -- the failure count, when positive expected/observed shard
+                   report counts agree.
+      test      -- run/passed/failed/skipped counts, when at least one test
+                   ran and passed + failed (which includes errors) == run.
     """
+    cls = workflow_run.classification
     captured = workflow_run.captured_outputs
-    if not isinstance(captured, dict):
-        return None, None
+    if (
+        cls.pipeline_type != "pytorch"
+        or cls.pipeline_phase not in ("test", "test-full")
+        or not isinstance(captured, dict)
+    ):
+        return {}
 
     output_sets: list[dict[str, object]] = []
-    if _FULL_TEST_OUTPUT_KEYS.intersection(captured):
+    if _TEST_OUTPUT_KEYS.intersection(captured):
         output_sets.append(captured)
     for need in captured.values():
         if not isinstance(need, dict):
             continue
         outputs = need.get("outputs")
-        if isinstance(outputs, dict) and _FULL_TEST_OUTPUT_KEYS.intersection(outputs):
+        if isinstance(outputs, dict) and _TEST_OUTPUT_KEYS.intersection(outputs):
             output_sets.append(outputs)
 
     # More than one reporting job would make attribution to this variant
     # ambiguous; fail closed instead of combining their counts.
     if len(output_sets) != 1:
-        return None, None
+        return {}
     outputs = output_sets[0]
 
     complete = _parse_bool(outputs.get("results_complete"))
     if complete is None:
-        return None, None
-    failed = _nonnegative_output_int(outputs.get("failed_test_count"))
-    expected = _nonnegative_output_int(outputs.get("expected_report_count"))
-    observed = _nonnegative_output_int(outputs.get("observed_report_count"))
+        return {}
+    results: dict[str, int | bool] = {"test_results_complete": complete}
+    if not complete:
+        return results
+
+    counts = {
+        key: _nonnegative_output_int(outputs.get(key))
+        for key in (
+            "failed_test_count",
+            "expected_report_count",
+            "observed_report_count",
+            "run_test_count",
+            "passed_test_count",
+            "skipped_test_count",
+        )
+    }
+    failed = counts["failed_test_count"]
+    if failed is None:
+        return results
+
+    if cls.pipeline_phase == "test-full":
+        expected = counts["expected_report_count"]
+        observed = counts["observed_report_count"]
+        if expected is not None and expected > 0 and observed == expected:
+            results["test_failure_count"] = failed
+        return results
+
+    run = counts["run_test_count"]
+    passed = counts["passed_test_count"]
+    skipped = counts["skipped_test_count"]
     if (
-        complete
-        and failed is not None
-        and expected is not None
-        and observed is not None
-        and expected > 0
-        and observed == expected
+        run is not None
+        and passed is not None
+        and skipped is not None
+        and run > 0
+        and passed + failed == run
     ):
-        return failed, complete
-    return None, complete
+        results.update(
+            test_run_count=run,
+            test_passed_count=passed,
+            test_failure_count=failed,
+            test_skipped_count=skipped,
+        )
+    return results
+
+
+def _attach_test_results(
+    workflow_run: WorkflowRunRecord, variants: list[Variant], axis_key: str
+) -> list[Variant]:
+    """Attach this run's test metrics to the one matrix cell it tested.
+
+    A shared-run snapshot can derive several (py, ref) cells; the metrics
+    belong only to the cell named by this test workflow's own inputs. Without
+    a unique match the metrics are dropped rather than misattributed.
+    """
+    results = _test_results(workflow_run)
+    if not results or not variants:
+        return variants
+    cell = _input_cell(workflow_run, axis_key)
+    matches = [
+        i
+        for i, v in enumerate(variants)
+        if all(v.matrix.get(k) == val for k, val in cell.items())
+    ]
+    if len(matches) != 1:
+        return variants
+    target = matches[0]
+    return [
+        v.model_copy(update=results) if i == target else v
+        for i, v in enumerate(variants)
+    ]
 
 
 def _derive_variants(
@@ -786,6 +857,7 @@ def _derive_variants(
         # job exists, when no test job exists yet (tests need builds), so the
         # whole-run status it reads cannot be test-influenced.
         variants = _variants_from_inputs(workflow_run, axis_key)
+    variants = _attach_test_results(workflow_run, variants, axis_key)
     return variants or None
 
 

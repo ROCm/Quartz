@@ -312,6 +312,41 @@ def _leaf_status_path(
     return matches[0] if matches else None
 
 
+def _resolve_status_path(
+    repo_dir: Path,
+    release_type: str,
+    workflow_run: WorkflowRunRecord,
+    build_variant: str,
+    *,
+    is_owner: bool,
+) -> Path | None:
+    """The status document an event writes to, or None to skip the event.
+
+    The owner writers create the document; every other event only updates an
+    existing one (see `_leaf_status_path`). That lookup reads the checkout, so
+    with `commit_and_push` it must run after `_sync_to_upstream`, or an owner
+    document pushed after this receiver checked out the repo is missed and the
+    event dropped.
+    """
+    release_version = workflow_run.classification.release_version
+    if is_owner:
+        return _status_json_path(
+            repo_dir, release_type, release_version or "", build_variant
+        )
+    leaf_path = _leaf_status_path(repo_dir, release_type, workflow_run, build_variant)
+    if leaf_path is None:
+        log.info(
+            "no %s status document exists yet for release_version=%r / "
+            "trigger_workflow_run_id=%s (workflow_run_id=%s); only a setup or "
+            "top-level orchestrator run may create one, skipping",
+            release_type,
+            release_version,
+            workflow_run.trigger_workflow_run_id,
+            workflow_run.workflow_run_id,
+        )
+    return leaf_path
+
+
 def _bkc_dirs(release_version: str) -> tuple[str, str]:
     """Split a bkc version into its (nightly_version, bkc_date) directory names.
 
@@ -2210,30 +2245,14 @@ def update_status_json(
                 "input or extend the architecture-extraction regex."
             )
 
-    # The owner writers create the document; every other event only updates an
-    # existing one (see `_leaf_status_path`).
-    if finalize or record_owner_only:
-        status_path = _status_json_path(
-            repo_dir, release_type, c.release_version or "", build_variant
-        )
-    else:
-        leaf_path = _leaf_status_path(
-            repo_dir, release_type, workflow_run, build_variant
-        )
-        if leaf_path is None:
-            log.info(
-                "no %s status document exists yet for release_version=%r / "
-                "trigger_workflow_run_id=%s (workflow_run_id=%s); only a setup or "
-                "top-level orchestrator run may create one, skipping",
-                release_type,
-                workflow_run.classification.release_version,
-                workflow_run.trigger_workflow_run_id,
-                workflow_run.workflow_run_id,
-            )
-            return None
-        status_path = leaf_path
+    is_owner = bool(finalize or record_owner_only)
 
     if not commit_and_push:
+        status_path = _resolve_status_path(
+            repo_dir, release_type, workflow_run, build_variant, is_owner=is_owner
+        )
+        if status_path is None:
+            return None
         doc, _file_created, _files, _msg = _build_and_write(
             workflow_run,
             status_path,
@@ -2289,6 +2308,12 @@ def update_status_json(
         # rather than aborting the whole update.
         if not _sync_to_upstream(repo_dir):
             continue
+
+        status_path = _resolve_status_path(
+            repo_dir, release_type, workflow_run, build_variant, is_owner=is_owner
+        )
+        if status_path is None:
+            return None
 
         doc, _file_created, files_to_commit, commit_message = _build_and_write(
             workflow_run,

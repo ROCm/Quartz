@@ -2231,6 +2231,58 @@ def test_update_status_json_succeeds_after_transient_retries(
     assert out == _nightly_status_path(tmp_path)
 
 
+@pytest.mark.parametrize(
+    "leaf",
+    [_leaf_run, lambda: _version_less_test_run("nightly", "main")],
+    ids=["versioned", "version_less"],
+)
+def test_leaf_finds_owner_document_pushed_after_checkout(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, leaf
+) -> None:
+    # The owner's document lands upstream after this receiver checked out the
+    # repo. The leaf lookup must run on the synced tree, not on the stale
+    # checkout, or the event is dropped for good.
+    monkeypatch.setattr(tusj, "INITIAL_JITTER_SEC", 0.0)
+    monkeypatch.setattr(tusj, "_clear_stale_git_locks", lambda repo_dir: None)
+
+    def _sync(repo_dir: Path) -> bool:
+        _establish_owner(repo_dir)
+        return True
+
+    monkeypatch.setattr(tusj, "_sync_to_upstream", _sync)
+    monkeypatch.setattr(
+        tusj, "_commit_and_push", lambda *a, **k: tusj._PushOutcome.DONE
+    )
+
+    # The stale checkout has no document; only the sync brings it in.
+    assert not _nightly_status_path(tmp_path).exists()
+    out = tusj.update_status_json(
+        _event(leaf()), repo_dir=tmp_path, commit_and_push=True
+    )
+    assert out == _nightly_status_path(tmp_path)
+
+
+def test_leaf_without_document_after_sync_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Still no owner document on the synced tree: skip without committing.
+    monkeypatch.setattr(tusj, "INITIAL_JITTER_SEC", 0.0)
+    monkeypatch.setattr(tusj, "_clear_stale_git_locks", lambda repo_dir: None)
+    monkeypatch.setattr(tusj, "_sync_to_upstream", lambda repo_dir: True)
+
+    def _no_commit(*a, **k):
+        raise AssertionError("must not commit when no document exists")
+
+    monkeypatch.setattr(tusj, "_commit_and_push", _no_commit)
+
+    out = tusj.update_status_json(
+        _event(_version_less_test_run("nightly", "main")),
+        repo_dir=tmp_path,
+        commit_and_push=True,
+    )
+    assert out is None
+
+
 # --- stale .git lock recovery -----------------------------------------------
 
 

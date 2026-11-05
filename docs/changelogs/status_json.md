@@ -12,6 +12,19 @@ the same major can ignore. Layout and path changes are listed under the date
 they shipped even when they do not move `schema_version`. Entries reference the
 pull request that introduced the change.
 
+## schema_version 2.2 - 2026-10-16
+
+### Added
+
+- Optional `test_failure_count` and `test_results_complete` fields on each
+  PyTorch `test_full` variant. Counts are published only for complete,
+  non-empty report sets whose observed and expected report counts match.
+- Optional `test_run_count`, `test_passed_count`, `test_failure_count`, and
+  `test_skipped_count` on each PyTorch `test` (standard suite) variant, with
+  `test_results_complete`. Counts are published only when the run is complete,
+  ran at least one test, and passed + failed (which includes errors) equals
+  run. Metrics stay on the cell when a later same-attempt snapshot wins it.
+
 ## schema_version 2.1 - 2026-09-08
 
 ### Added

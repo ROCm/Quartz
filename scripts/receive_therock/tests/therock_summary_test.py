@@ -13,6 +13,8 @@ linux-only), matrix-cell counting, and the empty-platform handling.
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT_DIR = Path(__file__).resolve().parents[1]
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -818,7 +820,7 @@ def test_test_rollup_aggregates_across_leaves_and_cells() -> None:
 
 def test_build_and_test_coexist_on_one_pipeline_rollup() -> None:
     # A pipeline with both a build leaf and test leaves carries both rollups:
-    # build collapses to a status, test counts cells.
+    # a single-run build carries only its status, while test counts cells.
     doc = StatusDocument()
     _freeze(doc, "linux", ["gfx942"])
     doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
@@ -827,6 +829,84 @@ def test_build_and_test_coexist_on_one_pipeline_rollup() -> None:
     rocm = doc.summary.linux.rocm
     assert rocm.build.status is Status.success
     assert rocm.test.success == 1
+
+
+@pytest.mark.parametrize("pipeline", ["pytorch", "jax"])
+def test_matrix_build_counts_each_cell(pipeline: str) -> None:
+    # Each python x framework version builds and uploads on its own, so the
+    # build carries per-cell counts next to its worst-of status: one failed
+    # cell reads `failure` while every recorded cell remains visible in its
+    # corresponding counter.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf(
+        "linux",
+        "",
+        pipeline,
+        "build",
+        _leaf(
+            variants=[
+                _variant(matrix={"py": "3.11"}, status=Status.success),
+                _variant(matrix={"py": "3.12"}, status=Status.success),
+                _variant(matrix={"py": "3.13"}, status=Status.failure),
+                _variant(matrix={"py": "3.14"}, status=Status.in_progress),
+                _variant(matrix={"py": "3.15"}, status=Status.cancelled),
+                _variant(matrix={"py": "3.16"}, status=Status.skipped),
+            ]
+        ),
+    )
+    rebuild_summary(doc)
+    build = getattr(doc.summary.linux, pipeline).build
+    assert build.status is Status.failure
+    assert (
+        build.success,
+        build.failure,
+        build.in_progress,
+        build.cancelled,
+        build.skipped,
+    ) == (2, 1, 1, 1, 1)
+
+
+def test_matrix_build_counts_are_emitted_on_disk() -> None:
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf(
+        "linux",
+        "",
+        "pytorch",
+        "build",
+        _leaf(
+            variants=[
+                _variant(matrix={"py": "3.11"}, status=Status.success),
+                _variant(matrix={"py": "3.12"}, status=Status.failure),
+            ]
+        ),
+    )
+    rebuild_summary(doc)
+    assert doc.to_dict()["summary"]["linux"]["pytorch"]["build"] == {
+        "status": "failure",
+        "success": 1,
+        "failure": 1,
+        "in_progress": 0,
+        "cancelled": 0,
+        "skipped": 0,
+    }
+
+
+def test_single_run_and_unreported_builds_carry_no_counts() -> None:
+    # rocm and native rpm/deb are single-run builds; an unreported pytorch / jax
+    # build is a placeholder. None of them has cells to count.
+    doc = StatusDocument()
+    _freeze(doc, "linux", ["gfx942"])
+    doc.upsert_leaf("linux", "", "rocm", "build", _leaf(status=Status.success))
+    doc.upsert_leaf("", "", "native_packages", "rpm", _leaf(status=Status.success))
+    rebuild_summary(doc)
+    linux = doc.to_dict()["summary"]["linux"]
+    assert linux["rocm"]["build"] == {"status": "success"}
+    assert linux["native_packages"]["rpm"] == {"status": "success"}
+    assert linux["native_packages"]["deb"] == {"status": "in_progress"}
+    assert linux["pytorch"]["build"] == {"status": "in_progress"}
+    assert linux["jax"]["build"] == {"status": "in_progress"}
 
 
 def test_test_only_pipeline_rollup_does_not_leave_build_in_progress() -> None:

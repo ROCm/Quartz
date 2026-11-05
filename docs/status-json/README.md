@@ -32,7 +32,7 @@ status.json
 │     ├─ architectures     e.g. gfx942, gfx1201
 │     ├─ urls              tarballs, wheels, rpm/deb, artifacts index
 │     └─ <pipeline>        rocm | pytorch | jax | native_packages
-│        ├─ build          one status
+│        ├─ build          one status [+ matrix-cell counts for PyTorch/JAX]
 │        └─ test           pass/fail counters
 └─ pipelines               deep per-arch / per-variant detail
 ```
@@ -65,9 +65,11 @@ case with no `build` / `test` phases:
 | `jax`             | `build`, `test`                 | linux only     |
 | `native_packages` | per package type (`rpm`, `deb`) | linux only     |
 
-`build` is a single status; `test` carries pass/fail counters. Each block is
-described in detail in [What is in a status.json](#what-is-in-a-statusjson)
-below.
+`build` is a single status; `test` carries pass/fail counters. The PyTorch and
+JAX `build` also carries counters, one per matrix cell (Python x framework
+version), since each cell builds and uploads its wheels independently. Each
+block is described in detail in
+[What is in a status.json](#what-is-in-a-statusjson) below.
 
 ## Endpoints
 
@@ -196,6 +198,18 @@ constituent is `failure`, the rollup is `failure`; if any is still
 
 Test phases in `summary` carry **counters** (one count per matrix entry), not a
 single status. Pass/fail is derived by summing or inspecting them.
+
+The PyTorch and JAX `build` phases carry the same five counters next to their
+worst-of `status` (schema 2.2), one count per matrix cell (Python x framework
+version). Each cell uploads its wheels as soon as it succeeds, so
+`"status": "failure"` with `"success": 14, "failure": 2` means 14 cells are
+available. The counters are absent for the `rocm` build and `native_packages`
+(single builds), before the first PyTorch / JAX cell reports, and in pre-2.2
+documents.
+
+The counters do not say which cell succeeded or failed. That is in
+`pipelines.<pipeline>.build.<platform>.variants`: one entry per cell with its
+`py`, framework version, `status` and `run_id`.
 
 ## Full schema reference
 

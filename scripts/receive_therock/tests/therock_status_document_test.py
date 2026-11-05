@@ -1080,11 +1080,12 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
 # --- schema_version migration -----------------------------------------------
 
 
-def test_from_dict_restamps_older_minor_to_current() -> None:
-    # An on-disk doc from an older minor (2.0, written before the current bump)
+@pytest.mark.parametrize("older", ["2.0", "2.1"])
+def test_from_dict_restamps_older_minor_to_current(older: str) -> None:
+    # An on-disk doc from an older minor (written before the current bump)
     # reads successfully and is restamped to the current version, so the next
     # write upgrades the file in place. New fields fall back to their defaults.
-    doc = StatusDocument.from_dict({"schema_version": "2.0", "rocm_version": "7.0.0"})
+    doc = StatusDocument.from_dict({"schema_version": older, "rocm_version": "7.0.0"})
     assert doc.schema_version == SCHEMA_VERSION
     assert doc.to_dict()["schema_version"] == SCHEMA_VERSION
 

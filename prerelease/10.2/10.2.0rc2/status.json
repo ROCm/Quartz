@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-06T15:39:01Z",
-  "status_json_last_updated": "2026-11-06T18:01:54Z",
+  "status_json_last_updated": "2026-11-06T18:11:51Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -36,7 +36,7 @@
         "wheels": "https://therock-prerelease-artifacts.s3.amazonaws.com/42244835583-linux/python/",
         "artifacts": "https://therock-prerelease-artifacts.s3.amazonaws.com/42244835583-linux/index.html",
         "deb": "https://therock-prerelease-artifacts.s3.amazonaws.com/42244835583-linux/packages/deb/",
-        "rpm": "https://therock-prerelease-artifacts.s3.amazonaws.com/42244835583-linux/packages/rpm/x86_64/"
+        "rpm": "https://therock-prerelease-artifacts.s3.amazonaws.com/42244835583-linux/packages/rpm/x86_64"
       },
       "rocm": {
         "build": {
@@ -76,7 +76,7 @@
       },
       "native_packages": {
         "rpm": {
-          "status": "in_progress"
+          "status": "success"
         },
         "deb": {
           "status": "in_progress"
@@ -193,10 +193,11 @@
     },
     "native_packages": {
       "rpm": {
-        "status": "in_progress",
+        "status": "success",
         "run_id": 42244835583,
         "run_attempt": 1,
-        "started_at": "2026-11-06T15:37:51Z"
+        "started_at": "2026-11-06T15:37:51Z",
+        "completed_at": "2026-11-06T17:49:08Z"
       },
       "deb": {
         "status": "in_progress",

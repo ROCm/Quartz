@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-06T00:02:04Z",
-  "status_json_last_updated": "2026-11-06T10:59:12Z",
+  "status_json_last_updated": "2026-11-06T10:59:52Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -136,9 +136,9 @@
           "status": "in_progress"
         },
         "test": {
-          "success": 40,
+          "success": 41,
           "failure": 1,
-          "in_progress": 1,
+          "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
         }
@@ -433,9 +433,6 @@
         },
         "windows": {
           "status": "in_progress",
-          "run_id": 42173660823,
-          "run_attempt": 1,
-          "started_at": "2026-11-06T06:19:42Z",
           "variants": [
             {
               "py": "3.12",
@@ -1385,7 +1382,7 @@
             "run_id": 42173660823,
             "run_attempt": 1,
             "started_at": "2026-11-06T10:13:52Z",
-            "completed_at": "2026-11-06T10:41:18Z",
+            "completed_at": "2026-11-06T10:59:15Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1421,7 +1418,7 @@
             "run_id": 42173660823,
             "run_attempt": 1,
             "started_at": "2026-11-06T10:11:53Z",
-            "completed_at": "2026-11-06T10:38:53Z",
+            "completed_at": "2026-11-06T10:59:15Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1444,10 +1441,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 42173660823,
                 "run_attempt": 1,
-                "started_at": "2026-11-06T10:16:07Z"
+                "started_at": "2026-11-06T10:16:07Z",
+                "completed_at": "2026-11-06T10:59:02Z"
               }
             ]
           },
@@ -1456,7 +1454,7 @@
             "run_id": 42173660823,
             "run_attempt": 1,
             "started_at": "2026-11-06T10:11:53Z",
-            "completed_at": "2026-11-06T10:38:41Z",
+            "completed_at": "2026-11-06T10:59:15Z",
             "variants": [
               {
                 "py": "3.11",

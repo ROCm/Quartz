@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-06T00:02:04Z",
-  "status_json_last_updated": "2026-11-06T18:52:55Z",
+  "status_json_last_updated": "2026-11-07T19:53:17Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -125,8 +125,8 @@
         },
         "test": {
           "success": 1,
-          "failure": 2,
-          "in_progress": 1,
+          "failure": 3,
+          "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
         }
@@ -215,10 +215,11 @@
         },
         "windows": {
           "gfx117X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 42170842575,
             "run_attempt": 1,
-            "started_at": "2026-11-06T05:51:06Z"
+            "started_at": "2026-11-06T05:51:06Z",
+            "completed_at": "2026-11-07T19:52:39Z"
           },
           "gfx120X-all": {
             "status": "success",

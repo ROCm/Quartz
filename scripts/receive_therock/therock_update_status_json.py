@@ -693,19 +693,17 @@ def _variants_from_inputs(
     ]
 
 
-# TheRock test-result outputs. The full suite (test_pytorch_wheels_full.yml)
-# reports a failure count gated on expected/observed shard reports; the
-# standard suite (test_pytorch_wheels.yml) is one job and reports every count.
+# TheRock test-result outputs -> Variant fields. The full suite
+# (test_pytorch_wheels_full.yml) reports only failed_test_count; the standard
+# suite (test_pytorch_wheels.yml) reports all four.
+_TEST_COUNT_OUTPUTS: dict[str, str] = {
+    "run_test_count": "test_run_count",
+    "passed_test_count": "test_passed_count",
+    "failed_test_count": "test_failure_count",
+    "skipped_test_count": "test_skipped_count",
+}
 _TEST_OUTPUT_KEYS: frozenset[str] = frozenset(
-    {
-        "failed_test_count",
-        "expected_report_count",
-        "observed_report_count",
-        "run_test_count",
-        "passed_test_count",
-        "skipped_test_count",
-        "results_complete",
-    }
+    {*_TEST_COUNT_OUTPUTS, "results_complete"}
 )
 
 
@@ -727,13 +725,9 @@ def _test_results(workflow_run: WorkflowRunRecord) -> dict[str, int | bool]:
     """Read one PyTorch test workflow's result metrics from captured outputs.
 
     Returns `Variant` test-metric fields. `test_results_complete` is recorded
-    whenever it parses; counts are published only when complete and
-    trustworthy, so consumers never read a partial count as a clean run:
-
-      test-full -- the failure count, when positive expected/observed shard
-                   report counts agree.
-      test      -- run/passed/failed/skipped counts, when at least one test
-                   ran and passed + failed (which includes errors) == run.
+    whenever it parses; counts are copied only when it is true. TheRock sets
+    `results_complete` only for a complete, valid report set, so a partial
+    count never reads as a clean run.
     """
     cls = workflow_run.classification
     captured = workflow_run.captured_outputs
@@ -764,47 +758,11 @@ def _test_results(workflow_run: WorkflowRunRecord) -> dict[str, int | bool]:
     if complete is None:
         return {}
     results: dict[str, int | bool] = {"test_results_complete": complete}
-    if not complete:
-        return results
-
-    counts = {
-        key: _nonnegative_output_int(outputs.get(key))
-        for key in (
-            "failed_test_count",
-            "expected_report_count",
-            "observed_report_count",
-            "run_test_count",
-            "passed_test_count",
-            "skipped_test_count",
-        )
-    }
-    failed = counts["failed_test_count"]
-    if failed is None:
-        return results
-
-    if cls.pipeline_phase == "test-full":
-        expected = counts["expected_report_count"]
-        observed = counts["observed_report_count"]
-        if expected is not None and expected > 0 and observed == expected:
-            results["test_failure_count"] = failed
-        return results
-
-    run = counts["run_test_count"]
-    passed = counts["passed_test_count"]
-    skipped = counts["skipped_test_count"]
-    if (
-        run is not None
-        and passed is not None
-        and skipped is not None
-        and run > 0
-        and passed + failed == run
-    ):
-        results.update(
-            test_run_count=run,
-            test_passed_count=passed,
-            test_failure_count=failed,
-            test_skipped_count=skipped,
-        )
+    if complete:
+        for output, field in _TEST_COUNT_OUTPUTS.items():
+            count = _nonnegative_output_int(outputs.get(output))
+            if count is not None:
+                results[field] = count
     return results
 
 

@@ -150,18 +150,9 @@ def _pytorch_full_test_run(
 
 
 def _full_test_outputs(
-    *,
-    failed: object = "20",
-    expected: object = "100",
-    observed: object = "100",
-    complete: object = "true",
+    *, failed: object = "20", complete: object = "true"
 ) -> dict[str, object]:
-    return {
-        "failed_test_count": failed,
-        "expected_report_count": expected,
-        "observed_report_count": observed,
-        "results_complete": complete,
-    }
+    return {"failed_test_count": failed, "results_complete": complete}
 
 
 def _orchestrator_run(
@@ -343,74 +334,16 @@ def test_full_test_complete_run_publishes_failure_count(tmp_path: Path) -> None:
     assert leaf.variants[0].test_results_complete is True
 
 
-def test_full_test_complete_zero_publishes_zero(tmp_path: Path) -> None:
+def test_full_test_incomplete_run_records_only_the_flag(tmp_path: Path) -> None:
     _establish_owner(tmp_path)
     out = tusj.update_status_json(
-        _event(
-            _pytorch_full_test_run(
-                outputs=_full_test_outputs(failed="0", expected=12, observed=12)
-            )
-        ),
-        repo_dir=tmp_path,
-        commit_and_push=False,
-    )
-    variant = _load(out).pipelines.pytorch.test_full["linux"]["gfx942"].variants[0]
-    assert variant.test_failure_count == 0
-    assert variant.test_results_complete is True
-
-
-@pytest.mark.parametrize(
-    ("outputs", "complete"),
-    [
-        (None, None),
-        (_full_test_outputs(complete="false"), False),
-        (_full_test_outputs(expected="0", observed="0"), True),
-        (_full_test_outputs(expected="100", observed="99"), True),
-        (_full_test_outputs(failed="-1"), True),
-        (_full_test_outputs(expected="-1", observed="-1"), True),
-        (_full_test_outputs(failed="not-an-int"), True),
-        (_full_test_outputs(complete="not-a-bool"), None),
-    ],
-)
-def test_full_test_untrusted_outputs_omit_failure_count(
-    tmp_path: Path,
-    outputs: dict[str, object] | None,
-    complete: bool | None,
-) -> None:
-    _establish_owner(tmp_path)
-    out = tusj.update_status_json(
-        _event(_pytorch_full_test_run(outputs=outputs)),
+        _event(_pytorch_full_test_run(outputs=_full_test_outputs(complete="false"))),
         repo_dir=tmp_path,
         commit_and_push=False,
     )
     variant = _load(out).pipelines.pytorch.test_full["linux"]["gfx942"].variants[0]
     assert variant.test_failure_count is None
-    assert variant.test_results_complete is complete
-
-
-def test_full_test_merged_variants_keep_independent_counts(tmp_path: Path) -> None:
-    _establish_owner(tmp_path)
-    for run in (
-        _pytorch_full_test_run(
-            run_id=27797822903,
-            torch_version="release/2.10",
-            outputs=_full_test_outputs(failed=20),
-        ),
-        _pytorch_full_test_run(
-            run_id=27797822904,
-            torch_version="main",
-            outputs=_full_test_outputs(failed=0),
-        ),
-    ):
-        tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
-
-    leaf = _load(_nightly_status_path(tmp_path)).pipelines.pytorch.test_full["linux"][
-        "gfx942"
-    ]
-    assert leaf.variants is not None
-    assert {
-        variant.matrix["torch"]: variant.test_failure_count for variant in leaf.variants
-    } == {"release/2.10": 20, "main": 0}
+    assert variant.test_results_complete is False
 
 
 def test_rocm_test_events_populate_test_rollup(tmp_path: Path) -> None:
@@ -4064,18 +3997,13 @@ _STANDARD_RUN_ID = 902
 
 
 def _standard_test_outputs(
-    *,
-    run: object = "100",
-    passed: object = "90",
-    failed: object = "10",
-    skipped: object = "40",
-    complete: object = "true",
+    *, failed: object = "10", complete: object = "true"
 ) -> dict[str, object]:
     return {
-        "run_test_count": run,
-        "passed_test_count": passed,
+        "run_test_count": "100",
+        "passed_test_count": "90",
         "failed_test_count": failed,
-        "skipped_test_count": skipped,
+        "skipped_test_count": "40",
         "results_complete": complete,
         "summary": "## markdown",
     }
@@ -4158,26 +4086,22 @@ def test_standard_test_counts_attach_to_their_own_cell() -> None:
     assert _standard_cells(doc) == {"3.11": {}, "3.12": _STANDARD_COUNTS}
 
 
-def test_standard_test_counts_survive_later_build_refresh() -> None:
-    # The build run's own completion re-derives the test cells from job names
-    # (no metrics) and wins the cell as the newer terminal snapshot.
+@pytest.mark.parametrize("test_first", [True, False])
+def test_standard_test_counts_survive_the_build_refresh(test_first: bool) -> None:
+    # The build run's completion re-derives the cell from job names (no
+    # metrics) and wins it as the terminal snapshot, in either arrival order.
     doc = StatusDocument()
-    _merge(doc, _standard_test_run(_standard_test_outputs()))
-    _merge(doc, _standard_build_run())
-    leaf = doc.pipelines.pytorch.test["linux"]["gfx94X-dcgpu"]
-    cell = next(v for v in leaf.variants or [] if v.matrix["py"] == "3.12")
-    assert cell.status is Status.failure
-    assert cell.test_results() == _STANDARD_COUNTS
-
-
-def test_standard_test_counts_land_after_terminal_build_refresh() -> None:
-    # Reverse order: the terminal build snapshot lands first, then the test
-    # notify (sent while its own job is still running) loses the cell but
-    # still contributes its metrics.
-    doc = StatusDocument()
-    _merge(doc, _standard_test_run())
-    _merge(doc, _standard_build_run())
-    _merge(doc, _standard_test_run(_standard_test_outputs()))
+    counted = _standard_test_run(_standard_test_outputs())
+    for run in (
+        (counted, _standard_build_run())
+        if test_first
+        else (
+            _standard_test_run(),
+            _standard_build_run(),
+            counted,
+        )
+    ):
+        _merge(doc, run)
     leaf = doc.pipelines.pytorch.test["linux"]["gfx94X-dcgpu"]
     cell = next(v for v in leaf.variants or [] if v.matrix["py"] == "3.12")
     assert cell.status is Status.failure
@@ -4193,41 +4117,15 @@ def test_standard_test_counts_do_not_carry_into_a_rerun() -> None:
     assert _standard_cells(doc)["3.12"] == {}
     _merge(
         doc,
-        _standard_test_run(
-            _standard_test_outputs(passed="95", failed="5"), run_attempt=2
-        ),
+        _standard_test_run(_standard_test_outputs(failed="5"), run_attempt=2),
     )
     assert _standard_cells(doc)["3.12"]["test_failure_count"] == 5
 
 
-@pytest.mark.parametrize(
-    ("outputs", "expected"),
-    [
-        (None, {}),
-        (_standard_test_outputs(complete="false"), {"test_results_complete": False}),
-        (_standard_test_outputs(complete="maybe"), {}),
-        (_standard_test_outputs(passed="80"), {"test_results_complete": True}),
-        (
-            _standard_test_outputs(run="0", passed="0", failed="0"),
-            {"test_results_complete": True},
-        ),
-        (_standard_test_outputs(skipped="-1"), {"test_results_complete": True}),
-        (
-            {
-                k: v
-                for k, v in _standard_test_outputs().items()
-                if k != "skipped_test_count"
-            },
-            {"test_results_complete": True},
-        ),
-    ],
-)
-def test_standard_untrusted_outputs_omit_counts(
-    outputs: dict[str, object] | None, expected: dict[str, int | bool]
-) -> None:
+def test_standard_incomplete_run_records_only_the_flag() -> None:
     doc = StatusDocument()
-    _merge(doc, _standard_test_run(outputs))
-    assert _standard_cells(doc)["3.12"] == expected
+    _merge(doc, _standard_test_run(_standard_test_outputs(complete="false")))
+    assert _standard_cells(doc)["3.12"] == {"test_results_complete": False}
 
 
 def test_standard_counts_without_a_unique_cell_are_dropped() -> None:

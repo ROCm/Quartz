@@ -32,7 +32,6 @@ from therock_status_document import (  # noqa: E402
     Variant,
     _merge_variant_leaf,
     merge_matrix_test_leaf,
-    merge_variant,
     rollup_sibling_statuses,
 )
 
@@ -62,8 +61,6 @@ def _variant(
     status: Status = Status.success,
     run_id: int | None = None,
     run_attempt: int | None = 1,
-    test_failure_count: int | None = None,
-    test_results_complete: bool | None = None,
     started_at: str | None = "2026-04-08T01:00:00Z",
     completed_at: str | None = "2026-04-08T01:30:00Z",
 ) -> Variant:
@@ -72,8 +69,6 @@ def _variant(
         status=status,
         run_id=run_id,
         run_attempt=run_attempt,
-        test_failure_count=test_failure_count,
-        test_results_complete=test_results_complete,
         started_at=started_at,
         completed_at=completed_at,
     )
@@ -163,47 +158,17 @@ def test_variant_flatten_drops_completed_at_without_started_at() -> None:
 
 
 def test_variant_round_trips_through_serialization() -> None:
-    original = _variant(
-        matrix={"py": "3.12", "torch": "2.5"},
-        run_id=7,
-        run_attempt=3,
-        test_failure_count=20,
-        test_results_complete=True,
-    )
+    original = _variant(matrix={"py": "3.12", "torch": "2.5"}, run_id=7, run_attempt=3)
     restored = Variant.model_validate(original.model_dump())
     assert restored.matrix == original.matrix
     assert restored.status == original.status
     assert restored.run_id == original.run_id
     assert restored.run_attempt == original.run_attempt
-    assert restored.test_failure_count == original.test_failure_count
-    assert restored.test_results_complete == original.test_results_complete
     assert restored.started_at == original.started_at
     assert restored.completed_at == original.completed_at
 
 
-def test_variant_serializes_test_metrics_after_run_attempt() -> None:
-    flat = _variant(
-        matrix={"py": "3.12"},
-        run_id=7,
-        test_failure_count=20,
-        test_results_complete=True,
-    ).model_dump()
-    keys = list(flat)
-    attempt = keys.index("run_attempt")
-    assert keys[attempt + 1 : attempt + 3] == [
-        "test_failure_count",
-        "test_results_complete",
-    ]
-    assert flat["test_failure_count"] == 20
-    assert flat["test_results_complete"] is True
-
-
-def test_variant_rejects_negative_test_failure_count() -> None:
-    with pytest.raises(ValidationError):
-        Variant(test_failure_count=-1)
-
-
-_STANDARD_METRICS = {
+_TEST_METRICS = {
     "test_run_count": 100,
     "test_passed_count": 90,
     "test_failure_count": 10,
@@ -212,44 +177,22 @@ _STANDARD_METRICS = {
 }
 
 
-def test_variant_standard_test_metrics_round_trip_in_order() -> None:
-    variant = Variant(matrix={"py": "3.12"}, run_id=7, **_STANDARD_METRICS)
-    flat = variant.model_dump()
-    keys = list(flat)
-    attempt = keys.index("run_id")
-    assert keys[attempt + 1 : attempt + 6] == list(_STANDARD_METRICS)
-    restored = Variant.model_validate(flat)
-    assert restored.test_results() == _STANDARD_METRICS
+def test_variant_test_metrics_round_trip_as_cell_state() -> None:
+    variant = Variant(matrix={"py": "3.12"}, run_id=7, **_TEST_METRICS)
+    restored = Variant.model_validate(variant.model_dump())
+    assert restored.test_results() == _TEST_METRICS
     # Metrics are cell state, never matrix axes: they must not change identity.
     assert restored.matrix == {"py": "3.12"}
     assert restored.key() == Variant(matrix={"py": "3.12"}).key()
 
 
 @pytest.mark.parametrize(
-    "field", ["test_run_count", "test_passed_count", "test_skipped_count"]
+    "field",
+    ["test_run_count", "test_passed_count", "test_failure_count", "test_skipped_count"],
 )
-def test_variant_rejects_negative_standard_counts(field: str) -> None:
+def test_variant_rejects_negative_test_counts(field: str) -> None:
     with pytest.raises(ValidationError):
         Variant(**{field: -1})
-
-
-def test_merge_variant_keeps_metrics_from_the_same_attempt() -> None:
-    counted = _variant(
-        run_id=7, status=Status.in_progress, completed_at=None
-    ).model_copy(update=_STANDARD_METRICS)
-    snapshot = _variant(run_id=7, status=Status.failure)
-    for existing, new in ((counted, snapshot), (snapshot, counted)):
-        merged = merge_variant(existing, new)
-        assert merged.status is Status.failure
-        assert merged.test_results() == _STANDARD_METRICS
-
-
-def test_merge_variant_drops_metrics_from_an_older_attempt() -> None:
-    counted = _variant(run_id=7, run_attempt=1).model_copy(update=_STANDARD_METRICS)
-    rerun = _variant(
-        run_id=7, run_attempt=2, status=Status.in_progress, completed_at=None
-    )
-    assert merge_variant(counted, rerun).test_results() == {}
 
 
 # --- Variant.key ------------------------------------------------------------

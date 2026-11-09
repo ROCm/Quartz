@@ -197,7 +197,7 @@
       // pytorch.test: per-arch run with variants (py x torch) inside each.
       // (schema 2.2) A finished cell carries test_run_count / test_passed_count /
       // test_failure_count (includes errors) / test_skipped_count only when
-      // test_results_complete is true and passed + failed == run > 0.
+      // test_results_complete is true.
       "test": {
         "linux": {
           "gfx942": {
@@ -242,7 +242,7 @@
       // Kept separate from "test" so smoke and full results don't overwrite
       // each other on the shared linux/pytorch leaf.
       // test_results_complete records the workflow's validated completeness flag;
-      // test_failure_count appears only when observed == expected > 0 and complete.
+      // test_failure_count appears only when it is true.
       "test_full": {
         "linux": {
           "gfx942": {

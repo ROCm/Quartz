@@ -326,12 +326,12 @@ def test_full_test_complete_run_publishes_failure_count(tmp_path: Path) -> None:
         repo_dir=tmp_path,
         commit_and_push=False,
     )
-    doc = _load(out)
-    leaf = doc.pipelines.pytorch.test_full["linux"]["gfx942"]
-    assert not hasattr(leaf, "test_failure_count")
-    assert leaf.variants is not None
-    assert leaf.variants[0].test_failure_count == 20
-    assert leaf.variants[0].test_results_complete is True
+    raw = json.loads(out.read_text(encoding="utf-8"))
+    leaf = raw["pipelines"]["pytorch"]["test_full"]["linux"]["gfx942"]
+    # Metrics are per variant; the leaf itself never carries them.
+    assert "test_failure_count" not in leaf
+    assert leaf["variants"][0]["test_failure_count"] == 20
+    assert leaf["variants"][0]["test_results_complete"] is True
 
 
 def test_full_test_incomplete_run_records_only_the_flag(tmp_path: Path) -> None:

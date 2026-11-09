@@ -11,7 +11,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-09T00:01:44Z",
-  "status_json_last_updated": "2026-11-09T05:40:34Z",
+  "status_json_last_updated": "2026-11-09T05:43:49Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -48,8 +48,8 @@
         },
         "test": {
           "success": 1,
-          "failure": 2,
-          "in_progress": 4,
+          "failure": 3,
+          "in_progress": 3,
           "cancelled": 0,
           "skipped": 0
         }
@@ -156,10 +156,11 @@
       "test": {
         "linux": {
           "gfx110X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 42555831239,
             "run_attempt": 1,
-            "started_at": "2026-11-09T03:20:11Z"
+            "started_at": "2026-11-09T03:20:11Z",
+            "completed_at": "2026-11-09T05:43:13Z"
           },
           "gfx120X-all": {
             "status": "failure",

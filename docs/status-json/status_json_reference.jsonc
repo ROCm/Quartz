@@ -59,22 +59,16 @@
         "artifacts": "https://therock-nightly-artifacts.s3.amazonaws.com/12340000-linux/index.html"
       },
 
-      // Per-pipeline rollup. Build phases carry a worst-of {status}. Test phases
-      // carry counters: one count per matrix entry, NOT one per arch. E.g.
-      // pytorch.test for an arch with a 3 py x 2 torch matrix contributes 6 to
-      // the counters, not 1. (schema 2.2) The pytorch / jax build also carries
-      // the same counters, one per matrix cell (py x framework version), since
-      // each cell builds and uploads its wheels independently; absent for
-      // single-run builds (rocm, native_packages), before the first cell
-      // reports, and in pre-2.2 documents. The counters do not name the cells;
-      // see pipelines.<pipeline>.build.<platform>.variants for which one
-      // succeeded or failed.
+      // Per-pipeline rollup. Build phases carry a worst-of {status}; the
+      // pytorch / jax build also carries counters, one per py x framework
+      // version build. Test phases carry counters: one count per matrix entry,
+      // NOT one per arch.
       "rocm": {
         "build": { "status": "success" },
         "test":  { "success": 1, "failure": 1, "in_progress": 1, "cancelled": 0, "skipped": 0 }  // counts of matrix entries across all arches
       },
       "pytorch": {
-        "build": { "status": "success", "success": 2, "failure": 0, "in_progress": 0, "cancelled": 0, "skipped": 0 },  // one count per matrix cell; per-cell detail is in pipelines.pytorch.build.linux.variants. E.g. "status": "failure" with "success": 5, "failure": 1 means 5 cells uploaded their wheels
+        "build": { "status": "success", "success": 2, "failure": 0, "in_progress": 0, "cancelled": 0, "skipped": 0 },  // per-build detail is in pipelines.pytorch.build.linux.variants
         "test":  { "success": 0, "failure": 0, "in_progress": 3, "cancelled": 0, "skipped": 0 },
         // Present ONLY when the full PyTorch suite (test_pytorch_wheels_full) ran;
         // omitted otherwise. Same counter shape as "test"; kept separate so the

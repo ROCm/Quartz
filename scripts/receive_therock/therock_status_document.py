@@ -15,7 +15,7 @@ see docs/status_json/status_json_reference.jsonc for a full example):
   │       ├── status
   │       ├── architectures
   │       ├── urls
-  │       ├── <rocm|pytorch|jax>      -> build {status [+ cell counts]}
+  │       ├── <rocm|pytorch|jax>      -> build {status [+ status counts]}
   │       │                              + test {status counts}
   │       └── native_packages
   │           └── <rpm|deb>           -> {status}

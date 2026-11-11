@@ -66,8 +66,9 @@ case with no `build` / `test` phases:
 | `native_packages` | per package type (`rpm`, `deb`) | linux only     |
 
 `build` is a single status; `test` carries pass/fail counters. The PyTorch and
-JAX `build` also carries counters, one per Python x framework version build.
-Each block is described in detail in
+JAX `build` may also carry counters, one per Python x framework version build.
+Those counters are optional and are absent from documents written before
+schema 2.2. Each block is described in detail in
 [What is in a status.json](#what-is-in-a-statusjson) below.
 
 > **Note:** A successful build does not guarantee that its wheels were
@@ -205,8 +206,9 @@ single status. Pass/fail is derived by summing or inspecting them.
 
 The `rocm` and `native_packages` builds are a single build each, so a single
 `status` is enough. PyTorch and JAX build one wheel set per Python x framework
-version, so their `build` also carries the five counters next to its worst-of
-`status`. For example, `"status": "failure"` with `"success": 14, "failure": 2`
+version, so their `build` may also carry the five counters next to its worst-of
+`status`. The counters are optional and absent from documents written before
+schema 2.2. For example, `"status": "failure"` with `"success": 14, "failure": 2`
 means 14 of 16 builds succeeded. Which ones is in
 `pipelines.<pipeline>.build.<platform>.variants`.
 

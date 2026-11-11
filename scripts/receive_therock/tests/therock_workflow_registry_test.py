@@ -39,7 +39,15 @@ _INVENTORY_PATH = (
 )
 
 _ALLOWED_PIPELINE_TYPES = frozenset(
-    {"rocm", "pytorch", "jax", "native_packages", "setup", "orchestrator"}
+    {
+        "rocm",
+        "pytorch",
+        "jax",
+        "xla",
+        "native_packages",
+        "setup",
+        "orchestrator",
+    }
 )
 
 # Workflows (across all repos) that deliberately do NOT report to Quartz:
@@ -51,16 +59,17 @@ _ALLOWED_PIPELINE_TYPES = frozenset(
 _EXCLUDED_WORKFLOWS = frozenset(
     {
         # Security scanners (upstream).
-        "codeql.yml",
-        "gitleaks.yml",
-        "gitleaks_main.yml",
         "pre-commit.yml",
-        "pre_commit_security.yml",
+        "security-scan-pr.yml",
+        "security-scan-weekly.yml",
         # Internal plumbing / automation (upstream).
         "bump_submodules.yml",
+        "cherry-pick-to-release.yml",
+        "compiler_bump.yml",
         "copy_release.yml",
         "hip_tagging_automation.yml",
         "manifest-diff.yml",
+        "mirror_python_dependencies.yml",
         "receive_therock_data.yml",
         "therock-pr-bot.yml",
         "unit_tests.yml",
@@ -80,12 +89,12 @@ _EXCLUDED_WORKFLOWS = frozenset(
         "publish_no_rocm_image_ubuntu24_04_ocl_rt.yml",
         "publish_no_rocm_image_ubuntu24_04_rocgdb.yml",
         # Upstream test scaffolding (not Quartz-reported).
+        "rccl_coco.yml",
         "test_artifacts_structure.yml",
+        "test_code_coverage_component.yml",
         "test_consumer_graph_drift.yml",
-        "test_jax_dockerfile.yml",
         # CI-only wheel tests not reached by the multi-arch release pipeline;
         # they emit no notify_quartz, so nothing reaches the receiver.
-        "test_linux_jax_wheels.yml",
         "test_rocm_wheels.yml",
         # Quartz's own local plumbing (not a rock producer workflow).
         "bender.yml",
@@ -97,20 +106,36 @@ _EXCLUDED_WORKFLOWS = frozenset(
 )
 
 
-# Registered workflows whose upstream notify_quartz wiring is not (yet) in place.
+# Registered workflows whose upstream notify_quartz wiring is not (yet) in place,
+# keyed by repo: the same filename can be wired in one repo and not the other.
 # The wiring check skips these so the suite can gate PRs while the gap stays
 # documented here rather than silently passing. Drop an entry once upstream lands
 # its notify_quartz call.
-_UNWIRED_UPSTREAM = frozenset(
-    {
-        # Fan-out release orchestrators: they only dispatch reporting
-        # sub-workflows and emit no notify_quartz of their own.
-        "multi_arch_release_asan.yml",
-        "multi_arch_repackage.yml",
-        "multi_arch_repackage_linux.yml",
-        "multi_arch_repackage_windows.yml",
-    }
-)
+_UNWIRED_UPSTREAM: dict[str, frozenset[str]] = {
+    "ROCm/TheRock": frozenset(
+        {
+            # Fan-out release orchestrator: it only dispatches reporting
+            # sub-workflows and emits no notify_quartz of its own.
+            "multi_arch_release_asan.yml",
+            # Reusable workflow called by rockrel's wrapper of the same name;
+            # only the rockrel wrapper self-reports.
+            "test_native_windows_packages_install.yml",
+            # Release MSI build (multi_arch_release_windows.yml
+            # `build_native_msi_packages`); emits no notify_quartz yet.
+            "multi_arch_build_native_windows_packages.yml",
+        }
+    ),
+    "ROCm/rockrel": frozenset(
+        {
+            # Fan-out release orchestrators: they only dispatch reporting
+            # sub-workflows and emit no notify_quartz of their own.
+            "multi_arch_release_asan.yml",
+            "multi_arch_repackage.yml",
+            "multi_arch_repackage_linux.yml",
+            "multi_arch_repackage_windows.yml",
+        }
+    ),
+}
 
 
 def _load_doc() -> dict:
@@ -173,8 +198,9 @@ def _notify_quartz_offenders(
     filename.
     """
     registered = _registered_keys()
+    unwired = _UNWIRED_UPSTREAM.get(label, frozenset())
     problems: list[str] = []
-    for filename in sorted((set(inventory) & registered) - _UNWIRED_UPSTREAM):
+    for filename in sorted((set(inventory) & registered) - unwired):
         calls = calls_by_workflow.get(filename, [])
         phases = sorted(c.get("run_phase", "") for c in calls)
         if phases != ["completed", "started"]:

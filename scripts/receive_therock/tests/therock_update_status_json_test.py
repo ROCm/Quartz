@@ -449,12 +449,21 @@ def test_version_less_in_progress_test_event_does_not_crash(tmp_path: Path) -> N
     assert out == _nightly_status_path(tmp_path)
 
 
-def test_native_install_test_event_is_skipped(tmp_path: Path) -> None:
+@pytest.mark.parametrize(
+    ("workflow", "platform"),
+    [
+        ("test_native_linux_packages_install.yml", "linux"),
+        ("test_native_windows_packages_install.yml", "windows"),
+    ],
+)
+def test_native_install_test_event_is_skipped(
+    tmp_path: Path, workflow: str, platform: str
+) -> None:
     # Native install tests are async sanity checks with no per-arch payload and
     # no native_packages test slot; they must be skipped, not raise.
     native_test = _run(
-        path=".github/workflows/test_native_linux_packages_install.yml",
-        platform="linux",
+        path=f".github/workflows/{workflow}",
+        platform=platform,
         pipeline_type="native_packages",
         pipeline_phase="test",
         architectures=[],
@@ -4034,6 +4043,44 @@ def test_skip_workflow_names_are_all_disregarded(tmp_path: Path) -> None:
         )
         assert out is None, f"{name!r} was not disregarded"
     assert not any(tmp_path.rglob("status.json"))
+
+
+@pytest.mark.parametrize(
+    ("workflow", "platform", "pipeline_type", "pipeline_phase"),
+    [
+        ("test_multi_arch_linux_xla.yml", "linux", "xla", "test"),
+        (
+            "multi_arch_build_native_windows_packages.yml",
+            "windows",
+            "native_packages",
+            "msi",
+        ),
+    ],
+)
+def test_completion_without_status_json_slot_leaves_document_unchanged(
+    tmp_path: Path,
+    workflow: str,
+    platform: str,
+    pipeline_type: str,
+    pipeline_phase: str,
+) -> None:
+    # These classify to a slot status.json does not have (`xla`,
+    # `native_packages.msi`). A tracked run reaching an existing, owned document
+    # must be skipped before `upsert_leaf` (which would fail on the missing slot)
+    # and must leave the document unchanged.
+    _establish_owner(tmp_path)
+    status_path = _nightly_status_path(tmp_path)
+    before = status_path.read_text(encoding="utf-8")
+    run = _run(
+        path=f".github/workflows/{workflow}",
+        platform=platform,
+        pipeline_type=pipeline_type,
+        pipeline_phase=pipeline_phase,
+        architectures=["gfx950"],
+    )
+    out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+    assert out is None
+    assert status_path.read_text(encoding="utf-8") == before
 
 
 def _test_component_run(

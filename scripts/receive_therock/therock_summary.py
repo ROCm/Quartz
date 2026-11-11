@@ -240,10 +240,10 @@ def _unstarted_pipeline_status(
 def _pipeline_rollup(
     pipe: Pipeline, platform: str, seen_statuses: list[Status]
 ) -> PipelineRollup | None:
-    """Roll one pipeline up: build collapses to a status, test to per-status
-    counts. Returns `None` when this platform has neither a build nor a test
-    leaf, so the pipeline is dropped from the projection instead of emitting a
-    placeholder."""
+    """Roll one pipeline up: build keeps its worst-of status and matrix-cell
+    counts when present, while test keeps per-status counts. Returns `None`
+    when this platform has neither a build nor a test leaf, so the pipeline is
+    dropped from the projection instead of emitting a placeholder."""
     build_leaf = pipe.build.get(platform)
     arch_map = pipe.test.get(platform)
     full_arch_map = pipe.test_full.get(platform)
@@ -252,7 +252,7 @@ def _pipeline_rollup(
     rollup = PipelineRollup()
     if build_leaf is not None:
         seen_statuses.append(build_leaf.status)
-        rollup.build = BuildRollup(status=build_leaf.status)
+        rollup.build = _build_rollup(build_leaf)
     test_status_start = len(seen_statuses)
     if arch_map:
         rollup.test = _test_rollup(arch_map.values(), seen_statuses)
@@ -297,6 +297,23 @@ def _native_rollup(
     return NativePackagesRollup(
         rpm=BuildRollup(status=rpm_status),
         deb=BuildRollup(status=deb_status),
+    )
+
+
+def _build_rollup(leaf: RunLeaf) -> BuildRollup:
+    """The build leaf's worst-of status, plus per-status counts over its matrix
+    cells when it fanned out (pytorch / jax). A single-run build carries no
+    counts."""
+    if not leaf.variants:
+        return BuildRollup(status=leaf.status)
+    counter = Counter(v.status for v in leaf.variants)
+    return BuildRollup(
+        status=leaf.status,
+        success=counter[Status.success],
+        failure=counter[Status.failure],
+        in_progress=counter[Status.in_progress],
+        cancelled=counter[Status.cancelled],
+        skipped=counter[Status.skipped],
     )
 
 

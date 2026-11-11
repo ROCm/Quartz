@@ -1,5 +1,5 @@
 {
-  "schema_version": "2.1",
+  "schema_version": "2.2",
   "release_type": "nightly",
   "rocm_version": "10.3.0a20261111",
   "build_date": "20261111",
@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-11T00:02:00Z",
-  "status_json_last_updated": "2026-11-11T14:15:04Z",
+  "status_json_last_updated": "2026-11-11T15:35:47Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -58,7 +58,12 @@
       },
       "pytorch": {
         "build": {
-          "status": "success"
+          "status": "success",
+          "success": 20,
+          "failure": 0,
+          "in_progress": 0,
+          "cancelled": 0,
+          "skipped": 0
         },
         "test": {
           "success": 51,
@@ -69,15 +74,20 @@
         },
         "test_full": {
           "success": 0,
-          "failure": 0,
-          "in_progress": 4,
+          "failure": 1,
+          "in_progress": 3,
           "cancelled": 0,
           "skipped": 0
         }
       },
       "jax": {
         "build": {
-          "status": "failure"
+          "status": "failure",
+          "success": 19,
+          "failure": 3,
+          "in_progress": 0,
+          "cancelled": 0,
+          "skipped": 0
         },
         "test": {
           "success": 16,
@@ -133,7 +143,12 @@
       },
       "pytorch": {
         "build": {
-          "status": "cancelled"
+          "status": "cancelled",
+          "success": 15,
+          "failure": 0,
+          "in_progress": 0,
+          "cancelled": 5,
+          "skipped": 0
         },
         "test": {
           "success": 29,
@@ -1896,10 +1911,11 @@
       "test_full": {
         "linux": {
           "gfx94X-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 42999939512,
             "run_attempt": 1,
             "started_at": "2026-11-11T08:46:09Z",
+            "completed_at": "2026-11-11T15:35:05Z",
             "variants": [
               {
                 "py": "3.12",
@@ -1928,10 +1944,11 @@
               {
                 "py": "3.12",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 42999939512,
                 "run_attempt": 1,
-                "started_at": "2026-11-11T10:00:32Z"
+                "started_at": "2026-11-11T10:00:32Z",
+                "completed_at": "2026-11-11T15:35:05Z"
               }
             ]
           }

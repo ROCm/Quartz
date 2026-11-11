@@ -32,7 +32,7 @@ status.json
 │     ├─ architectures     e.g. gfx942, gfx1201
 │     ├─ urls              tarballs, wheels, rpm/deb, artifacts index
 │     └─ <pipeline>        rocm | pytorch | jax | native_packages
-│        ├─ build          one status
+│        ├─ build          one status [+ status counts for PyTorch/JAX]
 │        └─ test           pass/fail counters
 └─ pipelines               deep per-arch / per-variant detail
 ```
@@ -65,9 +65,16 @@ case with no `build` / `test` phases:
 | `jax`             | `build`, `test`                 | linux only     |
 | `native_packages` | per package type (`rpm`, `deb`) | linux only     |
 
-`build` is a single status; `test` carries pass/fail counters. Each block is
-described in detail in [What is in a status.json](#what-is-in-a-statusjson)
-below.
+`build` is a single status; `test` carries pass/fail counters. The PyTorch and
+JAX `build` may also carry counters, one per Python x framework version build.
+Those counters are optional and are absent from documents written before
+schema 2.2. Each block is described in detail in
+[What is in a status.json](#what-is-in-a-statusjson) below.
+
+> **Note:** A successful build does not guarantee that its wheels were
+> published. `urls.wheels` points to a `whl-next/` index that holds all Python wheels
+> (ROCm, PyTorch, JAX), and it is set as soon as the ROCm wheels are
+> published, whether or not the PyTorch / JAX wheels are there yet.
 
 ## Endpoints
 
@@ -196,6 +203,14 @@ constituent is `failure`, the rollup is `failure`; if any is still
 
 Test phases in `summary` carry **counters** (one count per matrix entry), not a
 single status. Pass/fail is derived by summing or inspecting them.
+
+The `rocm` and `native_packages` builds are a single build each, so a single
+`status` is enough. PyTorch and JAX build one wheel set per Python x framework
+version, so their `build` may also carry the five counters next to its worst-of
+`status`. The counters are optional and absent from documents written before
+schema 2.2. For example, `"status": "failure"` with `"success": 14, "failure": 2`
+means 14 of 16 builds succeeded. Which ones is in
+`pipelines.<pipeline>.build.<platform>.variants`.
 
 ## Full schema reference
 

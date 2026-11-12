@@ -128,6 +128,33 @@ def _leaf_run() -> WorkflowRunRecord:
     )
 
 
+def _pytorch_full_test_run(
+    *,
+    run_id: int = 27797822903,
+    torch_version: str = "release/2.10",
+    outputs: dict[str, object] | None = None,
+) -> WorkflowRunRecord:
+    run = _run(
+        path=".github/workflows/test_pytorch_wheels_full.yml",
+        platform="linux",
+        pipeline_type="pytorch",
+        pipeline_phase="test-full",
+        architectures=["gfx942"],
+    )
+    run.workflow_run_id = run_id
+    run.trigger_workflow_run_id = 27797822902
+    run.inputs = {"python_version": "3.12", "torch_version": torch_version}
+    if outputs is not None:
+        run.captured_outputs = {"test": {"result": "success", "outputs": outputs}}
+    return run
+
+
+def _full_test_outputs(
+    *, failed: object = "20", complete: object = "true"
+) -> dict[str, object]:
+    return {"failed_test_count": failed, "results_complete": complete}
+
+
 def _orchestrator_run(
     path: str = ".github/workflows/multi_arch_release.yml",
 ) -> WorkflowRunRecord:
@@ -293,6 +320,33 @@ def test_leaf_event_leaves_release_in_progress(tmp_path: Path) -> None:
     # share the run and any one finishing early must not flip it success. Only
     # the per-platform release orchestrator finalizes it.
     assert doc.summary.linux.rocm.build.status is Status.in_progress
+
+
+def test_full_test_complete_run_publishes_failure_count(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    out = tusj.update_status_json(
+        _event(_pytorch_full_test_run(outputs=_full_test_outputs())),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    raw = json.loads(out.read_text(encoding="utf-8"))
+    leaf = raw["pipelines"]["pytorch"]["test_full"]["linux"]["gfx942"]
+    # Metrics are per variant; the leaf itself never carries them.
+    assert "test_failure_count" not in leaf
+    assert leaf["variants"][0]["test_failure_count"] == 20
+    assert leaf["variants"][0]["test_results_complete"] is True
+
+
+def test_full_test_incomplete_run_records_only_the_flag(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    out = tusj.update_status_json(
+        _event(_pytorch_full_test_run(outputs=_full_test_outputs(complete="false"))),
+        repo_dir=tmp_path,
+        commit_and_push=False,
+    )
+    variant = _load(out).pipelines.pytorch.test_full["linux"]["gfx942"].variants[0]
+    assert variant.test_failure_count is None
+    assert variant.test_results_complete is False
 
 
 def test_rocm_test_events_populate_test_rollup(tmp_path: Path) -> None:
@@ -4099,3 +4153,167 @@ def test_test_component_completion_does_not_affect_artifact_level_leaf(
     leaf = _load(out).pipelines.rocm.test["linux"]["gfx1151"]
     assert leaf.status is Status.success
     assert leaf.variants is None
+
+
+# --- standard PyTorch test metrics (test_pytorch_wheels.yml) -----------------
+#
+# The standard suite runs nested in the build run (shared run id), one test job
+# per GPU family. Its completion notify carries run/passed/failed/skipped
+# counts in captured_outputs; they belong only to the (py, ref) cell named by
+# that test workflow's own inputs.
+
+_STANDARD_RUN_ID = 902
+
+
+def _standard_test_outputs(
+    *, failed: object = "10", complete: object = "true"
+) -> dict[str, object]:
+    return {
+        "run_test_count": "100",
+        "passed_test_count": "90",
+        "failed_test_count": failed,
+        "skipped_test_count": "40",
+        "results_complete": complete,
+        "summary": "## markdown",
+    }
+
+
+def _standard_jobs(*, test_done: bool) -> list[WorkflowJobRecord]:
+    test_conclusion = "failure" if test_done else None
+    return [
+        _job("Build | py 3.11 | torch release/2.12 / Build"),
+        _job("Build | py 3.11 | torch release/2.12 / Test PyTorch | gfx94X-dcgpu"),
+        _job("Build | py 3.12 | torch release/2.12 / Build"),
+        _job(
+            "Build | py 3.12 | torch release/2.12 / Test PyTorch | gfx94X-dcgpu",
+            conclusion=test_conclusion,
+            completed="11:00" if test_done else None,
+        ),
+    ]
+
+
+def _standard_test_run(
+    outputs: dict[str, object] | None = None,
+    *,
+    run_attempt: int = 1,
+) -> WorkflowRunRecord:
+    run = _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="test",
+        architectures=["gfx94X-dcgpu"],
+        run_id=_STANDARD_RUN_ID,
+        run_attempt=run_attempt,
+        conclusion=None,
+        path=".github/workflows/test_pytorch_wheels.yml",
+        jobs=_standard_jobs(test_done=False),
+        inputs={
+            "amdgpu_family": "gfx94X-dcgpu",
+            "python_version": "3.12",
+            "pytorch_git_ref": "release/2.12",
+        },
+    )
+    if outputs is not None:
+        run.captured_outputs = {
+            "test_wheels": {"result": "failure", "outputs": outputs}
+        }
+    return run
+
+
+def _standard_build_run(*, run_attempt: int = 1) -> WorkflowRunRecord:
+    return _variant_run(
+        pipeline_type="pytorch",
+        pipeline_phase="build",
+        run_id=_STANDARD_RUN_ID,
+        run_attempt=run_attempt,
+        conclusion="failure",
+        jobs=_standard_jobs(test_done=True),
+    )
+
+
+def _merge(doc: StatusDocument, run: WorkflowRunRecord) -> None:
+    tusj._merge_run_into_document(doc, run, tusj._create_leaf(run))
+
+
+def _standard_cells(doc: StatusDocument) -> dict[str, dict[str, int | bool]]:
+    leaf = doc.pipelines.pytorch.test["linux"]["gfx94X-dcgpu"]
+    assert leaf.variants is not None
+    return {v.matrix["py"]: v.test_results() for v in leaf.variants}
+
+
+_STANDARD_COUNTS = {
+    "test_run_count": 100,
+    "test_passed_count": 90,
+    "test_failure_count": 10,
+    "test_skipped_count": 40,
+    "test_results_complete": True,
+}
+
+
+def test_standard_test_counts_attach_to_their_own_cell() -> None:
+    doc = StatusDocument()
+    _merge(doc, _standard_test_run(_standard_test_outputs()))
+    assert _standard_cells(doc) == {"3.11": {}, "3.12": _STANDARD_COUNTS}
+
+
+@pytest.mark.parametrize("test_first", [True, False])
+def test_standard_test_counts_survive_the_build_refresh(test_first: bool) -> None:
+    # The build run's completion re-derives the cell from job names (no
+    # metrics) and wins it as the terminal snapshot, in either arrival order.
+    doc = StatusDocument()
+    counted = _standard_test_run(_standard_test_outputs())
+    for run in (
+        (counted, _standard_build_run())
+        if test_first
+        else (
+            _standard_test_run(),
+            _standard_build_run(),
+            counted,
+        )
+    ):
+        _merge(doc, run)
+    leaf = doc.pipelines.pytorch.test["linux"]["gfx94X-dcgpu"]
+    cell = next(v for v in leaf.variants or [] if v.matrix["py"] == "3.12")
+    assert cell.status is Status.failure
+    assert cell.test_results() == _STANDARD_COUNTS
+
+
+def test_standard_test_counts_do_not_carry_into_a_rerun() -> None:
+    # A re-run attempt's test cell supersedes attempt 1 without inheriting
+    # its counts; attempt 2 publishes its own once its test job reports.
+    doc = StatusDocument()
+    _merge(doc, _standard_test_run(_standard_test_outputs()))
+    _merge(doc, _standard_test_run(run_attempt=2))
+    assert _standard_cells(doc)["3.12"] == {}
+    _merge(
+        doc,
+        _standard_test_run(_standard_test_outputs(failed="5"), run_attempt=2),
+    )
+    assert _standard_cells(doc)["3.12"]["test_failure_count"] == 5
+
+
+def test_standard_incomplete_run_records_only_the_flag() -> None:
+    doc = StatusDocument()
+    _merge(doc, _standard_test_run(_standard_test_outputs(complete="false")))
+    assert _standard_cells(doc)["3.12"] == {"test_results_complete": False}
+
+
+def test_standard_counts_without_a_unique_cell_are_dropped() -> None:
+    # Inputs naming no cell cannot pick between the two (py, ref) cells.
+    run = _standard_test_run(_standard_test_outputs())
+    run.inputs = {"amdgpu_family": "gfx94X-dcgpu"}
+    doc = StatusDocument()
+    _merge(doc, run)
+    assert _standard_cells(doc) == {"3.11": {}, "3.12": {}}
+
+
+def test_standard_counts_publish_in_status_json(tmp_path: Path) -> None:
+    _establish_owner(tmp_path)
+    run = _standard_test_run(_standard_test_outputs())
+    run.workflow_run_id = 27797822902
+    out = tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+    assert out is not None
+    raw = json.loads(out.read_text(encoding="utf-8"))
+    leaf = raw["pipelines"]["pytorch"]["test"]["linux"]["gfx94X-dcgpu"]
+    cell = next(v for v in leaf["variants"] if v["py"] == "3.12")
+    assert {k: cell[k] for k in _STANDARD_COUNTS} == _STANDARD_COUNTS
+    assert "summary" not in cell

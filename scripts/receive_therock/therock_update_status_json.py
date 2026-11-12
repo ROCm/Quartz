@@ -703,10 +703,8 @@ def _variants_from_jobs(
     return variants
 
 
-def _variants_from_inputs(
-    workflow_run: WorkflowRunRecord, axis_key: str
-) -> list[Variant]:
-    """Single-cell variant from the dispatch inputs"""
+def _input_cell(workflow_run: WorkflowRunRecord, axis_key: str) -> dict[str, str]:
+    """The (py, ref) matrix cell named by the dispatch inputs; may be partial."""
     inputs = workflow_run.inputs or {}
     py = inputs.get("python_version")
     ref = next(
@@ -718,6 +716,14 @@ def _variants_from_inputs(
         matrix["py"] = str(py)
     if ref:
         matrix[axis_key] = _normalize_ref(axis_key, str(ref))
+    return matrix
+
+
+def _variants_from_inputs(
+    workflow_run: WorkflowRunRecord, axis_key: str
+) -> list[Variant]:
+    """Single-cell variant from the dispatch inputs"""
+    matrix = _input_cell(workflow_run, axis_key)
     if not matrix:
         return []
 
@@ -736,6 +742,106 @@ def _variants_from_inputs(
             started_at=_datetime_to_z(started) if started else None,
             completed_at=_datetime_to_z(completed) if completed else None,
         )
+    ]
+
+
+# TheRock test-result outputs -> Variant fields. The full suite
+# (test_pytorch_wheels_full.yml) reports only failed_test_count; the standard
+# suite (test_pytorch_wheels.yml) reports all four.
+_TEST_COUNT_OUTPUTS: dict[str, str] = {
+    "run_test_count": "test_run_count",
+    "passed_test_count": "test_passed_count",
+    "failed_test_count": "test_failure_count",
+    "skipped_test_count": "test_skipped_count",
+}
+_TEST_OUTPUT_KEYS: frozenset[str] = frozenset(
+    {*_TEST_COUNT_OUTPUTS, "results_complete"}
+)
+
+
+def _nonnegative_output_int(value: object) -> int | None:
+    """Parse a nonnegative integer output without accepting bools or decimals."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if not isinstance(value, str):
+        return None
+    stripped = value.strip()
+    if not stripped.isdigit():
+        return None
+    return int(stripped)
+
+
+def _test_results(workflow_run: WorkflowRunRecord) -> dict[str, int | bool]:
+    """Read one PyTorch test workflow's result metrics from captured outputs.
+
+    Returns `Variant` test-metric fields. `test_results_complete` is recorded
+    whenever it parses; counts are copied only when it is true. TheRock sets
+    `results_complete` only for a complete, valid report set, so a partial
+    count never reads as a clean run.
+    """
+    cls = workflow_run.classification
+    captured = workflow_run.captured_outputs
+    if (
+        cls.pipeline_type != "pytorch"
+        or cls.pipeline_phase not in ("test", "test-full")
+        or not isinstance(captured, dict)
+    ):
+        return {}
+
+    output_sets: list[dict[str, object]] = []
+    if _TEST_OUTPUT_KEYS.intersection(captured):
+        output_sets.append(captured)
+    for need in captured.values():
+        if not isinstance(need, dict):
+            continue
+        outputs = need.get("outputs")
+        if isinstance(outputs, dict) and _TEST_OUTPUT_KEYS.intersection(outputs):
+            output_sets.append(outputs)
+
+    # More than one reporting job would make attribution to this variant
+    # ambiguous; fail closed instead of combining their counts.
+    if len(output_sets) != 1:
+        return {}
+    outputs = output_sets[0]
+
+    complete = _parse_bool(outputs.get("results_complete"))
+    if complete is None:
+        return {}
+    results: dict[str, int | bool] = {"test_results_complete": complete}
+    if complete:
+        for output, field in _TEST_COUNT_OUTPUTS.items():
+            count = _nonnegative_output_int(outputs.get(output))
+            if count is not None:
+                results[field] = count
+    return results
+
+
+def _attach_test_results(
+    workflow_run: WorkflowRunRecord, variants: list[Variant], axis_key: str
+) -> list[Variant]:
+    """Attach this run's test metrics to the one matrix cell it tested.
+
+    A shared-run snapshot can derive several (py, ref) cells; the metrics
+    belong only to the cell named by this test workflow's own inputs. Without
+    a unique match the metrics are dropped rather than misattributed.
+    """
+    results = _test_results(workflow_run)
+    if not results or not variants:
+        return variants
+    cell = _input_cell(workflow_run, axis_key)
+    matches = [
+        i
+        for i, v in enumerate(variants)
+        if all(v.matrix.get(k) == val for k, val in cell.items())
+    ]
+    if len(matches) != 1:
+        return variants
+    target = matches[0]
+    return [
+        v.model_copy(update=results) if i == target else v
+        for i, v in enumerate(variants)
     ]
 
 
@@ -761,6 +867,7 @@ def _derive_variants(
         # job exists, when no test job exists yet (tests need builds), so the
         # whole-run status it reads cannot be test-influenced.
         variants = _variants_from_inputs(workflow_run, axis_key)
+    variants = _attach_test_results(workflow_run, variants, axis_key)
     return variants or None
 
 

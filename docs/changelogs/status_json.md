@@ -12,6 +12,16 @@ the same major can ignore. Layout and path changes are listed under the date
 they shipped even when they do not move `schema_version`. Entries reference the
 pull request that introduced the change.
 
+## schema_version 2.3 - 2026-11-12
+
+### Added
+
+- Optional per-variant PyTorch test metrics: `test_results_complete`, plus
+  `test_failure_count` (`test_full` and `test`) and `test_run_count`,
+  `test_passed_count`, and `test_skipped_count` (`test`). Counts are published
+  only when TheRock reports `results_complete: true`, and stay on the cell
+  when a later same-attempt snapshot wins it (#127).
+
 ## schema_version 2.2 - 2026-11-10
 
 ### Added

@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-13T00:02:09Z",
-  "status_json_last_updated": "2026-11-13T08:09:03Z",
+  "status_json_last_updated": "2026-11-13T08:09:37Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -76,11 +76,11 @@
       "jax": {
         "build": {
           "status": "failure",
-          "success": 2,
+          "success": 19,
           "failure": 3,
-          "in_progress": 16,
+          "in_progress": 0,
           "cancelled": 0,
-          "skipped": 1
+          "skipped": 0
         },
         "test": {
           "success": 0,
@@ -591,6 +591,10 @@
       "build": {
         "linux": {
           "status": "failure",
+          "run_id": 43375853136,
+          "run_attempt": 1,
+          "started_at": "2026-11-13T06:02:13Z",
+          "completed_at": "2026-11-13T07:28:32Z",
           "variants": [
             {
               "py": "3.13",
@@ -604,50 +608,56 @@
             {
               "py": "3.12",
               "jax_version": "0.11.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:26:09Z"
             },
             {
               "py": "3.13",
               "jax_version": "0.11.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:18:14Z"
             },
             {
               "py": "3.13",
               "jax_version": "0.11.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:26:48Z"
             },
             {
               "py": "3.13",
               "jax_version": "0.10.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:25:35Z"
             },
             {
               "py": "3.14",
               "jax_version": "0.10.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:16:04Z"
             },
             {
               "py": "3.13",
               "jax_version": "0.11.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:16:35Z"
             },
             {
               "py": "3.14",
@@ -661,42 +671,47 @@
             {
               "py": "3.12",
               "jax_version": "0.10.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:21:29Z"
             },
             {
               "py": "3.14",
               "jax_version": "0.12.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:28:13Z"
             },
             {
               "py": "3.14",
               "jax_version": "0.11.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:20:27Z"
             },
             {
               "py": "3.14",
               "jax_version": "0.11.1",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:20:01Z"
             },
             {
               "py": "3.12",
               "jax_version": "0.12.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:28:32Z"
             },
             {
               "py": "3.12",
@@ -710,42 +725,47 @@
             {
               "py": "3.11",
               "jax_version": "0.10.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:20:23Z"
             },
             {
               "py": "3.12",
               "jax_version": "0.11.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:24:23Z"
             },
             {
               "py": "3.14",
               "jax_version": "0.11.2",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:18:25Z"
             },
             {
               "py": "3.13",
               "jax_version": "0.12.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:23Z"
+              "started_at": "2026-11-13T06:02:23Z",
+              "completed_at": "2026-11-13T07:23:27Z"
             },
             {
               "py": "3.12",
               "jax_version": "0.11.0",
-              "status": "in_progress",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
-              "started_at": "2026-11-13T06:02:24Z"
+              "started_at": "2026-11-13T06:02:24Z",
+              "completed_at": "2026-11-13T07:24:48Z"
             },
             {
               "py": "3.13",
@@ -759,11 +779,11 @@
             {
               "py": "3.14",
               "jax_version": "tip",
-              "status": "skipped",
+              "status": "success",
               "run_id": 43375853136,
               "run_attempt": 1,
               "started_at": "2026-11-13T06:02:13Z",
-              "completed_at": "2026-11-13T06:02:13Z"
+              "completed_at": "2026-11-13T06:14:09Z"
             },
             {
               "py": "3.12",
@@ -783,7 +803,7 @@
             "status": "in_progress",
             "run_id": 43375853136,
             "run_attempt": 1,
-            "started_at": "2026-11-13T06:01:45Z",
+            "started_at": "2026-11-13T07:16:14Z",
             "variants": [
               {
                 "py": "3.14",
@@ -791,7 +811,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:16:14Z"
               },
               {
                 "py": "3.13",
@@ -799,7 +819,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:16:46Z"
               },
               {
                 "py": "3.13",
@@ -807,7 +827,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:18:26Z"
               },
               {
                 "py": "3.14",
@@ -815,7 +835,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:18:40Z"
               },
               {
                 "py": "3.14",
@@ -823,7 +843,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:20:09Z"
               },
               {
                 "py": "3.11",
@@ -831,7 +851,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:20:33Z"
               },
               {
                 "py": "3.14",
@@ -839,7 +859,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:20:47Z"
               },
               {
                 "py": "3.12",
@@ -847,7 +867,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:21:40Z"
               },
               {
                 "py": "3.13",
@@ -855,7 +875,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:23:36Z"
               },
               {
                 "py": "3.12",
@@ -863,7 +883,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:25:20Z"
               },
               {
                 "py": "3.12",
@@ -871,7 +891,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:25:20Z"
               },
               {
                 "py": "3.13",
@@ -879,7 +899,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:25:46Z"
               },
               {
                 "py": "3.12",
@@ -887,7 +907,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:26:24Z"
               },
               {
                 "py": "3.13",
@@ -895,7 +915,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:27:00Z"
               },
               {
                 "py": "3.14",
@@ -903,7 +923,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:28:24Z"
               },
               {
                 "py": "3.12",
@@ -911,7 +931,7 @@
                 "status": "in_progress",
                 "run_id": 43375853136,
                 "run_attempt": 1,
-                "started_at": "2026-11-13T06:01:45Z"
+                "started_at": "2026-11-13T07:28:44Z"
               }
             ]
           }

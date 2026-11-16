@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-16T00:01:49Z",
-  "status_json_last_updated": "2026-11-16T13:39:08Z",
+  "status_json_last_updated": "2026-11-16T13:39:21Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
@@ -151,9 +151,9 @@
           "skipped": 0
         },
         "test": {
-          "success": 14,
-          "failure": 0,
-          "in_progress": 42,
+          "success": 18,
+          "failure": 11,
+          "in_progress": 27,
           "cancelled": 0,
           "skipped": 0
         }
@@ -263,67 +263,71 @@
       "build": {
         "windows": {
           "status": "success",
+          "run_id": 43806627982,
+          "run_attempt": 2,
+          "started_at": "2026-11-16T04:52:37Z",
+          "completed_at": "2026-11-16T13:35:30Z",
           "variants": [
             {
               "py": "3.14",
               "torch": "nightly",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:37Z",
-              "completed_at": "2026-11-16T08:59:29Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.13",
               "torch": "release/2.13",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:45:01Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.15",
               "torch": "release/2.15",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:41:56Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.13",
               "torch": "release/2.15",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:41:31Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.11",
               "torch": "nightly",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T10:32:57Z"
+              "completed_at": "2026-11-16T09:00:42Z"
             },
             {
               "py": "3.15",
               "torch": "release/2.13",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:45:50Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.11",
               "torch": "release/2.15",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
               "completed_at": "2026-11-16T09:33:14Z"
             },
@@ -332,117 +336,117 @@
               "torch": "release/2.14",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:46:49Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.14",
               "torch": "release/2.14",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:47:02Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.12",
               "torch": "nightly",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T09:00:58Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.11",
               "torch": "release/2.14",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T10:16:27Z"
+              "completed_at": "2026-11-16T08:46:43Z"
             },
             {
               "py": "3.12",
               "torch": "release/2.13",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:48:38Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.11",
               "torch": "release/2.13",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T10:17:51Z"
+              "completed_at": "2026-11-16T08:47:41Z"
             },
             {
               "py": "3.13",
               "torch": "nightly",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T09:02:48Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.12",
               "torch": "release/2.14",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T08:52:53Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.15",
               "torch": "nightly",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T09:18:57Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.14",
               "torch": "release/2.15",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T09:08:13Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.14",
               "torch": "release/2.13",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:39Z",
-              "completed_at": "2026-11-16T09:30:39Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.13",
               "torch": "release/2.14",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:38Z",
-              "completed_at": "2026-11-16T09:53:22Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             },
             {
               "py": "3.12",
               "torch": "release/2.15",
               "status": "success",
               "run_id": 43806627982,
-              "run_attempt": 1,
+              "run_attempt": 2,
               "started_at": "2026-11-16T04:52:38Z",
-              "completed_at": "2026-11-16T11:43:45Z"
+              "completed_at": "2026-11-16T13:35:30Z"
             }
           ]
         },
@@ -644,25 +648,27 @@
                 "torch": "release/2.15",
                 "status": "success",
                 "run_id": 43806627982,
-                "run_attempt": 1,
+                "run_attempt": 2,
                 "started_at": "2026-11-16T08:45:26Z",
                 "completed_at": "2026-11-16T09:10:12Z"
               },
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T08:49:05Z",
+                "completed_at": "2026-11-16T09:13:06Z"
               },
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T08:55:00Z",
+                "completed_at": "2026-11-16T09:17:52Z"
               },
               {
                 "py": "3.11",
@@ -670,7 +676,7 @@
                 "status": "in_progress",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:38:24Z"
               }
             ]
           },
@@ -685,7 +691,7 @@
                 "torch": "release/2.15",
                 "status": "success",
                 "run_id": 43806627982,
-                "run_attempt": 1,
+                "run_attempt": 2,
                 "started_at": "2026-11-16T08:42:51Z",
                 "completed_at": "2026-11-16T09:32:49Z"
               },
@@ -695,7 +701,7 @@
                 "status": "in_progress",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:42Z"
               },
               {
                 "py": "3.11",
@@ -703,7 +709,7 @@
                 "status": "in_progress",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:42Z"
               },
               {
                 "py": "3.11",
@@ -711,7 +717,7 @@
                 "status": "in_progress",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:42Z"
               }
             ]
           },
@@ -726,25 +732,27 @@
                 "torch": "release/2.15",
                 "status": "success",
                 "run_id": 43806627982,
-                "run_attempt": 1,
+                "run_attempt": 2,
                 "started_at": "2026-11-16T08:46:42Z",
                 "completed_at": "2026-11-16T09:03:20Z"
               },
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T08:47:19Z",
+                "completed_at": "2026-11-16T09:03:05Z"
               },
               {
                 "py": "3.11",
                 "torch": "release/2.13",
-                "status": "in_progress",
+                "status": "success",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T08:48:24Z",
+                "completed_at": "2026-11-16T09:03:59Z"
               },
               {
                 "py": "3.11",
@@ -752,15 +760,16 @@
                 "status": "in_progress",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:42Z"
               }
             ]
           },
           "gfx90a": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -774,10 +783,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -798,10 +808,11 @@
             ]
           },
           "gfx900": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -815,10 +826,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -839,10 +851,11 @@
             ]
           },
           "gfx90c": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -856,10 +869,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -880,10 +894,11 @@
             ]
           },
           "gfx906": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -897,10 +912,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -921,10 +937,11 @@
             ]
           },
           "gfx908": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -938,10 +955,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -962,10 +980,11 @@
             ]
           },
           "gfx101X-dgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -979,10 +998,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -1003,10 +1023,11 @@
             ]
           },
           "gfx103X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1020,10 +1041,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -1044,10 +1066,11 @@
             ]
           },
           "gfx1150": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1061,10 +1084,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -1085,10 +1109,11 @@
             ]
           },
           "gfx1152": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1102,10 +1127,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -1126,10 +1152,11 @@
             ]
           },
           "gfx1153": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1143,10 +1170,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",
@@ -1167,10 +1195,11 @@
             ]
           },
           "gfx117X-all": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 43806627982,
             "run_attempt": 2,
             "started_at": "2026-11-16T04:52:00Z",
+            "completed_at": "2026-11-16T13:38:25Z",
             "variants": [
               {
                 "py": "3.11",
@@ -1184,10 +1213,11 @@
               {
                 "py": "3.11",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 43806627982,
                 "run_attempt": 2,
-                "started_at": "2026-11-16T13:35:26Z"
+                "started_at": "2026-11-16T13:35:26Z",
+                "completed_at": "2026-11-16T13:38:25Z"
               },
               {
                 "py": "3.11",

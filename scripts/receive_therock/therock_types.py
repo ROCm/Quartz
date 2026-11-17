@@ -219,7 +219,8 @@ class WorkflowSpec:
     # release orchestrators, which fan out to both platforms).
     platform: str
 
-    # "rocm" | "pytorch" | "jax" | "native_packages" | "setup" | "orchestrator"
+    # "rocm" | "pytorch" | "jax" | "xla" | "native_packages" | "setup" |
+    # "orchestrator" ("xla" is classified but has no status.json slot yet)
     pipeline_type: str
 
     # for native packages: "rpm" or "deb"
@@ -297,6 +298,17 @@ WORKFLOW_SPECS: dict[str, list[WorkflowSpec]] = {
             pipeline_phase="test",
         ),
     ],
+    # XLA tests (linux-only). Self-reports but has no release caller yet,
+    # and status.json has no `xla` slot, so its completions are
+    # disregarded by `update_status_json` (`_SKIP_WORKFLOW_NAMES`) until it is
+    # decided whether XLA belongs in TheRock CI.
+    "test_multi_arch_linux_xla.yml": [
+        WorkflowSpec(
+            platform="linux",
+            pipeline_type="xla",
+            pipeline_phase="test",
+        ),
+    ],
     # --- Linux: native packages (rpm/deb fan-out keyed by the
     # `native_package_type` input) ---
     "multi_arch_build_native_linux_packages.yml": [
@@ -317,6 +329,29 @@ WORKFLOW_SPECS: dict[str, list[WorkflowSpec]] = {
     "test_native_linux_packages_install.yml": [
         WorkflowSpec(
             platform="linux",
+            pipeline_type="native_packages",
+            pipeline_phase="test",
+        ),
+    ],
+    # --- Windows: native MSI installer (native packages, package type `msi`).
+    # status.json has no windows native-packages slot yet, so neither workflow
+    # writes to it until one is added. ---
+    # Build: called unconditionally by multi_arch_release_windows.yml
+    # (`build_native_msi_packages`). Does not self-report yet. Disregarded by
+    # `update_status_json` (`_SKIP_WORKFLOW_NAMES`).
+    "multi_arch_build_native_windows_packages.yml": [
+        WorkflowSpec(
+            platform="windows",
+            pipeline_type="native_packages",
+            pipeline_phase="msi",
+        ),
+    ],
+    # Install test (rockrel release pipeline). Only rockrel's wrapper
+    # self-reports; TheRock's reusable workflow it calls does not. Skipped like
+    # the linux native install test.
+    "test_native_windows_packages_install.yml": [
+        WorkflowSpec(
+            platform="windows",
             pipeline_type="native_packages",
             pipeline_phase="test",
         ),

@@ -572,7 +572,21 @@ def _normalize_ref(axis_key: str, ref: str) -> str:
 # `test_artifacts.yml`'s own run-level report, which remains the
 # artifact-level source of truth for the `[platform][arch]` leaf. Disregarded
 # until we decide whether component-level granularity is worth tracking.
-_SKIP_WORKFLOW_NAMES: frozenset[str] = frozenset({"test_component.yml"})
+#
+# `test_multi_arch_linux_xla.yml`: XLA tests that self-report but are not part
+# of the release pipeline yet.
+#
+# `multi_arch_build_native_windows_packages.yml`: the release MSI build,
+# classified as `native_packages`/`msi`. `NativePackages` has no `msi` slot yet,
+# so `upsert_leaf` would fail on it. (Its install test needs no entry here: the
+# native install-test skip in `update_status_json` already covers it.)
+_SKIP_WORKFLOW_NAMES: frozenset[str] = frozenset(
+    {
+        "test_component.yml",
+        "test_multi_arch_linux_xla.yml",
+        "multi_arch_build_native_windows_packages.yml",
+    }
+)
 
 # Run inputs that carry the (py, ref) cell for single-cell runs (tests), tried
 # in order. Tests report one arch per run and never fan the axis out into job

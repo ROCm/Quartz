@@ -792,6 +792,29 @@ class DerivePlatformAndPipelineTest(unittest.TestCase):
         self.assertEqual(derive_platform_and_pipeline(rec), ("linux", "jax", "test"))
         self.assertEqual(derive_architectures(rec), ["gfx94X-dcgpu"])
 
+    def test_workflows_without_status_json_leaf_are_registered(self):
+        # None of these has a status.json slot yet: the XLA test and the MSI build
+        # are in `_SKIP_WORKFLOW_NAMES`, the MSI install test is skipped like the
+        # linux native install test. They still need a spec, or classification
+        # raises and the receive workflow fails once they report.
+        cases = {
+            "test_multi_arch_linux_xla.yml": ("linux", "xla", "test"),
+            "multi_arch_build_native_windows_packages.yml": (
+                "windows",
+                "native_packages",
+                "msi",
+            ),
+            "test_native_windows_packages_install.yml": (
+                "windows",
+                "native_packages",
+                "test",
+            ),
+        }
+        for wf, expected in cases.items():
+            with self.subTest(wf=wf):
+                rec = _path_record(f".github/workflows/{wf}")
+                self.assertEqual(derive_platform_and_pipeline(rec), expected)
+
 
 def _leaf_run() -> WorkflowRunRecord:
     rec = _make_record()

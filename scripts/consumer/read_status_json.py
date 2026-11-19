@@ -34,6 +34,7 @@ API overview:
     |- is_complete                               True once the build has finished
     |- build_id                                  (rocm_version, build_date) dedup key
     |- raw, pipelines                            escape hatch to the raw dicts
+    |- rocm_build_run_id(platform)               trigger run ID after platform ROCm build succeeds
     |- platforms()                               names present, e.g. ["linux"]
     `- platform(name) -> PlatformStatus
        |- status                                 worst-of rollup for the platform
@@ -379,6 +380,21 @@ class StatusDocument:
         """The detailed pipelines tree as a raw dict (per-arch, per-variant)."""
         return self._data.get("pipelines", {})
 
+    def rocm_build_run_id(self, platform: str) -> int:
+        """Return the trigger workflow run ID once the platform's ROCm build succeeds."""
+        platform_status = self.platform(platform)
+        build_status = (
+            platform_status.pipeline_build_status("rocm") if platform_status else None
+        )
+        run_id = self.trigger_workflow_run_id
+        if build_status != Status.success:
+            raise ValueError(
+                f"No successful ROCm build for {platform} (status {build_status!r}, run ID {run_id!r})"
+            )
+        if type(run_id) is not int or run_id <= 0:
+            raise ValueError(f"Invalid trigger_workflow_run_id: {run_id!r}")
+        return run_id
+
     def platforms(self) -> list[str]:
         """Names of the platforms present in the summary (linux and/or windows)."""
         summary = self._data.get("summary", {})
@@ -518,8 +534,21 @@ def main() -> None:
         default=DEFAULT_SOURCE,
         help="URL or local path to a status.json (default: latest nightly)",
     )
+    parser.add_argument(
+        "--get-run-id",
+        choices=("linux", "windows"),
+        metavar="PLATFORM",
+        help="Print the trigger workflow run ID if the platform ROCm build succeeded",
+    )
     args = parser.parse_args()
-    _print_summary(load_status(args.source))
+    status = load_status(args.source)
+    if args.get_run_id:
+        try:
+            print(status.rocm_build_run_id(args.get_run_id))
+        except ValueError as exc:
+            raise SystemExit(str(exc)) from exc
+    else:
+        _print_summary(status)
 
 
 if __name__ == "__main__":

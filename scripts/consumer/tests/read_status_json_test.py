@@ -22,6 +22,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -364,6 +365,64 @@ class LoadStatusSymlinkTest(unittest.TestCase):
         ):
             with self.assertRaises(json.JSONDecodeError):
                 load_status("https://raw.example/broken.json")
+
+
+class RunIdCliTest(unittest.TestCase):
+    def run_reader(self, summary, **metadata):
+        doc = {
+            "schema_version": "2.2",
+            "summary": summary,
+            **metadata,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "status.json"
+            source.write_text(json.dumps(doc))
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(CONSUMER_DIR / "read_status_json.py"),
+                    "--get-run-id",
+                    "windows",
+                    str(source),
+                ],
+                text=True,
+                capture_output=True,
+            )
+
+    def test_prints_trigger_id_when_requested_platform_succeeds(self):
+        result = self.run_reader(
+            {
+                "linux": {"rocm": {"build": {"status": "failure"}}},
+                "windows": {"rocm": {"build": {"status": "success"}}},
+            },
+            trigger_workflow_run_id=100,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "100\n")
+
+    def test_invalid_trigger_id_fails_without_stdout(self):
+        for metadata in (
+            {},
+            *({"trigger_workflow_run_id": value} for value in (True, 0, -1, "102")),
+        ):
+            with self.subTest(metadata=metadata):
+                result = self.run_reader(
+                    {"windows": {"rocm": {"build": {"status": "success"}}}}, **metadata
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("trigger_workflow_run_id", result.stderr)
+
+    def test_unsuccessful_or_missing_platform_fails_without_stdout(self):
+        for summary in (
+            {},
+            {"windows": {"rocm": {"build": {"status": "in_progress"}}}},
+        ):
+            with self.subTest(summary=summary):
+                result = self.run_reader(summary, trigger_workflow_run_id=100)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("windows", result.stderr)
 
 
 class SchemaMajorGateTest(unittest.TestCase):

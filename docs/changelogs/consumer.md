@@ -13,9 +13,9 @@ status.json `schema_version` the reader understands (see
 [status_json.md](status_json.md)): the reader currently supports schema major
 `2`.
 
-## Unreleased
+## v1.3.0 - Unreleased
 
-- Add `--run-id PLATFORM` and `StatusDocument.rocm_build_run_id(platform)` to retrieve a successful platform ROCm build run ID.
+- Add the `--get-run-id PLATFORM` CLI option to print the trigger workflow run ID once the platform’s ROCm build succeeds. Python callers can use `StatusDocument.rocm_build_run_id(platform)` (#137).
 
 ## v1.2.1 - 2026-10-06 (tagged `consumer/v1.2.1`)
 

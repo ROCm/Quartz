@@ -34,7 +34,7 @@ API overview:
     |- is_complete                               True once the build has finished
     |- build_id                                  (rocm_version, build_date) dedup key
     |- raw, pipelines                            escape hatch to the raw dicts
-    |- rocm_build_run_id(platform)               successful ROCm build workflow run ID
+    |- rocm_build_run_id(platform)               trigger run ID after platform ROCm build succeeds
     |- platforms()                               names present, e.g. ["linux"]
     `- platform(name) -> PlatformStatus
        |- status                                 worst-of rollup for the platform
@@ -381,17 +381,18 @@ class StatusDocument:
         return self._data.get("pipelines", {})
 
     def rocm_build_run_id(self, platform: str) -> int:
-        """Return the successful ROCm build run ID for a platform, or raise ValueError."""
-        build = self.pipelines.get("rocm", {}).get("build", {}).get(platform)
-        if build is None:
-            raise ValueError(f"No ROCm build reported for {platform}")
-        if build.get("status") != Status.success:
+        """Return the trigger workflow run ID once the platform's ROCm build succeeds."""
+        platform_status = self.platform(platform)
+        build_status = (
+            platform_status.pipeline_build_status("rocm") if platform_status else None
+        )
+        run_id = self.trigger_workflow_run_id
+        if build_status != Status.success:
             raise ValueError(
-                f"ROCm build for {platform} has status {build.get('status')!r}"
+                f"No successful ROCm build for {platform} (status {build_status!r}, run ID {run_id!r})"
             )
-        run_id = build.get("run_id")
         if type(run_id) is not int or run_id <= 0:
-            raise ValueError(f"Invalid ROCm build run_id for {platform}: {run_id!r}")
+            raise ValueError(f"Invalid trigger_workflow_run_id: {run_id!r}")
         return run_id
 
     def platforms(self) -> list[str]:
@@ -534,16 +535,16 @@ def main() -> None:
         help="URL or local path to a status.json (default: latest nightly)",
     )
     parser.add_argument(
-        "--run-id",
+        "--get-run-id",
         choices=("linux", "windows"),
         metavar="PLATFORM",
-        help="Print the successful ROCm build run ID for linux or windows",
+        help="Print the trigger workflow run ID if the platform ROCm build succeeded",
     )
     args = parser.parse_args()
     status = load_status(args.source)
-    if args.run_id:
+    if args.get_run_id:
         try:
-            print(status.rocm_build_run_id(args.run_id))
+            print(status.rocm_build_run_id(args.get_run_id))
         except ValueError as exc:
             raise SystemExit(str(exc)) from exc
     else:

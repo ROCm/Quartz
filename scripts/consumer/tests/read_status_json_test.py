@@ -368,11 +368,11 @@ class LoadStatusSymlinkTest(unittest.TestCase):
 
 
 class RunIdCliTest(unittest.TestCase):
-    def run_reader(self, build):
+    def run_reader(self, summary, **metadata):
         doc = {
-            "schema_version": "2.0",
-            "trigger_workflow_run_id": 100,
-            "pipelines": {"rocm": {"build": build}},
+            "schema_version": "2.2",
+            "summary": summary,
+            **metadata,
         }
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "status.json"
@@ -381,7 +381,7 @@ class RunIdCliTest(unittest.TestCase):
                 [
                     sys.executable,
                     str(CONSUMER_DIR / "read_status_json.py"),
-                    "--run-id",
+                    "--get-run-id",
                     "windows",
                     str(source),
                 ],
@@ -389,34 +389,37 @@ class RunIdCliTest(unittest.TestCase):
                 capture_output=True,
             )
 
-    def test_prints_only_requested_build_run_id(self):
+    def test_prints_trigger_id_when_requested_platform_succeeds(self):
         result = self.run_reader(
             {
-                "linux": {"status": "failure", "run_id": 101},
-                "windows": {"status": "success", "run_id": 102},
-            }
+                "linux": {"rocm": {"build": {"status": "failure"}}},
+                "windows": {"rocm": {"build": {"status": "success"}}},
+            },
+            trigger_workflow_run_id=100,
         )
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(result.stdout, "102\n")
+        self.assertEqual(result.stdout, "100\n")
 
-    def test_invalid_run_id_fails_without_stdout(self):
-        for run_id in (True, 0, -1, "102"):
-            with self.subTest(run_id=run_id):
+    def test_invalid_trigger_id_fails_without_stdout(self):
+        for metadata in (
+            {},
+            *({"trigger_workflow_run_id": value} for value in (True, 0, -1, "102")),
+        ):
+            with self.subTest(metadata=metadata):
                 result = self.run_reader(
-                    {"windows": {"status": "success", "run_id": run_id}}
+                    {"windows": {"rocm": {"build": {"status": "success"}}}}, **metadata
                 )
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stdout, "")
-                self.assertIn("Invalid ROCm build run_id", result.stderr)
+                self.assertIn("trigger_workflow_run_id", result.stderr)
 
-    def test_unavailable_run_id_fails_without_stdout(self):
-        for build in (
+    def test_unsuccessful_or_missing_platform_fails_without_stdout(self):
+        for summary in (
             {},
-            {"windows": {"status": "in_progress", "run_id": 102}},
-            {"windows": {"status": "success"}},
+            {"windows": {"rocm": {"build": {"status": "in_progress"}}}},
         ):
-            with self.subTest(build=build):
-                result = self.run_reader(build)
+            with self.subTest(summary=summary):
+                result = self.run_reader(summary, trigger_workflow_run_id=100)
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stdout, "")
                 self.assertIn("windows", result.stderr)

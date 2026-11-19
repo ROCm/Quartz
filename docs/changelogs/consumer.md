@@ -13,6 +13,10 @@ status.json `schema_version` the reader understands (see
 [status_json.md](status_json.md)): the reader currently supports schema major
 `2`.
 
+## Unreleased
+
+- Add `--run-id PLATFORM` and `StatusDocument.rocm_build_run_id(platform)` to retrieve a successful platform ROCm build run ID.
+
 ## v1.2.1 - 2026-10-06 (tagged `consumer/v1.2.1`)
 
 ### Fixed

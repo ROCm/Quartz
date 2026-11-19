@@ -22,6 +22,7 @@ import io
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -364,6 +365,61 @@ class LoadStatusSymlinkTest(unittest.TestCase):
         ):
             with self.assertRaises(json.JSONDecodeError):
                 load_status("https://raw.example/broken.json")
+
+
+class RunIdCliTest(unittest.TestCase):
+    def run_reader(self, build):
+        doc = {
+            "schema_version": "2.0",
+            "trigger_workflow_run_id": 100,
+            "pipelines": {"rocm": {"build": build}},
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            source = Path(directory) / "status.json"
+            source.write_text(json.dumps(doc))
+            return subprocess.run(
+                [
+                    sys.executable,
+                    str(CONSUMER_DIR / "read_status_json.py"),
+                    "--run-id",
+                    "windows",
+                    str(source),
+                ],
+                text=True,
+                capture_output=True,
+            )
+
+    def test_prints_only_requested_build_run_id(self):
+        result = self.run_reader(
+            {
+                "linux": {"status": "failure", "run_id": 101},
+                "windows": {"status": "success", "run_id": 102},
+            }
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "102\n")
+
+    def test_invalid_run_id_fails_without_stdout(self):
+        for run_id in (True, 0, -1, "102"):
+            with self.subTest(run_id=run_id):
+                result = self.run_reader(
+                    {"windows": {"status": "success", "run_id": run_id}}
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Invalid ROCm build run_id", result.stderr)
+
+    def test_unavailable_run_id_fails_without_stdout(self):
+        for build in (
+            {},
+            {"windows": {"status": "in_progress", "run_id": 102}},
+            {"windows": {"status": "success"}},
+        ):
+            with self.subTest(build=build):
+                result = self.run_reader(build)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("windows", result.stderr)
 
 
 class SchemaMajorGateTest(unittest.TestCase):

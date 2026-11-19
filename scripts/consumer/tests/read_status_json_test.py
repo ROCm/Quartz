@@ -79,7 +79,7 @@ class StripJsoncCommentsTest(unittest.TestCase):
 
     def test_reference_parses(self):
         data = _load_reference()
-        self.assertEqual(data["schema_version"], "2.2")
+        self.assertEqual(data["schema_version"], "2.3")
 
 
 class StatusEnumTest(unittest.TestCase):
@@ -139,7 +139,7 @@ class StatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.status.rocm_version, "7.13.0a20260408")
         self.assertEqual(self.status.build_date, "20260408")
         self.assertEqual(self.status.release_type, "nightly")
-        self.assertEqual(self.status.schema_version, "2.2")
+        self.assertEqual(self.status.schema_version, "2.3")
 
     def test_build_provenance(self):
         self.assertEqual(self.status.build_variant, "release")

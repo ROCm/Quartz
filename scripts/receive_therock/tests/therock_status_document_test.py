@@ -168,6 +168,33 @@ def test_variant_round_trips_through_serialization() -> None:
     assert restored.completed_at == original.completed_at
 
 
+_TEST_METRICS = {
+    "test_run_count": 100,
+    "test_passed_count": 90,
+    "test_failure_count": 10,
+    "test_skipped_count": 40,
+    "test_results_complete": True,
+}
+
+
+def test_variant_test_metrics_round_trip_as_cell_state() -> None:
+    variant = Variant(matrix={"py": "3.12"}, run_id=7, **_TEST_METRICS)
+    restored = Variant.model_validate(variant.model_dump())
+    assert restored.test_results() == _TEST_METRICS
+    # Metrics are cell state, never matrix axes: they must not change identity.
+    assert restored.matrix == {"py": "3.12"}
+    assert restored.key() == Variant(matrix={"py": "3.12"}).key()
+
+
+@pytest.mark.parametrize(
+    "field",
+    ["test_run_count", "test_passed_count", "test_failure_count", "test_skipped_count"],
+)
+def test_variant_rejects_negative_test_counts(field: str) -> None:
+    with pytest.raises(ValidationError):
+        Variant(**{field: -1})
+
+
 # --- Variant.key ------------------------------------------------------------
 
 
@@ -1080,7 +1107,7 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
 # --- schema_version migration -----------------------------------------------
 
 
-@pytest.mark.parametrize("older", ["2.0", "2.1"])
+@pytest.mark.parametrize("older", ["2.0", "2.1", "2.2"])
 def test_from_dict_restamps_older_minor_to_current(older: str) -> None:
     # An on-disk doc from an older minor (written before the current bump)
     # reads successfully and is restamped to the current version, so the next

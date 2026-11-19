@@ -59,7 +59,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.2"
+SCHEMA_VERSION: Final = "2.3"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -74,8 +74,25 @@ def _strip_none(value: JSONValue) -> JSONValue:
     return value
 
 
+# Per-variant test metrics, in on-disk order. A cell carries them only when the
+# reporting test run published a complete, self-consistent report set.
+TEST_RESULT_FIELDS: Final = (
+    "test_run_count",
+    "test_passed_count",
+    "test_failure_count",
+    "test_skipped_count",
+    "test_results_complete",
+)
+
 _VARIANT_STATE_KEYS: frozenset[str] = frozenset(
-    {"run_id", "run_attempt", "status", "started_at", "completed_at"}
+    {
+        "run_id",
+        "run_attempt",
+        *TEST_RESULT_FIELDS,
+        "status",
+        "started_at",
+        "completed_at",
+    }
 )
 
 
@@ -161,6 +178,11 @@ class Variant(BaseModel):
     status: Status = Status.in_progress
     run_id: int | None = None
     run_attempt: int | None = None
+    test_run_count: int | None = Field(default=None, ge=0)
+    test_passed_count: int | None = Field(default=None, ge=0)
+    test_failure_count: int | None = Field(default=None, ge=0)
+    test_skipped_count: int | None = Field(default=None, ge=0)
+    test_results_complete: bool | None = None
     started_at: str | None = None
     completed_at: str | None = None
     matrix: dict[str, str] = Field(default_factory=dict)
@@ -193,6 +215,7 @@ class Variant(BaseModel):
             out["run_id"] = self.run_id
         if self.run_attempt is not None:
             out["run_attempt"] = self.run_attempt
+        out.update(self.test_results())
         if self.started_at is not None:
             out["started_at"] = self.started_at
             out["completed_at"] = self.completed_at
@@ -206,6 +229,14 @@ class Variant(BaseModel):
 
     def is_terminal(self) -> bool:
         return self.completed_at is not None or self.status.is_terminal
+
+    def test_results(self) -> dict[str, int | bool]:
+        """The set test metric fields, in on-disk order."""
+        return {
+            name: value
+            for name in TEST_RESULT_FIELDS
+            if (value := getattr(self, name)) is not None
+        }
 
     def should_replace(self, new: "Variant") -> bool:
         """Guard for this matrix cell (same rules and monotonic-run_id assumption
@@ -230,6 +261,24 @@ class Variant(BaseModel):
     def rollup_status(variants: list["Variant"], fallback: Status) -> Status:
         """Aggregate cell statuses into a single status for the parent leaf."""
         return rollup_statuses((v.status for v in variants), fallback)
+
+
+def merge_variant(existing: Variant, new: Variant) -> Variant:
+    """Pick the winning state for one matrix cell, keeping its test metrics.
+
+    Test metrics arrive on one notify (the test job's own completion), while
+    other same-run snapshots re-derive the cell from job names alone. Whichever
+    wins the cell, metrics from the same run attempt carry over rather than
+    being dropped by a metric-less snapshot.
+    """
+    winner, other = (new, existing) if existing.should_replace(new) else (existing, new)
+    same_attempt = (winner.run_id, winner.run_attempt) == (
+        other.run_id,
+        other.run_attempt,
+    )
+    if winner.test_results() or not other.test_results() or not same_attempt:
+        return winner
+    return winner.model_copy(update=other.test_results())
 
 
 class RunLeaf(BaseModel):
@@ -383,8 +432,8 @@ def _merge_variant_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLeaf"
         if pos is None:
             positions[key] = len(variants)
             variants.append(variant)
-        elif variants[pos].should_replace(variant):
-            variants[pos] = variant
+        else:
+            variants[pos] = merge_variant(variants[pos], variant)
 
     return RunLeaf(
         status=Variant.rollup_status(variants, new.status),
@@ -406,8 +455,9 @@ def merge_matrix_test_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLe
     and "is the freshest/most complete". Wholesale replacement
     (`arch_map[arch] = new`) lets an earlier, less-complete snapshot silently
     regress a later, more-complete one whenever it happens to win the race.
-    Merging cell-by-cell through `Variant.should_replace` makes every cell
-    advance monotonically regardless of push-race ordering.
+    Merging cell-by-cell through `merge_variant` (`Variant.should_replace`
+    picks the winner) makes every cell advance monotonically regardless of
+    push-race ordering.
     """
     variants: list[Variant] = []
     positions: dict[tuple[tuple[str, str], ...], int] = {}
@@ -422,8 +472,8 @@ def merge_matrix_test_leaf(existing: "RunLeaf | None", new: "RunLeaf") -> "RunLe
         if pos is None:
             positions[key] = len(variants)
             variants.append(variant)
-        elif variants[pos].should_replace(variant):
-            variants[pos] = variant
+        else:
+            variants[pos] = merge_variant(variants[pos], variant)
 
     status = Variant.rollup_status(variants, new.status)
     completed_at: str | None = None
@@ -568,7 +618,7 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.2"] = SCHEMA_VERSION
+    schema_version: Literal["2.3"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""

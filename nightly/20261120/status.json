@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-20T00:02:10Z",
-  "status_json_last_updated": "2026-11-20T10:12:34Z",
+  "status_json_last_updated": "2026-11-20T10:12:55Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -146,7 +146,7 @@
           "status": "in_progress",
           "success": 0,
           "failure": 0,
-          "in_progress": 9,
+          "in_progress": 10,
           "cancelled": 0,
           "skipped": 0
         },
@@ -521,6 +521,14 @@
             {
               "py": "3.15",
               "torch": "nightly",
+              "status": "in_progress",
+              "run_id": 44716083057,
+              "run_attempt": 1,
+              "started_at": "2026-11-20T10:04:32Z"
+            },
+            {
+              "py": "3.13",
+              "torch": "release/2.15",
               "status": "in_progress",
               "run_id": 44716083057,
               "run_attempt": 1,

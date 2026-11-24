@@ -11,11 +11,11 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-24T00:01:55Z",
-  "status_json_last_updated": "2026-11-24T03:23:43Z",
+  "status_json_last_updated": "2026-11-24T03:24:04Z",
   "summary": {
     "overall_status": "in_progress",
     "linux": {
-      "status": "in_progress",
+      "status": "failure",
       "architectures": [
         "gfx94X-dcgpu",
         "gfx110X-all",
@@ -42,7 +42,7 @@
       },
       "rocm": {
         "build": {
-          "status": "in_progress"
+          "status": "failure"
         },
         "test": {
           "success": 0,
@@ -54,7 +54,7 @@
       },
       "pytorch": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -66,7 +66,7 @@
       },
       "jax": {
         "build": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "test": {
           "success": 0,
@@ -78,10 +78,10 @@
       },
       "native_packages": {
         "rpm": {
-          "status": "in_progress"
+          "status": "skipped"
         },
         "deb": {
-          "status": "in_progress"
+          "status": "skipped"
         }
       }
     },
@@ -144,10 +144,11 @@
           "started_at": "2026-11-24T00:00:58Z"
         },
         "linux": {
-          "status": "in_progress",
+          "status": "failure",
           "run_id": 45293646167,
           "run_attempt": 1,
-          "started_at": "2026-11-24T00:00:58Z"
+          "started_at": "2026-11-24T00:00:58Z",
+          "completed_at": "2026-11-24T03:23:24Z"
         }
       },
       "test": {}

@@ -21,7 +21,7 @@ pull request that introduced the change.
   top-level orchestrator set it together with the run ID. When any other event
   upgrades an older document to 2.3, the producer adds it from that event's run.
   Every 2.3 document therefore has the key; older documents do not, and all of
-  them belong to runs in `ROCm/rockrel` (#136).
+  them belong to runs in `ROCm/rockrel` (#138).
 
 ## schema_version 2.2 - 2026-11-10
 

@@ -13,6 +13,12 @@ status.json `schema_version` the reader understands (see
 [status_json.md](status_json.md)): the reader currently supports schema major
 `2`.
 
+## v1.4.0 - 2026-11-24
+
+### Added
+
+- Add the `--get-repo` CLI option to print the trigger workflow's GitHub `owner/repo`. `--get-run-id` and `--get-repo` are mutually exclusive; each call prints one value. Python callers can use the `StatusDocument.trigger_repository` property. Schema 2.0 - 2.2 documents do not record the repository; for them both return `ROCm/rockrel`, where all of those workflows were triggered. From schema 2.3 on, a missing repository is an error (#136).
+
 ## v1.3.0 - 2026-11-19 (tagged `consumer/v1.3.0`)
 
 ### Added

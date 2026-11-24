@@ -59,7 +59,7 @@ from typing import Final, Literal
 
 from pydantic import BaseModel, Field, model_serializer, model_validator
 
-SCHEMA_VERSION: Final = "2.2"
+SCHEMA_VERSION: Final = "2.3"
 
 JSONValue = str | int | float | bool | None | dict[str, "JSONValue"] | list["JSONValue"]
 JSONDict = dict[str, JSONValue]
@@ -568,7 +568,7 @@ class StatusDocument(BaseModel):
     # Timestamps stay `str`: they are emitted ISO-8601 with a `Z` suffix, which
     # Pydantic's native `datetime` does not round-trip (it renders `+00:00`).
     # `build_date` is a compact `YYYYMMDD` string, not a date.
-    schema_version: Literal["2.2"] = SCHEMA_VERSION
+    schema_version: Literal["2.3"] = SCHEMA_VERSION
     release_type: ReleaseType | None = None
     rocm_version: str = ""
     build_date: str = ""
@@ -579,6 +579,9 @@ class StatusDocument(BaseModel):
     build_variant: str = ""
     therock_commit: str = ""
     trigger_workflow_run_id: int | None = None
+    # GitHub `owner/repo` of `trigger_workflow_run_id`. `None` only in a
+    # pre-2.3 document that no 2.3 producer has written yet.
+    trigger_repository: str | None = None
     # Attempt number of the owning orchestrator run. Ownership is the pair
     # (trigger_workflow_run_id, trigger_run_attempt): a GitHub re-run keeps the
     # same run id but bumps the attempt, so the attempt breaks ties between a

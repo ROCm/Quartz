@@ -187,7 +187,7 @@ def main(argv: list[str]) -> int:
     # Step 3: Classify derived fields on the workflow_run record.
     log.info("Step 3: Classifying derived fields")
     try:
-        classify(wr)
+        classify(wr, payload.repository)
     except ValueError as exc:
         log.error(
             "Classification failed for workflow_run %s: %s", wr.workflow_run_id, exc

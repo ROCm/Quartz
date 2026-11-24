@@ -1184,6 +1184,8 @@ def _record_orchestrator_owner(
 ) -> bool:
     """Record the top-level orchestrator run as the document owner.
 
+    Its repository is stamped together with the run id.
+
     Ownership is the pair (workflow_run_id, run_attempt). A GitHub re-run
     keeps the same run id but bumps the attempt, so both must be compared:
       - newer run id               -> full reset, the release was re-dispatched;
@@ -1214,6 +1216,7 @@ def _record_orchestrator_owner(
         elif rid == owner_rid and attempt > owner_attempt:
             _reset_finalization_for_rerun(doc)
         doc.trigger_workflow_run_id = rid
+        doc.trigger_repository = workflow_run.classification.repository
         doc.trigger_run_attempt = attempt
     _apply_pipeline_enable_flags(doc, workflow_run)
     _apply_build_metadata(doc, workflow_run)
@@ -2000,6 +2003,12 @@ def _build_and_write(
 
     if not applied:
         return doc, file_created, [], ""
+
+    # Owner events always set trigger_repository, so it is missing only when
+    # this write upgrades a pre-2.3 document. Fill it from this run, which the
+    # gates above tie to the owner's release, so every 2.3 document has it.
+    if doc.trigger_repository is None:
+        doc.trigger_repository = workflow_run.classification.repository
 
     commit_message = _commit_message(
         doc, workflow_run, status_path.relative_to(repo_dir), file_created

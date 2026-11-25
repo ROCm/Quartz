@@ -13,7 +13,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-25T00:02:09Z",
-  "status_json_last_updated": "2026-11-25T07:44:03Z",
+  "status_json_last_updated": "2026-11-25T07:47:42Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -50,8 +50,8 @@
         },
         "test": {
           "success": 0,
-          "failure": 0,
-          "in_progress": 7,
+          "failure": 1,
+          "in_progress": 6,
           "cancelled": 0,
           "skipped": 0
         }
@@ -190,10 +190,11 @@
         },
         "linux": {
           "gfx125X-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 45568585658,
             "run_attempt": 1,
-            "started_at": "2026-11-25T07:29:52Z"
+            "started_at": "2026-11-25T07:29:52Z",
+            "completed_at": "2026-11-25T07:47:09Z"
           },
           "gfx94X-dcgpu": {
             "status": "in_progress",

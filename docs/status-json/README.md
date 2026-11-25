@@ -25,7 +25,8 @@ A `status.json` has the following shape:
 ```text
 status.json
 ├─ release metadata        rocm_version, build_date, release_type, build_variant,
-│                          therock_commit, pytorch_enabled, jax_enabled, timestamps
+│                          therock_commit, trigger_workflow_run_id, trigger_repository,
+│                          pytorch_enabled, jax_enabled, timestamps
 ├─ summary                 the at-a-glance rollup
 │  └─ <platform>           linux | windows
 │     ├─ status            worst-of rollup for the platform
@@ -171,6 +172,9 @@ For a complete, annotated example, see
 | `build_date`                       | `YYYYMMDD` of the build.                                                                                                             |
 | `build_variant`                    | Build flavor: `release`, or a sanitizer build such as `asan` (schema 2.1). `""` when no signal yet; key absent in pre-2.1 documents. |
 | `therock_commit`                   | The 40-hex TheRock commit the release was built from (schema 2.1). `""` until resolved; key absent in pre-2.1 documents.             |
+| `trigger_workflow_run_id`          | GitHub Actions run ID of the release orchestrator that owns this document.                                                           |
+| `trigger_run_attempt`              | Attempt of that run. A GitHub re-run keeps the run ID and bumps the attempt.                                                         |
+| `trigger_repository`               | GitHub `owner/repo` that runs `trigger_workflow_run_id` (schema 2.3). Absent before 2.3, where it is always `ROCm/rockrel`.          |
 | `pytorch_enabled` / `jax_enabled`  | Whether this release's dispatch built the PyTorch / JAX pipeline. Disable-only: absent means enabled (`true`).                       |
 | `completed_at`                     | `null` while the build is still running; a timestamp once done.                                                                      |
 | `summary.overall_status`           | Roll-up status over all platforms and pipelines.                                                                                     |

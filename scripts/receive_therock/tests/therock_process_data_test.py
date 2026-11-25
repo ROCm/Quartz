@@ -166,7 +166,7 @@ def test_main_full_flow_without_status_repo(
 
     assert tpd.main([]) == 0
     enrich_mock.assert_called_once_with(event, fetch_jobs=False)
-    classify_mock.assert_called_once_with(run)
+    classify_mock.assert_called_once_with(run, "ROCm/TheRock")
     update_mock.assert_not_called()
 
     dumped = json.loads(capsys.readouterr().out)

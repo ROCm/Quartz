@@ -1080,7 +1080,7 @@ def test_to_dict_keeps_zero_counts_in_summary() -> None:
 # --- schema_version migration -----------------------------------------------
 
 
-@pytest.mark.parametrize("older", ["2.0", "2.1"])
+@pytest.mark.parametrize("older", ["2.0", "2.1", "2.2"])
 def test_from_dict_restamps_older_minor_to_current(older: str) -> None:
     # An on-disk doc from an older minor (written before the current bump)
     # reads successfully and is restamped to the current version, so the next
@@ -1088,6 +1088,9 @@ def test_from_dict_restamps_older_minor_to_current(older: str) -> None:
     doc = StatusDocument.from_dict({"schema_version": older, "rocm_version": "7.0.0"})
     assert doc.schema_version == SCHEMA_VERSION
     assert doc.to_dict()["schema_version"] == SCHEMA_VERSION
+    # 2.3 added `trigger_repository`; an older doc has none and does not emit it.
+    assert doc.trigger_repository is None
+    assert "trigger_repository" not in doc.to_dict()
 
 
 def test_from_dict_stamps_current_when_schema_version_absent() -> None:

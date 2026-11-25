@@ -1074,12 +1074,28 @@ class ClassifyOwnerNormalizationOrderingTest(unittest.TestCase):
         run.path = ".github/workflows/multi_arch_build_portable_linux.yml"
         run.trigger_workflow_run_id = 111  # immediate GitHub parent
 
-        classify(run)
+        classify(run, "ROCm/rockrel")
 
         # source_run_id keyed off the immediate parent (111), proving it ran
         # before normalization; trigger_workflow_run_id is the resolved owner.
         self.assertEqual(run.classification.source_run_id, "111")
         self.assertEqual(run.trigger_workflow_run_id, 999)
+
+
+class ClassifyRepositoryTest(unittest.TestCase):
+    def _run(self) -> WorkflowRunRecord:
+        run = _make_record(release_type="nightly")
+        run.path = ".github/workflows/multi_arch_build_portable_linux.yml"
+        return run
+
+    def test_copies_envelope_repository(self):
+        run = self._run()
+        classify(run, "ROCm/rockrel")
+        self.assertEqual(run.classification.repository, "ROCm/rockrel")
+
+    def test_empty_repository_raises(self):
+        with self.assertRaisesRegex(ValueError, "empty repository"):
+            classify(self._run(), "")
 
 
 if __name__ == "__main__":

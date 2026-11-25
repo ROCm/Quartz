@@ -79,7 +79,7 @@ class StripJsoncCommentsTest(unittest.TestCase):
 
     def test_reference_parses(self):
         data = _load_reference()
-        self.assertEqual(data["schema_version"], "2.2")
+        self.assertEqual(data["schema_version"], "2.3")
 
 
 class StatusEnumTest(unittest.TestCase):
@@ -139,7 +139,7 @@ class StatusFromReferenceTest(unittest.TestCase):
         self.assertEqual(self.status.rocm_version, "7.13.0a20260408")
         self.assertEqual(self.status.build_date, "20260408")
         self.assertEqual(self.status.release_type, "nightly")
-        self.assertEqual(self.status.schema_version, "2.2")
+        self.assertEqual(self.status.schema_version, "2.3")
 
     def test_build_provenance(self):
         self.assertEqual(self.status.build_variant, "release")
@@ -153,6 +153,7 @@ class StatusFromReferenceTest(unittest.TestCase):
 
     def test_trigger_ownership(self):
         self.assertEqual(self.status.trigger_workflow_run_id, 12340000)
+        self.assertEqual(self.status.trigger_repository, "ROCm/rockrel")
         self.assertEqual(self.status.trigger_run_attempt, 1)
 
     def test_completion(self):
@@ -204,6 +205,22 @@ class MissingMetadataFieldsTest(unittest.TestCase):
     def test_absent_trigger_ownership_is_none(self):
         self.assertIsNone(self.status.trigger_workflow_run_id)
         self.assertIsNone(self.status.trigger_run_attempt)
+
+    def test_absent_trigger_repository_defaults_to_rockrel_before_2_3(self):
+        from read_status_json import StatusDocument
+
+        for schema_version in ("2.0", "2.1", "2.2"):
+            with self.subTest(schema_version=schema_version):
+                status = StatusDocument({"schema_version": schema_version})
+                self.assertEqual(status.trigger_repository, "ROCm/rockrel")
+
+    def test_absent_trigger_repository_raises_from_2_3_on(self):
+        from read_status_json import StatusDocument
+
+        for data in ({}, {"schema_version": "2.3"}, {"schema_version": "2.4"}):
+            with self.subTest(data=data):
+                with self.assertRaisesRegex(ValueError, "No trigger_repository"):
+                    StatusDocument(data).trigger_repository
 
 
 class PlatformStatusFromReferenceTest(unittest.TestCase):
@@ -367,27 +384,34 @@ class LoadStatusSymlinkTest(unittest.TestCase):
                 load_status("https://raw.example/broken.json")
 
 
+_WINDOWS_ROCM_SUCCESS = {"windows": {"rocm": {"build": {"status": "success"}}}}
+
+
+def _run_reader_cli(options, summary, schema_version="2.3", **metadata):
+    """Run the reader CLI with `options` on a status.json built from the args."""
+    doc = {
+        "schema_version": schema_version,
+        "summary": summary,
+        **metadata,
+    }
+    with tempfile.TemporaryDirectory() as directory:
+        source = Path(directory) / "status.json"
+        source.write_text(json.dumps(doc))
+        return subprocess.run(
+            [
+                sys.executable,
+                str(CONSUMER_DIR / "read_status_json.py"),
+                *options,
+                str(source),
+            ],
+            text=True,
+            capture_output=True,
+        )
+
+
 class RunIdCliTest(unittest.TestCase):
     def run_reader(self, summary, **metadata):
-        doc = {
-            "schema_version": "2.2",
-            "summary": summary,
-            **metadata,
-        }
-        with tempfile.TemporaryDirectory() as directory:
-            source = Path(directory) / "status.json"
-            source.write_text(json.dumps(doc))
-            return subprocess.run(
-                [
-                    sys.executable,
-                    str(CONSUMER_DIR / "read_status_json.py"),
-                    "--get-run-id",
-                    "windows",
-                    str(source),
-                ],
-                text=True,
-                capture_output=True,
-            )
+        return _run_reader_cli(("--get-run-id", "windows"), summary, **metadata)
 
     def test_prints_trigger_id_when_requested_platform_succeeds(self):
         result = self.run_reader(
@@ -423,6 +447,71 @@ class RunIdCliTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 1)
                 self.assertEqual(result.stdout, "")
                 self.assertIn("windows", result.stderr)
+
+
+class RepoCliTest(unittest.TestCase):
+    def run_reader(self, summary, **metadata):
+        return _run_reader_cli(("--get-repo",), summary, **metadata)
+
+    def test_prints_trigger_repository_regardless_of_build_status(self):
+        # The repository belongs to the whole document, so --get-repo applies
+        # no platform or build check (unlike --get-run-id).
+        for repository in ("ROCm/rockrel", "ROCm/TheRock"):
+            with self.subTest(repository=repository):
+                result = self.run_reader(
+                    {"linux": {"rocm": {"build": {"status": "in_progress"}}}},
+                    trigger_workflow_run_id=100,
+                    trigger_repository=repository,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, f"{repository}\n")
+
+    def test_older_document_without_repository_prints_rockrel(self):
+        # Before schema 2.3 Quartz did not record the repository; every such
+        # document was produced for a workflow triggered from ROCm/rockrel.
+        for schema_version in ("2.1", "2.2"):
+            with self.subTest(schema_version=schema_version):
+                result = self.run_reader(
+                    _WINDOWS_ROCM_SUCCESS,
+                    schema_version=schema_version,
+                    trigger_workflow_run_id=100,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(result.stdout, "ROCm/rockrel\n")
+
+    def test_newer_document_without_repository_fails_without_stdout(self):
+        for schema_version in ("2.3", "2.4"):
+            with self.subTest(schema_version=schema_version):
+                result = self.run_reader(
+                    _WINDOWS_ROCM_SUCCESS,
+                    schema_version=schema_version,
+                    trigger_workflow_run_id=100,
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("No trigger_repository", result.stderr)
+                self.assertIn(f"'{schema_version}'", result.stderr)
+
+    def test_invalid_repository_fails_without_stdout(self):
+        for value in ("", "rockrel", "ROCm/", "/rockrel", "ROCm/rock/rel", 5):
+            with self.subTest(value=value):
+                result = self.run_reader(
+                    _WINDOWS_ROCM_SUCCESS, trigger_repository=value
+                )
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, "")
+                self.assertIn("Invalid trigger_repository", result.stderr)
+
+    def test_cannot_combine_with_get_run_id(self):
+        result = _run_reader_cli(
+            ("--get-run-id", "windows", "--get-repo"),
+            _WINDOWS_ROCM_SUCCESS,
+            trigger_workflow_run_id=100,
+            trigger_repository="ROCm/rockrel",
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+        self.assertIn("not allowed with argument", result.stderr)
 
 
 class SchemaMajorGateTest(unittest.TestCase):

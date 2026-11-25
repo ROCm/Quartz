@@ -681,6 +681,11 @@ class Classification:
     Populated by `therock_classify.py` between enrichment and ingest.
     """
 
+    # GitHub `owner/repo` that runs this workflow run, from the dispatch
+    # envelope's `repository`. For a reusable-workflow child this is the
+    # calling repo (e.g. `ROCm/rockrel`), not the repo hosting the workflow file.
+    repository: str = ""
+
     # `"linux"` | `"windows"` | `""` (unmatched). Resolved together
     # with `pipeline_type` / `pipeline_phase` by matching `path` (plus
     # `inputs` for fan-out workflows) against `WORKFLOW_SPECS`.

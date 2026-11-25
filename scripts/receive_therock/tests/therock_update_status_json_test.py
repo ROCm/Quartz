@@ -191,6 +191,8 @@ def _event(
     event_type: str = "workflow_run_completed",
     repository: str = "ROCm/rockrel",
 ) -> TheRockDispatchEvent:
+    # Mirror classify(), which copies the envelope repository onto the run.
+    workflow_run.classification.repository = repository
     return TheRockDispatchEvent(
         event_type=event_type,
         repository=repository,
@@ -684,6 +686,92 @@ def test_older_orchestrator_start_does_not_override_newer_owner(
     )
     doc = _load(_nightly_status_path(tmp_path))
     assert doc.trigger_workflow_run_id == 29079513704
+
+
+def _owner_event(
+    run_id: int, *, attempt: int = 1, repository: str = "ROCm/rockrel"
+) -> TheRockDispatchEvent:
+    """In-progress top-level orchestrator event from `repository`."""
+    orch = _orchestrator_run()
+    orch.workflow_run_id = run_id
+    orch.run_attempt = attempt
+    orch.conclusion = None
+    orch.status = "in_progress"
+    return _event(orch, event_type="workflow_run_in_progress", repository=repository)
+
+
+def test_owner_records_trigger_repository(tmp_path: Path) -> None:
+    # The owning orchestrator's repository is stamped with its run id, and a
+    # leaf of that run leaves it untouched.
+    tusj.update_status_json(
+        _owner_event(27797822902), repo_dir=tmp_path, commit_and_push=False
+    )
+    tusj.update_status_json(
+        _event(_leaf_run()), repo_dir=tmp_path, commit_and_push=False
+    )
+    data = json.loads(_nightly_status_path(tmp_path).read_text(encoding="utf-8"))
+    assert data["schema_version"] == "2.3"
+    assert data["trigger_workflow_run_id"] == 27797822902
+    assert data["trigger_repository"] == "ROCm/rockrel"
+
+
+def test_newer_owner_replaces_trigger_repository_with_run_id(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The (run id, repository) pair moves together: a newer owner replaces
+    # both, and a late event from the superseded run changes neither. Track
+    # ROCm/TheRock as well so the two owners come from different repositories.
+    monkeypatch.setattr(
+        tusj, "_TRACKED_REPOSITORIES", frozenset({"rocm/rockrel", "rocm/therock"})
+    )
+    for event in (
+        _owner_event(100, repository="ROCm/TheRock"),
+        _owner_event(200),
+        _owner_event(100, attempt=2, repository="ROCm/TheRock"),
+    ):
+        tusj.update_status_json(event, repo_dir=tmp_path, commit_and_push=False)
+    doc = _load(_nightly_status_path(tmp_path))
+    assert doc.trigger_workflow_run_id == 200
+    assert doc.trigger_repository == "ROCm/rockrel"
+
+
+@pytest.mark.parametrize("event_type", ["leaf", "owner"])
+def test_upgrading_older_document_adds_trigger_repository(
+    tmp_path: Path, event_type: str
+) -> None:
+    # A schema 2.2 document has no trigger_repository. Whichever event upgrades
+    # it to 2.3 also records the repository, so every 2.3 document carries it.
+    _establish_owner(tmp_path)
+    path = _nightly_status_path(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["schema_version"] = "2.2"
+    del data["trigger_repository"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    run = _leaf_run() if event_type == "leaf" else _orchestrator_run()
+    tusj.update_status_json(_event(run), repo_dir=tmp_path, commit_and_push=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["schema_version"] == "2.3"
+    assert data["trigger_workflow_run_id"] == 27797822902
+    assert data["trigger_repository"] == "ROCm/rockrel"
+
+
+def test_rejected_event_does_not_upgrade_older_document(tmp_path: Path) -> None:
+    # A leaf from another release is dropped by the owner gate, so it neither
+    # writes the document nor fills in its repository.
+    _establish_owner(tmp_path)
+    path = _nightly_status_path(tmp_path)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["schema_version"] = "2.2"
+    del data["trigger_repository"]
+    path.write_text(json.dumps(data), encoding="utf-8")
+
+    leaf = _leaf_run()
+    leaf.trigger_workflow_run_id = 123456
+    tusj.update_status_json(_event(leaf), repo_dir=tmp_path, commit_and_push=False)
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["schema_version"] == "2.2"
+    assert "trigger_repository" not in data
 
 
 @pytest.mark.parametrize(
@@ -2741,7 +2829,7 @@ def _scheduled_asan_release(event: str, run_id: int = 600) -> WorkflowRunRecord:
             }
         }
     run = WorkflowRunRecord.from_dict(raw)
-    classify(run)
+    classify(run, "ROCm/rockrel")
     return run
 
 
@@ -2899,7 +2987,7 @@ def _raw_run(
 
 def _classified(raw: dict[str, object]) -> WorkflowRunRecord:
     run = WorkflowRunRecord.from_dict(raw)
-    classify(run)
+    classify(run, "ROCm/rockrel")
     return run
 
 

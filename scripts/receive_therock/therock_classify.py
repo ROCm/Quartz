@@ -41,10 +41,16 @@ RELEASE_CDN_PHASES: Final = frozenset({"release-linux", "release-windows"})
 log = logging.getLogger(__name__)
 
 
-def classify(wr: WorkflowRunRecord | None) -> None:
+def classify(wr: WorkflowRunRecord | None, repository: str) -> None:
+    """Populate `wr.classification`; `repository` is the dispatch envelope's."""
     if wr is None:
         return
+    if not repository:
+        raise ValueError(
+            f"classify: empty repository (workflow_run_id={wr.workflow_run_id!r})"
+        )
     c = wr.classification
+    c.repository = repository
     c.platform, c.pipeline_type, c.pipeline_phase = derive_platform_and_pipeline(wr)
     c.architectures = derive_architectures(wr)
     c.release_version = derive_release_version(wr)

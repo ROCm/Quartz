@@ -29,6 +29,7 @@ API overview:
     |- build_variant, therock_commit             build provenance (2.1; None if absent)
     |- pytorch_enabled, jax_enabled              which pipelines this release built
     |- trigger_workflow_run_id, trigger_run_attempt  owning orchestrator run (id, attempt)
+    |- trigger_repository                        owner/repo of that run (ROCm/rockrel if absent)
     |- schema_version, created_at, completed_at   more metadata
     |- overall_status                            worst-of rollup across platforms
     |- is_complete                               True once the build has finished
@@ -104,6 +105,13 @@ PIPELINES = ("rocm", "pytorch", "jax", "native_packages")
 # accepted; a different major signals a breaking layout change and is rejected by
 # load_status. See docs/status-json/status_json_reference.jsonc.
 SUPPORTED_SCHEMA_MAJOR = 2
+
+# Repository assumed for a pre-2.3 document, which does not record
+# trigger_repository. Quartz only published documents for workflows triggered
+# from ROCm/rockrel before 2.3. From 2.3 on the key is always present, so its
+# absence is an error.
+LEGACY_TRIGGER_REPOSITORY = "ROCm/rockrel"
+LEGACY_TRIGGER_REPOSITORY_SCHEMAS = ("2.0", "2.1", "2.2")
 
 
 class UnsupportedSchemaError(ValueError):
@@ -349,6 +357,28 @@ class StatusDocument:
         return self._data.get("trigger_workflow_run_id")
 
     @property
+    def trigger_repository(self) -> str:
+        """GitHub owner/repo that runs trigger_workflow_run_id (e.g.
+        "ROCm/rockrel").
+
+        LEGACY_TRIGGER_REPOSITORY for a schema 2.0 - 2.2 document, which does
+        not record it. Raises ValueError if it is missing from any other schema
+        version, or is not owner/repo.
+        """
+        repository = self._data.get("trigger_repository")
+        if repository is None:
+            if self.schema_version in LEGACY_TRIGGER_REPOSITORY_SCHEMAS:
+                return LEGACY_TRIGGER_REPOSITORY
+            raise ValueError(
+                "No trigger_repository in status.json (schema_version "
+                f"{self.schema_version!r})"
+            )
+        parts = repository.split("/") if type(repository) is str else []
+        if len(parts) != 2 or not all(parts):
+            raise ValueError(f"Invalid trigger_repository: {repository!r}")
+        return repository
+
+    @property
     def trigger_run_attempt(self) -> int | None:
         """Attempt number of the owning orchestrator run, or None if absent. A
         GitHub re-run keeps the same trigger_workflow_run_id but bumps this, so
@@ -534,21 +564,31 @@ def main() -> None:
         default=DEFAULT_SOURCE,
         help="URL or local path to a status.json (default: latest nightly)",
     )
-    parser.add_argument(
+    query = parser.add_mutually_exclusive_group()
+    query.add_argument(
         "--get-run-id",
         choices=("linux", "windows"),
         metavar="PLATFORM",
         help="Print the trigger workflow run ID if the platform ROCm build succeeded",
     )
+    query.add_argument(
+        "--get-repo",
+        action="store_true",
+        help="Print the trigger workflow repository (owner/repo); "
+        f"{LEGACY_TRIGGER_REPOSITORY} for documents that do not record it",
+    )
     args = parser.parse_args()
     status = load_status(args.source)
-    if args.get_run_id:
-        try:
-            print(status.rocm_build_run_id(args.get_run_id))
-        except ValueError as exc:
-            raise SystemExit(str(exc)) from exc
-    else:
+    if not (args.get_run_id or args.get_repo):
         _print_summary(status)
+        return
+    try:
+        if args.get_run_id:
+            print(status.rocm_build_run_id(args.get_run_id))
+        else:
+            print(status.trigger_repository)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
 
 
 if __name__ == "__main__":

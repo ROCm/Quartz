@@ -12,6 +12,17 @@ the same major can ignore. Layout and path changes are listed under the date
 they shipped even when they do not move `schema_version`. Entries reference the
 pull request that introduced the change.
 
+## schema_version 2.3 - 2026-11-24
+
+### Added
+
+- `trigger_repository`: the GitHub `owner/repo` that runs
+  `trigger_workflow_run_id`, usually `ROCm/rockrel`. The setup run and the
+  top-level orchestrator set it together with the run ID. When any other event
+  upgrades an older document to 2.3, the producer adds it from that event's run.
+  Every 2.3 document therefore has the key; older documents do not, and all of
+  them belong to runs in `ROCm/rockrel` (#138).
+
 ## schema_version 2.2 - 2026-11-10
 
 ### Added

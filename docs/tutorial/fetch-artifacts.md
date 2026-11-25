@@ -5,13 +5,13 @@ ROCm installation to test your software. This tutorial uses the nightly stream
 as an example.
 
 The scheduled nightly runs in `ROCm/rockrel`. Quartz records the GitHub Actions
-run ID of the triggering workflow in `nightly/latest.json`. Read that ID once, then
-pass it to TheRock's build tools so each download comes from the same run,
-even after the next nightly appears.
+run ID of the triggering workflow and its repository in `nightly/latest.json`.
+Read both once, then pass them to TheRock's build tools so each download comes
+from the same run, even after the next nightly appears.
 
 ## Before you start
 
-The examples use Bash on Linux, Python 3.11 or newer, and a TheRock checkout
+The examples use Bash and curl on Linux, Python 3.11 or newer, and a TheRock checkout
 with its Python build-tool dependencies installed. Set `reader` to the Quartz
 consumer script (a standalone copy also works) and `tools` to TheRock's build
 tools directory.
@@ -23,25 +23,36 @@ tools=/path/to/TheRock/build_tools
 
 ## Resolve the Linux build run
 
-Read the published nightly pin directly from raw GitHub. The reader follows the
-relative symlink. This URL is also the default, so you can omit it.
+Resolve the published nightly pin `nightly/latest.json` to the dated status
+document it points to, then read both values from that document. A newer nightly
+moves the pin but not the dated document, so the run ID and the repository
+always belong to the same run.
 
 ```bash
-run_id=$(python "$reader" --get-run-id linux https://raw.githubusercontent.com/ROCm/quartz/main/nightly/latest.json)
+nightly=https://raw.githubusercontent.com/ROCm/quartz/main/nightly
+status=$nightly/$(curl -fsSL "$nightly/latest.json")
+run_id=$(python "$reader" --get-run-id linux "$status")
+run_repo=$(python "$reader" --get-repo "$status")
 ```
 
 For a reproducible lookup, replace `main` in the URL with a Quartz commit that
 contains the published data.
 
 If you already have a Quartz checkout containing published data (branch `main`),
-you can read its local pin instead.
+you can resolve its local pin instead.
 
 ```bash
-run_id=$(python "$reader" --get-run-id linux /path/to/quartz/nightly/latest.json)
+status=$(readlink -f /path/to/quartz/nightly/latest.json)
+run_id=$(python "$reader" --get-run-id linux "$status")
+run_repo=$(python "$reader" --get-repo "$status")
 ```
 
-The lookup requires a successful Linux ROCm build. Reuse the resolved ID for
-every fetch from this nightly.
+The run ID lookup requires a successful Linux ROCm build. Reuse the resolved values
+for every fetch from this nightly.
+
+Status documents older than schema 2.3 do not record the repository. All of
+those nightlies ran in `ROCm/rockrel`, so `--get-repo` prints `ROCm/rockrel` for
+them.
 
 ## Choose what to fetch
 
@@ -67,6 +78,6 @@ the base components for the selected GPU family. The installer replaces the
 destination directory if it exists. Add `--dry-run` to preview the files.
 
 ```bash
-RELEASE_TYPE=nightly python "$tools/install_rocm_from_artifacts.py" --run-id "$run_id" --run-github-repo ROCm/rockrel \
+RELEASE_TYPE=nightly python "$tools/install_rocm_from_artifacts.py" --run-id "$run_id" --run-github-repo "$run_repo" \
   --amdgpu-family gfx94X-dcgpu --base-only --output-dir "rocm-$run_id"
 ```

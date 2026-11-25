@@ -1,11 +1,12 @@
 {
-  "schema_version": "2.2",
+  "schema_version": "2.3",
   "release_type": "nightly",
   "rocm_version": "10.3.0a20261125",
   "build_date": "20261125",
   "build_variant": "release",
   "therock_commit": "fd182df77b2e76993a9ca9f039cd98ff9053f541",
   "trigger_workflow_run_id": 45514708850,
+  "trigger_repository": "ROCm/rockrel",
   "trigger_run_attempt": 3,
   "created_at": "2026-11-25T00:01:10Z",
   "completed_at": "2026-11-25T09:11:58Z",
@@ -13,7 +14,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-25T00:02:09Z",
-  "status_json_last_updated": "2026-11-25T17:59:15Z",
+  "status_json_last_updated": "2026-11-25T22:04:08Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -74,8 +75,8 @@
         },
         "test_full": {
           "success": 0,
-          "failure": 3,
-          "in_progress": 1,
+          "failure": 4,
+          "in_progress": 0,
           "cancelled": 0,
           "skipped": 0
         }
@@ -1661,7 +1662,7 @@
             "run_id": 45611967985,
             "run_attempt": 1,
             "started_at": "2026-11-25T11:48:14Z",
-            "completed_at": "2026-11-25T17:58:31Z",
+            "completed_at": "2026-11-25T22:03:25Z",
             "variants": [
               {
                 "py": "3.12",
@@ -1684,10 +1685,11 @@
               {
                 "py": "3.12",
                 "torch": "release/2.14",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 45609132151,
                 "run_attempt": 1,
-                "started_at": "2026-11-25T11:57:02Z"
+                "started_at": "2026-11-25T11:57:02Z",
+                "completed_at": "2026-11-25T22:03:25Z"
               },
               {
                 "py": "3.12",

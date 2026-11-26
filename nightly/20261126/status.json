@@ -14,7 +14,7 @@
   "pytorch_enabled": true,
   "jax_enabled": true,
   "status_json_created": "2026-11-26T00:02:21Z",
-  "status_json_last_updated": "2026-11-26T10:15:13Z",
+  "status_json_last_updated": "2026-11-26T10:17:32Z",
   "summary": {
     "overall_status": "failure",
     "linux": {
@@ -68,8 +68,8 @@
         },
         "test": {
           "success": 46,
-          "failure": 12,
-          "in_progress": 10,
+          "failure": 14,
+          "in_progress": 8,
           "cancelled": 0,
           "skipped": 0
         },
@@ -752,7 +752,7 @@
             "run_id": 45759014620,
             "run_attempt": 1,
             "started_at": "2026-11-26T07:47:41Z",
-            "completed_at": "2026-11-26T08:22:29Z",
+            "completed_at": "2026-11-26T10:14:39Z",
             "variants": [
               {
                 "py": "3.11",
@@ -784,10 +784,11 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 45759014620,
                 "run_attempt": 1,
-                "started_at": "2026-11-26T08:07:07Z"
+                "started_at": "2026-11-26T08:07:07Z",
+                "completed_at": "2026-11-26T10:14:39Z"
               }
             ]
           },
@@ -880,10 +881,11 @@
             ]
           },
           "gfx950-dcgpu": {
-            "status": "in_progress",
+            "status": "failure",
             "run_id": 45759014620,
             "run_attempt": 1,
             "started_at": "2026-11-26T07:35:51Z",
+            "completed_at": "2026-11-26T10:14:41Z",
             "variants": [
               {
                 "py": "3.11",
@@ -915,10 +917,11 @@
               {
                 "py": "3.11",
                 "torch": "nightly",
-                "status": "in_progress",
+                "status": "failure",
                 "run_id": 45759014620,
                 "run_attempt": 1,
-                "started_at": "2026-11-26T08:06:20Z"
+                "started_at": "2026-11-26T08:06:20Z",
+                "completed_at": "2026-11-26T10:14:41Z"
               }
             ]
           },
